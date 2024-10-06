@@ -1,0 +1,63 @@
+name: kdevops-ci-modules
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+
+  run-kdevops:
+    name: Run kdevops CI for modules on Self-hosted Runner
+    runs-on: self-hosted
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+
+      - name: Checkout kdevops
+        run: |
+          git clone /mirror/kdevops.git kdevops
+
+      - name: Checkout custom branch with delta so on kdevops/linux
+        run: |
+          cd kdevops
+          git clone https://github.com/${{ github.repository }} --reference /mirror/linux-modules.git/ --depth=5 linux
+          cd linux
+          git log -1
+
+      - name: Run kdevops make defconfig-seltests-kmod-cli
+        run: |
+          cd kdevops
+          make KDEVOPS_HOSTS_PREFIX="kcimod" LINUX_TREE=https://github.com/${{ github.repository }} LINUX_TREE_REF="${{ github.event.pull_request.head.sha }}" defconfig-seltests-kmod-cli
+
+      - name: Run kdevops make
+        run: |
+          cd kdevops
+          make -j$(nproc)
+
+      - name: Run kdevops make bringup
+        run: |
+          cd kdevops
+          make bringup
+
+      - name: Run linux
+        run: |
+          cd kdevops
+          make linux
+
+      - name: Run selftests
+        run: |
+          cd kdevops
+          make selftests
+
+      - name: Run selftests
+        run: |
+          cd kdevops
+          make selftests-kmod
+
+      - name: Run kdevops make destroy
+        run: |
+          cd kdevops
+          make destroy
