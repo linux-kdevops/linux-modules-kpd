@@ -77,3 +77,4 @@ jobs:
         run: |
           cd kdevops
           make destroy
+          rm -rf kdevops
