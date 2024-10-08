@@ -7,12 +7,12 @@ on:
   pull_request:
     branches:
       - '**'
+  workflow_dispatch:  # Add this for manual triggering of the workflow
 
 jobs:
   run-kdevops:
-    name: Run kdevops CI for modules on Self-hosted Runner
-    runs-on: self-hosted
-
+    name: Run kdevops CI on Self-hosted Runner
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Configure git
         run: |
@@ -25,14 +25,19 @@ jobs:
       - name: Checkout custom branch with delta so on kdevops/linux
         run: |
           cd kdevops
-          git clone https://github.com/${{ github.repository }} --reference /mirror/linux-modules.git/ --depth=5 linux
+          LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
+          git clone https://github.com/${{ github.repository }} --reference /mirror/linux.git/ --depth=5 linux
           cd linux
+          git fetch origin $LINUX_TREE_REF
+          git checkout $LINUX_TREE_REF
           git log -1
 
       - name: Run kdevops make defconfig-seltests-kmod-cli
         run: |
           cd kdevops
-          make KDEVOPS_HOSTS_PREFIX="kcimod" LINUX_TREE=https://github.com/${{ github.repository }} LINUX_TREE_REF="${{ github.event.pull_request.head.sha }}" defconfig-seltests-kmod-cli
+          LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
+          RAND_PREFIX="$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)"
+          make KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE=https://github.com/${{ github.repository }} LINUX_TREE_REF=$LINUX_TREE_REF defconfig-seltests-kmod-cli
 
       - name: Run kdevops make
         run: |
@@ -42,6 +47,7 @@ jobs:
       - name: Run kdevops make bringup
         run: |
           cd kdevops
+          ls -ld linux
           make bringup
 
       - name: Run linux
@@ -54,13 +60,20 @@ jobs:
           cd kdevops
           make selftests
 
-      - name: Run configured selftests tests
+      - name: Run selftests
         run: |
           cd kdevops
-          make selftests-baseline
+          make -j$(nproc) selftests-baseline
 
+      - name: Upload kdevops test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: selftest-results
+          path: workflows/selftests/results/
+
+      # Ensure make destroy always runs, even on failure
       - name: Run kdevops make destroy
-        if: ${{ always() }}
+        if: always()  # This ensures the step runs even if previous steps failed
         run: |
           cd kdevops
           make destroy
