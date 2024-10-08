@@ -6,7 +6,9 @@ on:
       - '**'
   pull_request:
     branches:
+      - '**'
 
+jobs:
   run-kdevops:
     name: Run kdevops CI for modules on Self-hosted Runner
     runs-on: self-hosted
@@ -52,12 +54,13 @@ on:
           cd kdevops
           make selftests
 
-      - name: Run selftests
+      - name: Run configured selftests tests
         run: |
           cd kdevops
-          make selftests-kmod
+          make selftests-baseline
 
       - name: Run kdevops make destroy
+        if: ${{ always() }}
         run: |
           cd kdevops
           make destroy
