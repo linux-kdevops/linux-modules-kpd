@@ -37,7 +37,7 @@ jobs:
           cd kdevops
           LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
           RAND_PREFIX="$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)"
-          make KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE=https://github.com/${{ github.repository }} LINUX_TREE_REF=$LINUX_TREE_REF defconfig-seltests-kmod-cli
+          make KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE="https://github.com/${{ github.repository }}" LINUX_TREE_REF="$LINUX_TREE_REF" defconfig-seltests-kmod-cli
 
       - name: Run kdevops make
         run: |
