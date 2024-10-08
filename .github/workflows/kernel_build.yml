@@ -1,4 +1,4 @@
-name: md-ci
+name: kernel-build
 
 on:
   pull_request:

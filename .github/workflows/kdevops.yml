@@ -20,9 +20,10 @@ jobs:
 
       - name: Checkout kdevops
         run: |
+          rm -rf kdevops
           git clone /mirror/kdevops.git kdevops
 
-      - name: Checkout custom branch with delta so on kdevops/linux
+      - name: Checkout custom branch with delta on kdevops/linux
         run: |
           cd kdevops
           LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
@@ -32,12 +33,24 @@ jobs:
           git checkout $LINUX_TREE_REF
           git log -1
 
-      - name: Run kdevops make defconfig-seltests-kmod-cli
+      - name: Run a quick kernel defconfig later we'll use a kdevops specific kernel config
+        run: |
+          cd kdevops/linux
+          make defconfig
+          make -j$(nproc)
+
+      - name: Run kdevops make defconfig-repo
         run: |
           cd kdevops
+          KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
+          if [[ ! -f defconfig/$KDEVOPS_DEFCONFIG ]]; then
+            echo "kdevops lacks a defconfig for this repository, expected to find: defconfig/$KDEVOPS_DEFCONFIG"
+            exit 1
+          fi
+          echo Going to use defconfig-$(basename ${{ github.repository }})
           LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
           RAND_PREFIX="$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)"
-          make KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE="https://github.com/${{ github.repository }}" LINUX_TREE_REF="$LINUX_TREE_REF" defconfig-seltests-kmod-cli
+          make KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE="https://github.com/${{ github.repository }}" LINUX_TREE_REF="$LINUX_TREE_REF" defconfig-$KDEVOPS_DEFCONFIG
 
       - name: Run kdevops make
         run: |
@@ -77,4 +90,5 @@ jobs:
         run: |
           cd kdevops
           make destroy
+          cd ..
           rm -rf kdevops
