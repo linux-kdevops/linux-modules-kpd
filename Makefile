@@ -3,7 +3,7 @@ VERSION = 6
 PATCHLEVEL = 12
 SUBLEVEL = 0
 EXTRAVERSION = -rc1
-NAME = Baby Opossum Posse
+NAME = Ralph The Dog
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
