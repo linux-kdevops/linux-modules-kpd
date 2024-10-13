@@ -20,9 +20,10 @@ jobs:
 
       - name: Checkout kdevops
         run: |
+          rm -rf kdevops
           git clone /mirror/kdevops.git kdevops
 
-      - name: Checkout custom branch with delta so on kdevops/linux
+      - name: Checkout custom branch with delta on kdevops/linux
         run: |
           cd kdevops
           LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
@@ -77,3 +78,5 @@ jobs:
         run: |
           cd kdevops
           make destroy
+          cd ..
+          rm -rf kdevops
