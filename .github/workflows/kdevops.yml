@@ -33,7 +33,7 @@ jobs:
           git checkout $LINUX_TREE_REF
           git log -1
 
-      - name: Run a quick kernel defconfig later we'll use a kdevops specific kernel config
+      - name: Run a quick Linux kernel defconfig build test
         run: |
           cd kdevops/linux
           make defconfig
@@ -43,8 +43,8 @@ jobs:
         run: |
           cd kdevops
           KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
-          if [[ ! -f defconfig/$KDEVOPS_DEFCONFIG ]]; then
-            echo "kdevops lacks a defconfig for this repository, expected to find: defconfig/$KDEVOPS_DEFCONFIG"
+          if [[ ! -f defconfigs/$KDEVOPS_DEFCONFIG ]]; then
+            echo "kdevops lacks a defconfig for this repository, expected to find: defconfigs/$KDEVOPS_DEFCONFIG"
             exit 1
           fi
           echo Going to use defconfig-$(basename ${{ github.repository }})
