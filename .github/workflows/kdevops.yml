@@ -36,10 +36,15 @@ jobs:
       - name: Run kdevops make defconfig-repo
         run: |
           cd kdevops
-          echo Going to use defconfig-${{ github.repository }}
+          KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
+          if [[ ! -f defconfig/$KDEVOPS_DEFCONFIG ]]; then
+            echo "kdevops lacks a defconfig for this repository, expected to find: defconfig/$KDEVOPS_DEFCONFIG"
+            exit 1
+          fi
+          echo Going to use defconfig-$(basename ${{ github.repository }})
           LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
           RAND_PREFIX="$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)"
-          make KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE=https://github.com/${{ github.repository }} LINUX_TREE_REF=$LINUX_TREE_REF defconfig-${{ github.repository }}
+          make KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE="https://github.com/${{ github.repository }}" LINUX_TREE_REF="$LINUX_TREE_REF" defconfig-$KDEVOPS_DEFCONFIG
 
       - name: Run kdevops make
         run: |
