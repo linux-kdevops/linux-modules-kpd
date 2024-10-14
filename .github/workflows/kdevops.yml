@@ -33,6 +33,12 @@ jobs:
           git checkout $LINUX_TREE_REF
           git log -1
 
+      - name: Run a quick kernel defconfig later we'll use a kdevops specific kernel config
+        run: |
+          cd kdevops/linux
+          make defconfig
+          make -j$(nproc)
+
       - name: Run kdevops make defconfig-repo
         run: |
           cd kdevops
