@@ -9,6 +9,14 @@ on:
       - '**'
   workflow_dispatch:  # Add this for manual triggering of the workflow
 
+env:
+  LINUX_TREE="https://github.com/${{ github.repository }}
+  LINUX_TREE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
+  UNIQUE_REF=$(printf "%x" $((0x${LINUX_TREE_REF:0:8} * ${{ github.run_id }})))
+  ALPHA_REF=$(echo $UNIQUE_REF | xxd -p -c1 | awk '{printf "%c", (strtonum("0x"$1) % 26) + 97}')
+  KDEVOPS_HOSTS_PREFIX="$(echo $UNIQUE_REF | tr -dc 'a-z' | fold -w 5 | head -n 1)"
+
 jobs:
   run-kdevops:
     name: Run kdevops CI on Self-hosted Runner
@@ -26,7 +34,6 @@ jobs:
       - name: Checkout custom branch with delta on kdevops/linux
         run: |
           cd kdevops
-          LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
           git clone https://github.com/${{ github.repository }} --reference /mirror/linux.git/ --depth=5 linux
           cd linux
           git fetch origin $LINUX_TREE_REF
@@ -39,39 +46,24 @@ jobs:
           make defconfig
           make -j$(nproc)
 
-      - name: Run kdevops make defconfig-repo
+      - name: Make sure defconfig exists
         run: |
           cd kdevops
-          KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
           if [[ ! -f defconfigs/$KDEVOPS_DEFCONFIG ]]; then
             echo "kdevops lacks a defconfig for this repository, expected to find: defconfigs/$KDEVOPS_DEFCONFIG"
             exit 1
           fi
 
+      - name: Run kdevops make defconfig-repo
+        run: |
           echo Going to use defconfig-$(basename ${{ github.repository }})
 
-          LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
+          echo "Linux tree:          $LINUX_TREE"
+          echo "Linux ref:           $LINUX_TREE_REF"
+          echo "Runner ID:           ${{ github.run_id }}"
+          echo "kdevops host prefix: $KDEVOPS_HOSTS_PREFIX"
 
-          # github.run_id is a unique number for each workflow run within a
-          # repository. This number does not change if you re-run the workflow
-          # run. This gives us enough of a unique ID for the workflow / repo
-          # on the host.
-          UNIQUE_REF=$(printf "%x" $((0x${LINUX_TREE_REF:0:8} * ${{ github.run_id }})))
-          echo "Linux ref: $LINUX_TREE_REF"
-          echo "Runner ID: ${{ github.run_id }}"
-          echo "Unique ref: $UNIQUE_REF"
-
-          # We'll build on this for a prefix for our guests
-          RAND_PREFIX="$(echo $UNIQUE_REF | tr -dc 'a-z' | fold -w 5 | head -n 1)"
-
-          echo "You random prefix: $RAND_PREFIX"
-
-          KDEVOPS_ARGS=KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE="https://github.com/${{ github.repository }}" LINUX_TREE_REF="$LINUX_TREE_REF" defconfig-$KDEVOPS_DEFCONFIG
-
-          echo "Going to run"
-          echo "make $KDEVOPS_ARGS"
-
-          make $KDEVOPS_ARGS
+          make defconfig-$KDEVOPS_DEFCONFIG
 
       - name: Run kdevops make
         run: |
@@ -89,7 +81,7 @@ jobs:
           cd kdevops
           make linux
 
-      - name: Run selftests
+      - name: Build selftests
         run: |
           cd kdevops
           make selftests
