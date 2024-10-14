@@ -9,9 +9,6 @@ on:
       - '**'
   workflow_dispatch:  # Add this for manual triggering of the workflow
 
-env:
-  LINUX_TREE="https://github.com/${{ github.repository }}"
-
 jobs:
   run-kdevops:
     name: Run kdevops CI on Self-hosted Runner
@@ -28,9 +25,10 @@ jobs:
 
       - name: Checkout custom branch with delta on kdevops/linux
         run: |
+          LINUX_TREE="https://github.com/${{ github.repository }}"
           LINUX_TREE_REF="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           cd kdevops
-          git clone https://github.com/${{ github.repository }} --reference /mirror/linux.git/ --depth=5 linux
+          git clone $LINUX_TREE --reference /mirror/linux.git/ --depth=5 linux
           cd linux
           git fetch origin $LINUX_TREE_REF
           git checkout $LINUX_TREE_REF
@@ -53,6 +51,7 @@ jobs:
 
       - name: Run kdevops make defconfig-repo
         run: |
+          LINUX_TREE="https://github.com/${{ github.repository }}"
           LINUX_TREE_REF="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
           UNIQUE_REF=$(printf "%x" $((0x${LINUX_TREE_REF:0:8} * ${{ github.run_id }})))
