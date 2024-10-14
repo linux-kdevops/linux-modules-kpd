@@ -67,6 +67,8 @@ jobs:
           KDEVOPS_ARGS="KDEVOPS_HOSTS_PREFIX=$KDEVOPS_HOSTS_PREFIX LINUX_TREE=$LINUX_TREE LINUX_TREE_REF=$LINUX_TREE_REF defconfig-$KDEVOPS_DEFCONFIG"
           echo Going to run:
           echo make $KDEVOPS_ARGS
+
+          cd kdevops
           make $KDEVOPS_ARGS
 
       - name: Run kdevops make
