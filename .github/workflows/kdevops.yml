@@ -40,7 +40,7 @@ jobs:
           make defconfig
           make -j$(nproc)
 
-      - name: Make sure defconfig exists
+      - name: Make sure our repo kdevops defconfig exists
         run: |
           KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
           cd kdevops
