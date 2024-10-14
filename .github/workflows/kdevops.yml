@@ -12,10 +12,6 @@ on:
 env:
   LINUX_TREE="https://github.com/${{ github.repository }}"
   LINUX_TREE_REF="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
-  KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
-  UNIQUE_REF=$(printf "%x" $((0x${LINUX_TREE_REF:0:8} * ${{ github.run_id }})))
-  ALPHA_REF=$(echo $UNIQUE_REF | xxd -p -c1 | awk '{printf "%c", (strtonum("0x"$1) % 26) + 97}')
-  KDEVOPS_HOSTS_PREFIX="$(echo $UNIQUE_REF | tr -dc 'a-z' | fold -w 5 | head -n 1)"
 
 jobs:
   run-kdevops:
@@ -48,6 +44,7 @@ jobs:
 
       - name: Make sure defconfig exists
         run: |
+          KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
           cd kdevops
           if [[ ! -f defconfigs/$KDEVOPS_DEFCONFIG ]]; then
             echo "kdevops lacks a defconfig for this repository, expected to find: defconfigs/$KDEVOPS_DEFCONFIG"
@@ -56,6 +53,10 @@ jobs:
 
       - name: Run kdevops make defconfig-repo
         run: |
+          KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
+          UNIQUE_REF=$(printf "%x" $((0x${LINUX_TREE_REF:0:8} * ${{ github.run_id }})))
+          ALPHA_REF=$(echo $UNIQUE_REF | xxd -p -c1 | awk '{printf "%c", (strtonum("0x"$1) % 26) + 97}')
+          KDEVOPS_HOSTS_PREFIX="$(echo $UNIQUE_REF | tr -dc 'a-z' | fold -w 5 | head -n 1)"
           echo Going to use defconfig-$(basename ${{ github.repository }})
 
           echo "Linux tree:          $LINUX_TREE"
@@ -63,7 +64,10 @@ jobs:
           echo "Runner ID:           ${{ github.run_id }}"
           echo "kdevops host prefix: $KDEVOPS_HOSTS_PREFIX"
 
-          make defconfig-$KDEVOPS_DEFCONFIG
+          KDEVOPS_ARGS="KDEVOPS_HOSTS_PREFIX=$KDEVOPS_HOSTS_PREFIX LINUX_TREE=$LINUX_TREE LINUX_TREE_REF=$LINUX_TREE_REF defconfig-$KDEVOPS_DEFCONFIG"
+          echo Going to run:
+          echo make $KDEVOPS_ARGS
+          make $KDEVOPS_ARGS
 
       - name: Run kdevops make
         run: |
