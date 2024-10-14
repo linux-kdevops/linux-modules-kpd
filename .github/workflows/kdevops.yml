@@ -51,10 +51,19 @@ jobs:
           echo Going to use defconfig-$(basename ${{ github.repository }})
 
           LINUX_TREE_REF=$([[ ${{ github.event_name }} == 'pull_request' ]] && echo "${{ github.event.pull_request.head.sha }}" || echo "${{ github.sha }}")
-          RAND_PREFIX="$(cat /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)"
 
-          # If this hangs then you likely don't have haveged installed
-          RAND_PREFIX="$(head -c 200 /dev/urandom | tr -dc 'a-z' | fold -w 5 | head -n 1)"
+          # github.run_id is a unique number for each workflow run within a
+          # repository. This number does not change if you re-run the workflow
+          # run. This gives us enough of a unique ID for the workflow / repo
+          # on the host.
+          UNIQUE_REF=$(printf "%x" $((0x${LINUX_TREE_REF:0:8} * ${{ github.run_id }})))
+          echo "Linux ref: $LINUX_TREE_REF"
+          echo "Runner ID: ${{ github.run_id }}"
+          echo "Unique ref: $UNIQUE_REF"
+
+          # We'll build on this for a prefix for our guests
+          RAND_PREFIX="$(echo $UNIQUE_REF | tr -dc 'a-z' | fold -w 5 | head -n 1)"
+
           echo "You random prefix: $RAND_PREFIX"
 
           KDEVOPS_ARGS=KDEVOPS_HOSTS_PREFIX="$RAND_PREFIX" LINUX_TREE="https://github.com/${{ github.repository }}" LINUX_TREE_REF="$LINUX_TREE_REF" defconfig-$KDEVOPS_DEFCONFIG
