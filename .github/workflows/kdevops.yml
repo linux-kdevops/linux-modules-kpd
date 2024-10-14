@@ -11,7 +11,6 @@ on:
 
 env:
   LINUX_TREE="https://github.com/${{ github.repository }}"
-  LINUX_TREE_REF="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
 
 jobs:
   run-kdevops:
@@ -29,6 +28,7 @@ jobs:
 
       - name: Checkout custom branch with delta on kdevops/linux
         run: |
+          LINUX_TREE_REF="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           cd kdevops
           git clone https://github.com/${{ github.repository }} --reference /mirror/linux.git/ --depth=5 linux
           cd linux
@@ -53,6 +53,7 @@ jobs:
 
       - name: Run kdevops make defconfig-repo
         run: |
+          LINUX_TREE_REF="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           KDEVOPS_DEFCONFIG=$(echo $(basename ${{ github.repository }}))
           UNIQUE_REF=$(printf "%x" $((0x${LINUX_TREE_REF:0:8} * ${{ github.run_id }})))
           ALPHA_REF=$(echo $UNIQUE_REF | xxd -p -c1 | awk '{printf "%c", (strtonum("0x"$1) % 26) + 97}')
