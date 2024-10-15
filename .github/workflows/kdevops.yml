@@ -80,26 +80,33 @@ jobs:
           ls -ld linux
           make bringup
 
-      - name: Run linux
+      - name: Build linux and boot test nodes on test kernel
         run: |
           cd kdevops
           make linux
 
-      - name: Build selftests
+      - name: Build required ci tests
         run: |
           cd kdevops
-          make selftests
+          make ci-build-test
 
-      - name: Run selftests
+      - name: Run CI tests
         run: |
           cd kdevops
-          make -j$(nproc) selftests-baseline
+          make ci-test
 
-      - name: Upload kdevops test results
+      - name: Get the defined CI test results directories for this repository
+        id: results-dirs
+        run: |
+          cd kdevops
+          make ci-results > results_dirs.txt
+
+      - name: Upload all defined test result directories as artifacts
         uses: actions/upload-artifact@v3
         with:
           name: selftest-results
-          path: workflows/selftests/results/
+          path: |
+            $(cat kdevops/results_dirs.txt | tr '\n' ',')
 
       # Ensure make destroy always runs, even on failure
       - name: Run kdevops make destroy
