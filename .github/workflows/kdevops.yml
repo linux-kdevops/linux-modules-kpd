@@ -1,4 +1,4 @@
-name: kdevops-ci-modules
+name: Run generic kdevops CI runner workflow
 
 on:
   push:
@@ -104,7 +104,7 @@ jobs:
       - name: Upload all defined test result directories as artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: selftest-results
+          name: ci-results
           path: |
             $(cat kdevops/results_dirs.txt | tr '\n' ',')
 
