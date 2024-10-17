@@ -108,7 +108,7 @@ jobs:
         with:
           name: ci-results
           path: |
-            $(cat kdevops/results.txt | tr '\n' ',')
+            $(cat kdevops/results.txt)
 
       # Ensure make destroy always runs, even on failure
       - name: Run kdevops make destroy
