@@ -104,7 +104,7 @@ jobs:
 
       - name: Read results.txt and set environment variable
         run: |
-          FILE_PATHS=$(cat results.txt | tr '\n' '\n')
+          FILE_PATHS=$(cat kdevops/results.txt | tr '\n' '\n')
           echo "FILE_PATHS<<EOF" >> $GITHUB_ENV
           echo "$FILE_PATHS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
