@@ -99,6 +99,13 @@ jobs:
         run: |
           cd kdevops
           make ci-results > results.txt
+          while IFS= read -r line; do
+          for path in $line; do
+            if [ -e "$path" ]; then
+              sudo chown -R $USER:$USER "$path"
+              sudo chmod -R a+r "$path"
+            fi
+          done
           sed -i 's|^|kdevops/|' results.txt
           cat results.txt
 
