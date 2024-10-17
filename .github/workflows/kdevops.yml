@@ -95,18 +95,19 @@ jobs:
           cd kdevops
           make ci-test
 
-      - name: Get the defined CI test results directories for this repository
+      - name: Get the defined CI test results for this repository
         id: results-dirs
         run: |
           cd kdevops
-          make ci-results > results_dirs.txt
+          make ci-results > results.txt
+          sed -i 's|^|kdevops/|' kdevops/results.txt
 
       - name: Upload all defined test result directories as artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ci-results
           path: |
-            $(cat kdevops/results_dirs.txt | tr '\n' ',')
+            $(cat kdevops/results.txt | tr '\n' ',')
 
       # Ensure make destroy always runs, even on failure
       - name: Run kdevops make destroy
