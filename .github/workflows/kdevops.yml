@@ -107,6 +107,10 @@ jobs:
           RESULTS=$(cat kdevops/results.txt | tr '\n' ' ')
           echo "results=$RESULTS" >> $GITHUB_ENV
 
+      - name: check which files used for artifacts exist 
+        run: |
+          ls -l ${{ env.results }}
+          
       - name: Upload all defined test result directories as artifacts
         uses: actions/upload-artifact@v4
         with:
