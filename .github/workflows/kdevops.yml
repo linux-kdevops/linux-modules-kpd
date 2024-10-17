@@ -101,22 +101,20 @@ jobs:
           make ci-results > results.txt
           sed -i 's|^|kdevops/|' results.txt
           cat results.txt
-          
-      - name: Prepare paths for uploading artifacts
-        run: |
-          RESULTS=$(cat kdevops/results.txt | tr '\n' ' ')
-          echo "results=$RESULTS" >> $GITHUB_ENV
 
-      - name: check which files used for artifacts exist 
+      - name: Read results.txt and set environment variable
         run: |
-          ls -l ${{ env.results }}
+          FILE_PATHS=$(cat results.txt | tr '\n' '\n')
+          echo "FILE_PATHS<<EOF" >> $GITHUB_ENV
+          echo "$FILE_PATHS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
           
-      - name: Upload all defined test result directories as artifacts
+      - name: Upload files listed in results.txt as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ci-results
-          path: ${{ env.results }}
-
+          name: kdevops-ci-results
+          path: ${{ env.FILE_PATHS }}      
+          
       # Ensure make destroy always runs, even on failure
       - name: Run kdevops make destroy
         if: always()  # This ensures the step runs even if previous steps failed
