@@ -2880,7 +2880,7 @@ module_param(async_probe, bool, 0644);
  */
 static noinline int do_init_module(struct module *mod)
 {
-	int ret = 0;
+	int ret = 0, forced = 0;
 	struct mod_initfree *freeinit;
 #if defined(CONFIG_MODULE_STATS)
 	unsigned int text_size = 0, total_size = 0;
@@ -2948,7 +2948,7 @@ static noinline int do_init_module(struct module *mod)
 #endif
 	ret = module_enable_rodata_ro(mod, true);
 	if (ret)
-		goto fail_mutex_unlock;
+		goto fail_ro_after_init;
 	/* Drop initial reference. */
 	module_put(mod);
 	mod_tree_remove_init(mod);
@@ -2989,8 +2989,12 @@ static noinline int do_init_module(struct module *mod)
 
 	return 0;
 
-fail_mutex_unlock:
+fail_ro_after_init:
+	list_empty(&mod->source_list);
+	try_stop_module(mod, 0, &forced);
 	mutex_unlock(&module_mutex);
+	if (mod->exit != NULL)
+		mod->exit();
 fail_free_freeinit:
 	kfree(freeinit);
 fail:
