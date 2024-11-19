@@ -19,7 +19,39 @@
 #define INVALID			2	/* Digest cache marked as invalid. */
 
 /**
+ * struct digest_cache_entry - Entry of a digest cache hash table
+ * @hnext: Pointer to the next element in the collision list
+ * @digest: Stored digest
+ *
+ * This structure represents an entry of a digest cache hash table, storing a
+ * digest.
+ */
+struct digest_cache_entry {
+	struct hlist_node hnext;
+	u8 digest[];
+};
+
+/**
+ * struct htable - Hash table
+ * @next: Next hash table in the linked list
+ * @slots: Hash table slots
+ * @num_slots: Number of slots
+ * @num_digests: Number of digests stored in the hash table
+ * @algo: Algorithm of the digests
+ *
+ * This structure is a hash table storing digests of file data or metadata.
+ */
+struct htable {
+	struct list_head next;
+	struct hlist_head *slots;
+	unsigned int num_slots;
+	u64 num_digests;
+	enum hash_algo algo;
+};
+
+/**
  * struct digest_cache - Digest cache
+ * @htables: Hash tables (one per algorithm)
  * @ref_count: Number of references to the digest cache
  * @path_str: Path of the digest list the digest cache was created from
  * @flags: Control flags
@@ -27,6 +59,7 @@
  * This structure represents a cache of digests extracted from a digest list.
  */
 struct digest_cache {
+	struct list_head htables;
 	atomic_t ref_count;
 	char *path_str;
 	unsigned long flags;
@@ -124,5 +157,8 @@ int __init digest_cache_do_init(const struct lsm_id *lsm_id,
 
 /* secfs.c */
 int __init digest_cache_secfs_init(struct dentry *dir);
+
+/* htable.c */
+void digest_cache_htable_free(struct digest_cache *digest_cache);
 
 #endif /* _DIGEST_CACHE_INTERNAL_H */
