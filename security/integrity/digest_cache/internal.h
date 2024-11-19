@@ -52,6 +52,7 @@ struct digest_cache_security {
 extern loff_t inode_sec_offset;
 extern loff_t file_sec_offset;
 extern char *default_path_str;
+extern struct rw_semaphore default_path_sem;
 
 static inline struct digest_cache_security *
 digest_cache_get_security_from_blob(void *inode_security)
@@ -120,5 +121,8 @@ struct digest_cache *digest_cache_init(struct dentry *dentry,
 				       struct digest_cache *digest_cache);
 int __init digest_cache_do_init(const struct lsm_id *lsm_id,
 				loff_t inode_offset, loff_t file_offset);
+
+/* secfs.c */
+int __init digest_cache_secfs_init(struct dentry *dir);
 
 #endif /* _DIGEST_CACHE_INTERNAL_H */

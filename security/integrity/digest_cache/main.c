@@ -21,6 +21,9 @@ loff_t file_sec_offset;
 
 char *default_path_str = CONFIG_DIGEST_LIST_DEFAULT_PATH;
 
+/* Protects default_path_str. */
+struct rw_semaphore default_path_sem;
+
 /**
  * digest_cache_alloc_init - Allocate and initialize a new digest cache
  * @path_str: Path string of the digest list
@@ -321,9 +324,12 @@ struct digest_cache *digest_cache_get(struct file *file)
 
 	/* Serialize accesses to inode for which the digest cache is used. */
 	mutex_lock(&dig_sec->dig_user_mutex);
-	if (!dig_sec->dig_user)
+	if (!dig_sec->dig_user) {
+		down_read(&default_path_sem);
 		/* Consume extra reference from digest_cache_create(). */
 		dig_sec->dig_user = digest_cache_new(dentry, &digest_list_path);
+		up_read(&default_path_sem);
+	}
 
 	if (dig_sec->dig_user)
 		/* Increment ref. count for reference returned to the caller. */
@@ -439,6 +445,8 @@ static struct security_hook_list digest_cache_hooks[] __ro_after_init = {
 int __init digest_cache_do_init(const struct lsm_id *lsm_id,
 				loff_t inode_offset, loff_t file_offset)
 {
+	init_rwsem(&default_path_sem);
+
 	inode_sec_offset = inode_offset;
 	file_sec_offset = file_offset;
 

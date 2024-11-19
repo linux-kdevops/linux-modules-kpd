@@ -614,6 +614,12 @@ int __init ima_fs_init(void)
 		goto out;
 	}
 
+	if (IS_ENABLED(CONFIG_INTEGRITY_DIGEST_CACHE)) {
+		ret = digest_cache_secfs_init(integrity_dir);
+		if (ret < 0)
+			goto out;
+	}
+
 	return 0;
 out:
 	securityfs_remove(ima_policy);
