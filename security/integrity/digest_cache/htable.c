@@ -202,13 +202,18 @@ EXPORT_SYMBOL_GPL(digest_cache_htable_lookup);
  * This function calls digest_cache_htable_lookup() to search a digest in the
  * passed digest cache, obtained with digest_cache_get().
  *
- * Return: A digest cache reference the digest is found, NULL if not.
+ * Return: A digest cache reference if the digest is found, NULL if not, an
+ *         error pointer if dir digest cache changed since last get.
  */
 struct digest_cache *digest_cache_lookup(struct dentry *dentry,
 					 struct digest_cache *digest_cache,
 					 u8 *digest, enum hash_algo algo)
 {
 	int ret;
+
+	if (test_bit(IS_DIR, &digest_cache->flags))
+		return digest_cache_dir_lookup_digest(dentry, digest_cache,
+						      digest, algo);
 
 	ret = digest_cache_htable_lookup(dentry, digest_cache, digest, algo);
 	if (ret < 0)
