@@ -47,6 +47,10 @@ bool digest_cache_opened_fd(struct file *file);
 struct digest_cache *digest_cache_lookup(struct dentry *dentry,
 					 struct digest_cache *digest_cache,
 					 u8 *digest, enum hash_algo algo);
+int digest_cache_verif_set(struct file *file, const char *verif_id, void *data,
+			   size_t size);
+void *digest_cache_verif_get(struct digest_cache *digest_cache,
+			     const char *verif_id);
 
 /* Parser API */
 int digest_cache_htable_init(struct digest_cache *digest_cache, u64 num_digests,
@@ -77,6 +81,19 @@ static inline bool digest_cache_opened_fd(struct file *file)
 static inline struct digest_cache *
 digest_cache_lookup(struct dentry *dentry, struct digest_cache *digest_cache,
 		    u8 *digest, enum hash_algo algo)
+{
+	return NULL;
+}
+
+static inline int digest_cache_verif_set(struct file *file,
+					 const char *verif_id, void *data,
+					 size_t size)
+{
+	return -EOPNOTSUPP;
+}
+
+static inline void *digest_cache_verif_get(struct digest_cache *digest_cache,
+					   const char *verif_id)
 {
 	return NULL;
 }

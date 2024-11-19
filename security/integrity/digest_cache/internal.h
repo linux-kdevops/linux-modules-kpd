@@ -19,6 +19,21 @@
 #define INVALID			2	/* Digest cache marked as invalid. */
 
 /**
+ * struct digest_cache_verif
+ * @list: Linked list
+ * @verif_id: Identifier of who verified the digest list
+ * @data: Opaque data set by the digest list verifier
+ *
+ * This structure contains opaque data containing the result of verification
+ * of the digest list by a verifier.
+ */
+struct digest_cache_verif {
+	struct list_head list;
+	char *verif_id;
+	void *data;
+};
+
+/**
  * struct read_work - Structure to schedule reading a digest list
  * @work: Work structure
  * @file: File descriptor of the digest list to read
@@ -72,6 +87,8 @@ struct htable {
  * @ref_count: Number of references to the digest cache
  * @path_str: Path of the digest list the digest cache was created from
  * @flags: Control flags
+ * @verif_data: Verification data regarding the digest list
+ * @verif_data_lock: Protects verification data modifications
  *
  * This structure represents a cache of digests extracted from a digest list.
  */
@@ -80,6 +97,8 @@ struct digest_cache {
 	atomic_t ref_count;
 	char *path_str;
 	unsigned long flags;
+	struct list_head verif_data;
+	spinlock_t verif_data_lock;
 };
 
 /**
@@ -190,5 +209,8 @@ int digest_cache_populate(struct dentry *dentry,
 
 /* modsig.c */
 size_t digest_cache_strip_modsig(__u8 *data, size_t data_len);
+
+/* verif.c */
+void digest_cache_verif_free(struct digest_cache *digest_cache);
 
 #endif /* _DIGEST_CACHE_INTERNAL_H */
