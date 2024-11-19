@@ -33,3 +33,11 @@ config DIGEST_CACHE_HTABLE_DEPTH
 	  A smaller number will increase the amount of hash table slots, and
 	  make the search faster. A bigger number will decrease the number of
 	  hash table slots, but make the search slower.
+
+config DIGEST_CACHE_TLV_PARSER
+	tristate "TLV digest list parser"
+	depends on INTEGRITY_DIGEST_CACHE
+	select TLV_PARSER
+	help
+	  Add support for parsing TLV-formatted (Type Length Value)
+	  digest list.
