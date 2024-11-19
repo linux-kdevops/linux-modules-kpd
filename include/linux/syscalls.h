@@ -1233,6 +1233,16 @@ int ksys_ipc(unsigned int call, int first, unsigned long second,
 int compat_ksys_ipc(u32 call, int first, int second,
 	u32 third, u32 ptr, u32 fifth);
 
+#ifdef CONFIG_MODULES
+int ksys_finit_module(struct file *f, const char *kargs, int flags);
+#else
+static inline int ksys_finit_module(struct file *f, const char *kargs,
+				    int flags)
+{
+	return -EOPNOTSUPP;
+}
+#endif
+
 /*
  * The following kernel syscall equivalents are just wrappers to fs-internal
  * functions. Therefore, provide stubs to be inlined at the callsites.

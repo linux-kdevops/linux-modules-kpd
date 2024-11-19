@@ -3127,7 +3127,7 @@ static int early_mod_check(struct load_info *info, int flags)
  * zero, and we rely on this for optional sections.
  */
 static int load_module(struct load_info *info, const char __user *uargs,
-		       int flags)
+		       const char *kargs, int flags)
 {
 	struct module *mod;
 	bool module_allocated = false;
@@ -3228,7 +3228,13 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	flush_module_icache(mod);
 
 	/* Now copy in args */
-	mod->args = strndup_user(uargs, ~0UL >> 1);
+	if (kargs) {
+		mod->args = kstrndup(kargs, ~0UL >> 1, GFP_KERNEL);
+		if (!mod->args)
+			mod->args = ERR_PTR(-ENOMEM);
+	} else {
+		mod->args = strndup_user(uargs, ~0UL >> 1);
+	}
 	if (IS_ERR(mod->args)) {
 		err = PTR_ERR(mod->args);
 		goto free_arch_cleanup;
@@ -3358,7 +3364,7 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 		return err;
 	}
 
-	return load_module(&info, uargs, 0);
+	return load_module(&info, uargs, NULL, 0);
 }
 
 struct idempotent {
@@ -3445,7 +3451,8 @@ static int idempotent_wait_for_completion(struct idempotent *u)
 	return u->ret;
 }
 
-static int init_module_from_file(struct file *f, const char __user * uargs, int flags)
+static int init_module_from_file(struct file *f, const char __user * uargs,
+				 const char *kargs, int flags)
 {
 	struct load_info info = { };
 	void *buf = NULL;
@@ -3470,10 +3477,11 @@ static int init_module_from_file(struct file *f, const char __user * uargs, int 
 		info.len = len;
 	}
 
-	return load_module(&info, uargs, flags);
+	return load_module(&info, uargs, kargs, flags);
 }
 
-static int idempotent_init_module(struct file *f, const char __user * uargs, int flags)
+static int idempotent_init_module(struct file *f, const char __user * uargs,
+				  const char *kargs, int flags)
 {
 	struct idempotent idem;
 
@@ -3482,7 +3490,7 @@ static int idempotent_init_module(struct file *f, const char __user * uargs, int
 
 	/* Are we the winners of the race and get to do this? */
 	if (!idempotent(&idem, file_inode(f))) {
-		int ret = init_module_from_file(f, uargs, flags);
+		int ret = init_module_from_file(f, uargs, kargs, flags);
 		return idempotent_complete(&idem, ret);
 	}
 
@@ -3492,15 +3500,16 @@ static int idempotent_init_module(struct file *f, const char __user * uargs, int
 	return idempotent_wait_for_completion(&idem);
 }
 
-SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
+static int _ksys_finit_module(struct file *f, int fd, const char __user * uargs,
+			      const char *kargs, int flags)
 {
 	int err;
-	struct fd f;
 
 	err = may_init_module();
 	if (err)
 		return err;
 
+	/* fd = -1 if called from the kernel. */
 	pr_debug("finit_module: fd=%d, uargs=%p, flags=%i\n", fd, uargs, flags);
 
 	if (flags & ~(MODULE_INIT_IGNORE_MODVERSIONS
@@ -3508,8 +3517,22 @@ SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
 		      |MODULE_INIT_COMPRESSED_FILE))
 		return -EINVAL;
 
+	err = idempotent_init_module(f, uargs, kargs, flags);
+	return err;
+}
+
+int ksys_finit_module(struct file *f, const char *kargs, int flags)
+{
+	return _ksys_finit_module(f, -1, NULL, kargs, flags);
+}
+
+SYSCALL_DEFINE3(finit_module, int, fd, const char __user *, uargs, int, flags)
+{
+	int err;
+	struct fd f;
+
 	f = fdget(fd);
-	err = idempotent_init_module(fd_file(f), uargs, flags);
+	err = _ksys_finit_module(fd_file(f), fd, uargs, NULL, flags);
 	fdput(f);
 	return err;
 }
