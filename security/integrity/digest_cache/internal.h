@@ -1,0 +1,116 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Copyright (C) 2023-2024 Huawei Technologies Duesseldorf GmbH
+ *
+ * Author: Roberto Sassu <roberto.sassu@huawei.com>
+ *
+ * Internal header of the Integrity Digest Cache.
+ */
+
+#ifndef _DIGEST_CACHE_INTERNAL_H
+#define _DIGEST_CACHE_INTERNAL_H
+
+#include <linux/lsm_hooks.h>
+#include <linux/digest_cache.h>
+
+/**
+ * struct digest_cache - Digest cache
+ * @ref_count: Number of references to the digest cache
+ * @path_str: Path of the digest list the digest cache was created from
+ * @flags: Control flags
+ *
+ * This structure represents a cache of digests extracted from a digest list.
+ */
+struct digest_cache {
+	atomic_t ref_count;
+	char *path_str;
+	unsigned long flags;
+};
+
+/**
+ * struct digest_cache_security - Digest cache pointers in inode security blob
+ * @dig_owner: Digest cache created from this inode
+ * @dig_owner_mutex: Protects @dig_owner
+ * @dig_user: Digest cache requested for this inode
+ * @dig_user_mutex: Protects @dig_user
+ *
+ * This structure contains references to digest caches, protected by their
+ * respective mutex.
+ */
+struct digest_cache_security {
+	struct digest_cache *dig_owner;
+	struct mutex dig_owner_mutex;
+	struct digest_cache *dig_user;
+	struct mutex dig_user_mutex;
+};
+
+extern loff_t inode_sec_offset;
+extern loff_t file_sec_offset;
+extern char *default_path_str;
+
+static inline struct digest_cache_security *
+digest_cache_get_security_from_blob(void *inode_security)
+{
+	return inode_security + inode_sec_offset;
+}
+
+static inline struct digest_cache_security *
+digest_cache_get_security(const struct inode *inode)
+{
+	if (unlikely(!inode->i_security))
+		return NULL;
+
+	return digest_cache_get_security_from_blob(inode->i_security);
+}
+
+static inline struct digest_cache *
+digest_cache_ref(struct digest_cache *digest_cache)
+{
+	int ref_count = atomic_inc_return(&digest_cache->ref_count);
+
+	pr_debug("Ref (+) digest cache %s (ref count: %d)\n",
+		 digest_cache->path_str, ref_count);
+	return digest_cache;
+}
+
+static inline struct digest_cache *
+digest_cache_unref(struct digest_cache *digest_cache)
+{
+	bool ref_is_zero;
+
+	/* Unreliable ref. count, but cannot decrement before print (UAF). */
+	pr_debug("Ref (-) digest cache %s (ref count: %d)\n",
+		 digest_cache->path_str,
+		 atomic_read(&digest_cache->ref_count) - 1);
+
+	ref_is_zero = atomic_dec_and_test(&digest_cache->ref_count);
+	return (ref_is_zero) ? digest_cache : NULL;
+}
+
+static inline void digest_cache_to_file_sec(const struct file *file,
+					    struct digest_cache *digest_cache)
+{
+	struct digest_cache **digest_cache_sec;
+
+	digest_cache_sec = file->f_security + file_sec_offset;
+	*digest_cache_sec = digest_cache;
+}
+
+static inline struct digest_cache *
+digest_cache_from_file_sec(const struct file *file)
+{
+	struct digest_cache **digest_cache_sec;
+
+	digest_cache_sec = file->f_security + file_sec_offset;
+	return *digest_cache_sec;
+}
+
+/* main.c */
+struct digest_cache *digest_cache_create(struct dentry *dentry,
+					 struct path *default_path,
+					 struct path *digest_list_path,
+					 char *path_str, char *filename);
+int __init digest_cache_do_init(const struct lsm_id *lsm_id,
+				loff_t inode_offset, loff_t file_offset);
+
+#endif /* _DIGEST_CACHE_INTERNAL_H */

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0
+config INTEGRITY_DIGEST_CACHE
+	bool "Integrity Digest Cache"
+	default n
+	help
+	  This option enables a cache of reference digests (e.g. of file
+	  data or metadata) to be used by IMA and (later) by EVM, to verify
+	  accessed files.
+
+	  Digests can be extracted from supported data formats (e.g. a
+	  TLV-based format). Support for more formats can be added through
+	  third-party kernel modules.
+
+config DIGEST_LIST_DEFAULT_PATH
+	string
+	default "/etc/digest_lists"
+	help
+	  Default path where the Integrity Digest Cache expects to find digest
+	  lists.

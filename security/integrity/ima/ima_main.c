@@ -1206,11 +1206,19 @@ static int __init init_ima_lsm(void)
 	ima_iintcache_init();
 	security_add_hooks(ima_hooks, ARRAY_SIZE(ima_hooks), &ima_lsmid);
 	init_ima_appraise_lsm(&ima_lsmid);
+	if (IS_ENABLED(CONFIG_INTEGRITY_DIGEST_CACHE))
+		digest_cache_do_init(&ima_lsmid, ima_blob_sizes.lbs_inode +
+				     sizeof(struct ima_iint_cache *),
+				     ima_blob_sizes.lbs_file);
 	return 0;
 }
 
 struct lsm_blob_sizes ima_blob_sizes __ro_after_init = {
-	.lbs_inode = sizeof(struct ima_iint_cache *),
+	.lbs_inode = sizeof(struct ima_iint_cache *)
+#ifdef CONFIG_INTEGRITY_DIGEST_CACHE
+	 + sizeof(struct digest_cache_security),
+	.lbs_file = sizeof(struct digest_cache *),
+#endif
 };
 
 DEFINE_LSM(ima) = {

@@ -23,6 +23,7 @@
 #include <crypto/hash_info.h>
 
 #include "../integrity.h"
+#include "../digest_cache/internal.h"
 
 enum ima_show_type { IMA_SHOW_BINARY, IMA_SHOW_BINARY_NO_FIELD_LEN,
 		     IMA_SHOW_BINARY_OLD_STRING_FMT, IMA_SHOW_ASCII };
