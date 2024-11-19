@@ -203,13 +203,17 @@ EXPORT_SYMBOL_GPL(digest_cache_htable_lookup);
  * passed digest cache, obtained with digest_cache_get().
  *
  * Return: A digest cache reference if the digest is found, NULL if not, an
- *         error pointer if dir digest cache changed since last get.
+ *         error pointer if dir digest cache changed since last get, or digest
+ *         cache was reset.
  */
 struct digest_cache *digest_cache_lookup(struct dentry *dentry,
 					 struct digest_cache *digest_cache,
 					 u8 *digest, enum hash_algo algo)
 {
 	int ret;
+
+	if (test_bit(RESET, &digest_cache->flags))
+		return ERR_PTR(-EAGAIN);
 
 	if (test_bit(IS_DIR, &digest_cache->flags))
 		return digest_cache_dir_lookup_digest(dentry, digest_cache,

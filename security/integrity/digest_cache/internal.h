@@ -21,6 +21,7 @@
 #define DIR_PREFETCH		4	/* Prefetch enabled for dir. */
 #define FILE_PREFETCH		5	/* Prefetch enabled for dir entry. */
 #define FILE_READ		6	/* Digest cache for reading file. */
+#define RESET			7	/* Digest cache to be recreated. */
 
 /**
  * struct readdir_callback - Structure to store information for dir iteration
@@ -266,5 +267,17 @@ digest_cache_dir_lookup_digest(struct dentry *dentry,
 int digest_cache_dir_prefetch(struct dentry *dentry,
 			      struct digest_cache *digest_cache);
 void digest_cache_dir_free(struct digest_cache *digest_cache);
+
+/* reset.c */
+int digest_cache_path_truncate(const struct path *path);
+void digest_cache_file_release(struct file *file);
+int digest_cache_inode_unlink(struct inode *dir, struct dentry *dentry);
+int digest_cache_inode_rename(struct inode *old_dir, struct dentry *old_dentry,
+			      struct inode *new_dir, struct dentry *new_dentry);
+void digest_cache_inode_post_setxattr(struct dentry *dentry, const char *name,
+				      const void *value, size_t size,
+				      int flags);
+void digest_cache_inode_post_removexattr(struct dentry *dentry,
+					 const char *name);
 
 #endif /* _DIGEST_CACHE_INTERNAL_H */
