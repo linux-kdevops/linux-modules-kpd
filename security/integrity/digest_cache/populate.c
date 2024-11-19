@@ -11,6 +11,7 @@
 #include <linux/init_task.h>
 #include <linux/vmalloc.h>
 #include <linux/kernel_read_file.h>
+#include <linux/namei.h>
 
 #include "internal.h"
 
@@ -82,6 +83,12 @@ int digest_cache_populate(struct dentry *dentry,
 		return ret;
 	}
 
+	/* The caller wants just to read digest lists. */
+	if (test_bit(FILE_READ, &digest_cache->flags)) {
+		ret = 0;
+		goto out_vfree;
+	}
+
 	data_len = digest_cache_strip_modsig(data, ret);
 
 	/* Digest list parsers initialize the hash table and add the digests. */
@@ -91,7 +98,7 @@ int digest_cache_populate(struct dentry *dentry,
 	if (ret < 0)
 		pr_debug("Error parsing digest list %s, ret: %d\n",
 			 digest_cache->path_str, ret);
-
+out_vfree:
 	vfree(data);
 	return ret;
 }

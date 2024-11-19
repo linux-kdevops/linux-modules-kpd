@@ -44,6 +44,10 @@ int digest_cache_verif_set(struct file *file, const char *verif_id, void *data,
 	gfp_t flags = !strncmp(verif_id, "kprobe", 6) ? GFP_ATOMIC : GFP_KERNEL;
 	int ret = 0;
 
+	/* Allows us to detect that we are prefetching in the tests. */
+	if (test_bit(FILE_READ, &digest_cache->flags))
+		return -ENOENT;
+
 	/*
 	 * Zero the data, so that we can always call free_verif() to free a
 	 * partially filled structure (if a pointer is NULL, will not be freed).

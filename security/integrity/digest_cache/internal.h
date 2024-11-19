@@ -18,6 +18,9 @@
 #define INIT_STARTED		1	/* Digest cache init started. */
 #define INVALID			2	/* Digest cache marked as invalid. */
 #define IS_DIR			3	/* Digest cache created from dir. */
+#define DIR_PREFETCH		4	/* Prefetch enabled for dir. */
+#define FILE_PREFETCH		5	/* Prefetch enabled for dir entry. */
+#define FILE_READ		6	/* Digest cache for reading file. */
 
 /**
  * struct readdir_callback - Structure to store information for dir iteration
@@ -38,6 +41,7 @@ struct readdir_callback {
  * @digest_cache: Digest cache associated to the directory entry
  * @digest_cache_mutex: Protects @digest_cache
  * @seq_num: Sequence number of the directory entry from file name
+ * @prefetched: Whether the digest list has been already prefetched
  * @name: File name of the directory entry
  *
  * This structure represents a directory entry with a digest cache created
@@ -48,6 +52,7 @@ struct dir_entry {
 	struct digest_cache *digest_cache;
 	struct mutex digest_cache_mutex;
 	unsigned int seq_num;
+	bool prefetched;
 	char name[];
 };
 
@@ -219,7 +224,10 @@ digest_cache_from_file_sec(const struct file *file)
 struct digest_cache *digest_cache_create(struct dentry *dentry,
 					 struct path *default_path,
 					 struct path *digest_list_path,
-					 char *path_str, char *filename);
+					 char *path_str, char *filename,
+					 bool prefetch_req, bool prefetch);
+bool digest_cache_prefetch_requested(struct path *digest_list_path,
+				     char *path_str);
 struct digest_cache *digest_cache_init(struct dentry *dentry,
 				       struct path *digest_list_path,
 				       struct digest_cache *digest_cache);
@@ -255,6 +263,8 @@ struct digest_cache *
 digest_cache_dir_lookup_digest(struct dentry *dentry,
 			       struct digest_cache *digest_cache, u8 *digest,
 			       enum hash_algo algo);
+int digest_cache_dir_prefetch(struct dentry *dentry,
+			      struct digest_cache *digest_cache);
 void digest_cache_dir_free(struct digest_cache *digest_cache);
 
 #endif /* _DIGEST_CACHE_INTERNAL_H */

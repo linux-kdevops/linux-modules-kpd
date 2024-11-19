@@ -86,6 +86,8 @@ static void digest_cache_free(struct digest_cache *digest_cache)
  * @digest_list_path: Path structure of the digest list
  * @path_str: Path string of the digest list
  * @filename: Digest list file name (can be an empty string)
+ * @prefetch_req: Whether prefetching has been requested
+ * @prefetch: Whether prefetching of a digest list is being done
  *
  * This function first locates, from the passed path and filename, the digest
  * list inode from which the digest cache will be created or retrieved (if it
@@ -107,7 +109,8 @@ static void digest_cache_free(struct digest_cache *digest_cache)
 struct digest_cache *digest_cache_create(struct dentry *dentry,
 					 struct path *default_path,
 					 struct path *digest_list_path,
-					 char *path_str, char *filename)
+					 char *path_str, char *filename,
+					 bool prefetch_req, bool prefetch)
 {
 	struct digest_cache *digest_cache = NULL;
 	struct digest_cache_security *dig_sec;
@@ -160,6 +163,16 @@ struct digest_cache *digest_cache_create(struct dentry *dentry,
 		goto out;
 	}
 
+	if (prefetch) {
+		digest_cache = digest_cache_alloc_init(path_str, filename);
+		if (digest_cache) {
+			set_bit(FILE_READ, &digest_cache->flags);
+			goto out_set;
+		}
+
+		goto out;
+	}
+
 	/* Ref. count is already 1 for this reference. */
 	dig_sec->dig_owner = digest_cache_alloc_init(path_str, filename);
 	if (!dig_sec->dig_owner)
@@ -167,12 +180,66 @@ struct digest_cache *digest_cache_create(struct dentry *dentry,
 
 	/* Increment ref. count for reference returned to the caller. */
 	digest_cache = digest_cache_ref(dig_sec->dig_owner);
-
+out_set:
 	/* Make other digest cache requestors wait until creation complete. */
 	set_bit(INIT_IN_PROGRESS, &digest_cache->flags);
+
+	/* Set bit if prefetching was requested. */
+	if (prefetch_req) {
+		if (S_ISREG(inode->i_mode))
+			set_bit(FILE_PREFETCH, &digest_cache->flags);
+		else
+			set_bit(DIR_PREFETCH, &digest_cache->flags);
+	}
 out:
 	mutex_unlock(&dig_sec->dig_owner_mutex);
 	return digest_cache;
+}
+
+/**
+ * digest_cache_prefetch_requested - Verify if prefetching is requested
+ * @digest_list_path: Path structure of the digest list directory
+ * @path_str: Path string of the digest list directory
+ *
+ * This function verifies whether or not digest list prefetching is requested.
+ * If dig_owner exists in the inode security blob, it checks the DIR_PREFETCH
+ * bit (faster). Otherwise, it reads the security.dig_prefetch xattr.
+ *
+ * Return: True if prefetching is requested, false otherwise.
+ */
+bool digest_cache_prefetch_requested(struct path *digest_list_path,
+				     char *path_str)
+{
+	struct digest_cache_security *dig_sec;
+	bool prefetch_req = false;
+	char prefetch_value;
+	struct inode *inode;
+	int ret;
+
+	inode = d_backing_inode(digest_list_path->dentry);
+	dig_sec = digest_cache_get_security(inode);
+	if (unlikely(!dig_sec))
+		return false;
+
+	mutex_lock(&dig_sec->dig_owner_mutex);
+	if (dig_sec->dig_owner) {
+		/* Reliable test: DIR_PREFETCH set with dig_owner_mutex held. */
+		prefetch_req = test_bit(DIR_PREFETCH,
+					&dig_sec->dig_owner->flags);
+		mutex_unlock(&dig_sec->dig_owner_mutex);
+		return prefetch_req;
+	}
+	mutex_unlock(&dig_sec->dig_owner_mutex);
+
+	ret = vfs_getxattr(&nop_mnt_idmap, digest_list_path->dentry,
+			   XATTR_NAME_DIG_PREFETCH, &prefetch_value, 1);
+	if (ret == 1 && prefetch_value == '1') {
+		pr_debug("Prefetching has been enabled for directory %s\n",
+			 path_str);
+		prefetch_req = true;
+	}
+
+	return prefetch_req;
 }
 
 /**
@@ -185,6 +252,12 @@ out:
  * the security.digest_list xattr and requests the creation of a digest cache
  * with that file name. If security.digest_list is empty or not found, this
  * function requests the creation of a digest cache on the parent directory.
+ *
+ * In either case, this function first calls digest_cache_prefetch_requested()
+ * to check if prefetching has been requested on the parent directory, and
+ * passes the result to digest_cache_create(), so that the latter sets the
+ * FILE_PREFETCH and DIR_PREFETCH bit respectively in the file or directory
+ * digest caches.
  *
  * This function passes to the caller the path of the digest list from which
  * the digest cache was created (file or parent directory), so that
@@ -199,6 +272,7 @@ static struct digest_cache *digest_cache_new(struct dentry *dentry,
 	char filename[NAME_MAX + 1] = { 0 };
 	struct digest_cache *digest_cache = NULL;
 	struct path default_path;
+	bool prefetch_req = false;
 	int ret;
 
 	ret = kern_path(default_path_str, 0, &default_path);
@@ -244,9 +318,12 @@ static struct digest_cache *digest_cache_new(struct dentry *dentry,
 		 XATTR_NAME_DIGEST_LIST, dentry->d_name.name, default_path_str,
 		 filename);
 create:
+	prefetch_req = digest_cache_prefetch_requested(&default_path,
+						       default_path_str);
+
 	digest_cache = digest_cache_create(dentry, &default_path,
 					   digest_list_path, default_path_str,
-					   filename);
+					   filename, prefetch_req, false);
 out:
 	path_put(&default_path);
 	return digest_cache;
@@ -372,9 +449,20 @@ struct digest_cache *digest_cache_get(struct file *file)
 
 	mutex_unlock(&dig_sec->dig_user_mutex);
 
-	if (digest_cache)
+	if (digest_cache) {
+		/*
+		 * Prefetching should also initialize our digest cache, if the
+		 * path didn't change meanwhile (otherwise the prefetching
+		 * mechanism will create and initialize the digest cache of a
+		 * different inode).
+		 */
+		if (test_bit(FILE_PREFETCH, &digest_cache->flags))
+			digest_cache_dir_prefetch(dentry, digest_cache);
+
+		/* Make sure we initialize our digest cache. */
 		digest_cache = digest_cache_init(dentry, &digest_list_path,
 						 digest_cache);
+	}
 
 	if (digest_list_path.dentry)
 		path_put(&digest_list_path);
