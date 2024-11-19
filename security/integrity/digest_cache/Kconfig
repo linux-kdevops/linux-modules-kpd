@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 config INTEGRITY_DIGEST_CACHE
 	bool "Integrity Digest Cache"
+	select MODULE_DECOMPRESS if MODULE_COMPRESS
 	default n
 	help
 	  This option enables a cache of reference digests (e.g. of file

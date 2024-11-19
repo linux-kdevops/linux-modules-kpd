@@ -161,4 +161,9 @@ int __init digest_cache_secfs_init(struct dentry *dir);
 /* htable.c */
 void digest_cache_htable_free(struct digest_cache *digest_cache);
 
+/* parsers.c */
+int digest_cache_parse_digest_list(struct dentry *dentry,
+				   struct digest_cache *digest_cache,
+				   char *path_str, void *data, size_t data_len);
+
 #endif /* _DIGEST_CACHE_INTERNAL_H */
