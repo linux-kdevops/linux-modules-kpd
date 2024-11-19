@@ -13,6 +13,11 @@
 #include <linux/lsm_hooks.h>
 #include <linux/digest_cache.h>
 
+/* Digest cache bits in flags. */
+#define INIT_IN_PROGRESS	0	/* Digest cache being initialized. */
+#define INIT_STARTED		1	/* Digest cache init started. */
+#define INVALID			2	/* Digest cache marked as invalid. */
+
 /**
  * struct digest_cache - Digest cache
  * @ref_count: Number of references to the digest cache
@@ -110,6 +115,9 @@ struct digest_cache *digest_cache_create(struct dentry *dentry,
 					 struct path *default_path,
 					 struct path *digest_list_path,
 					 char *path_str, char *filename);
+struct digest_cache *digest_cache_init(struct dentry *dentry,
+				       struct path *digest_list_path,
+				       struct digest_cache *digest_cache);
 int __init digest_cache_do_init(const struct lsm_id *lsm_id,
 				loff_t inode_offset, loff_t file_offset);
 

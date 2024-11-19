@@ -156,6 +156,9 @@ struct digest_cache *digest_cache_create(struct dentry *dentry,
 
 	/* Increment ref. count for reference returned to the caller. */
 	digest_cache = digest_cache_ref(dig_sec->dig_owner);
+
+	/* Make other digest cache requestors wait until creation complete. */
+	set_bit(INIT_IN_PROGRESS, &digest_cache->flags);
 out:
 	mutex_unlock(&dig_sec->dig_owner_mutex);
 	return digest_cache;
@@ -239,6 +242,47 @@ out:
 }
 
 /**
+ * digest_cache_init - Initialize a digest cache
+ * @dentry: Dentry of the inode for which the digest cache will be used
+ * @digest_list_path: Path structure of the digest list
+ * @digest_cache: Digest cache to initialize
+ *
+ * This function checks if the INIT_STARTED digest cache flag is set. If it is,
+ * or the caller didn't provide the digest list path, it waits until the caller
+ * that saw INIT_STARTED unset and had the path completes the initialization.
+ *
+ * The latter sets INIT_STARTED (atomically), performs the initialization,
+ * clears the INIT_IN_PROGRESS digest cache flag, and wakes up the other
+ * callers.
+ *
+ * Return: A valid and initialized digest cache on success, NULL otherwise.
+ */
+struct digest_cache *digest_cache_init(struct dentry *dentry,
+				       struct path *digest_list_path,
+				       struct digest_cache *digest_cache)
+{
+	/* Wait for digest cache initialization. */
+	if (!digest_list_path->dentry ||
+	    test_and_set_bit(INIT_STARTED, &digest_cache->flags)) {
+		wait_on_bit(&digest_cache->flags, INIT_IN_PROGRESS,
+			    TASK_UNINTERRUPTIBLE);
+		goto out;
+	}
+
+	/* Notify initialization complete. */
+	clear_and_wake_up_bit(INIT_IN_PROGRESS, &digest_cache->flags);
+out:
+	if (test_bit(INVALID, &digest_cache->flags)) {
+		pr_debug("Digest cache %s is invalid, don't return it\n",
+			 digest_cache->path_str);
+		digest_cache_put(digest_cache);
+		digest_cache = NULL;
+	}
+
+	return digest_cache;
+}
+
+/**
  * digest_cache_get - Get a digest cache for a given inode
  * @file: File descriptor of the inode for which the digest cache will be used
  *
@@ -286,6 +330,10 @@ struct digest_cache *digest_cache_get(struct file *file)
 		digest_cache = digest_cache_ref(dig_sec->dig_user);
 
 	mutex_unlock(&dig_sec->dig_user_mutex);
+
+	if (digest_cache)
+		digest_cache = digest_cache_init(dentry, &digest_list_path,
+						 digest_cache);
 
 	if (digest_list_path.dentry)
 		path_put(&digest_list_path);
