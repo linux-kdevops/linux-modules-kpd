@@ -19,6 +19,23 @@
 #define INVALID			2	/* Digest cache marked as invalid. */
 
 /**
+ * struct read_work - Structure to schedule reading a digest list
+ * @work: Work structure
+ * @file: File descriptor of the digest list to read
+ * @data: Digest list data (updated)
+ * @ret: Return value from kernel_read_file() (updated)
+ *
+ * This structure contains the necessary information to schedule reading a
+ * digest list.
+ */
+struct read_work {
+	struct work_struct work;
+	struct file *file;
+	void *data;
+	int ret;
+};
+
+/**
  * struct digest_cache_entry - Entry of a digest cache hash table
  * @hnext: Pointer to the next element in the collision list
  * @digest: Stored digest
@@ -165,5 +182,13 @@ void digest_cache_htable_free(struct digest_cache *digest_cache);
 int digest_cache_parse_digest_list(struct dentry *dentry,
 				   struct digest_cache *digest_cache,
 				   char *path_str, void *data, size_t data_len);
+
+/* populate.c */
+int digest_cache_populate(struct dentry *dentry,
+			  struct digest_cache *digest_cache,
+			  struct path *digest_list_path);
+
+/* modsig.c */
+size_t digest_cache_strip_modsig(__u8 *data, size_t data_len);
 
 #endif /* _DIGEST_CACHE_INTERNAL_H */

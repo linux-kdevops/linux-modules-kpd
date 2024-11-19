@@ -267,12 +267,28 @@ struct digest_cache *digest_cache_init(struct dentry *dentry,
 				       struct path *digest_list_path,
 				       struct digest_cache *digest_cache)
 {
+	struct inode *inode;
+	int ret;
+
 	/* Wait for digest cache initialization. */
 	if (!digest_list_path->dentry ||
 	    test_and_set_bit(INIT_STARTED, &digest_cache->flags)) {
 		wait_on_bit(&digest_cache->flags, INIT_IN_PROGRESS,
 			    TASK_UNINTERRUPTIBLE);
 		goto out;
+	}
+
+	inode = d_backing_inode(digest_list_path->dentry);
+
+	if (S_ISREG(inode->i_mode)) {
+		ret = digest_cache_populate(dentry, digest_cache,
+					    digest_list_path);
+		if (ret < 0) {
+			pr_debug("Failed to populate digest cache %s ret: %d (keep digest cache)\n",
+				 digest_cache->path_str, ret);
+			/* Prevent usage of partially-populated digest cache. */
+			set_bit(INVALID, &digest_cache->flags);
+		}
 	}
 
 	/* Notify initialization complete. */
