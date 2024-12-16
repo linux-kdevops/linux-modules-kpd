@@ -145,20 +145,17 @@ static void remove_sect_attrs(struct module *mod)
  */
 
 struct module_notes_attrs {
-	struct kobject *dir;
-	unsigned int notes;
-	struct bin_attribute attrs[] __counted_by(notes);
+	struct attribute_group grp;
+	struct bin_attribute attrs[];
 };
 
-static void free_notes_attrs(struct module_notes_attrs *notes_attrs,
-			     unsigned int i)
+static void free_notes_attrs(struct module_notes_attrs *notes_attrs)
 {
-	if (notes_attrs->dir) {
-		while (i-- > 0)
-			sysfs_remove_bin_file(notes_attrs->dir,
-					      &notes_attrs->attrs[i]);
-		kobject_put(notes_attrs->dir);
-	}
+	struct bin_attribute **bin_attr;
+
+	for (bin_attr = notes_attrs->grp.bin_attrs; *bin_attr; bin_attr++)
+		kfree((*bin_attr)->attr.name);
+	kfree(notes_attrs->grp.bin_attrs);
 	kfree(notes_attrs);
 }
 
@@ -166,6 +163,7 @@ static int add_notes_attrs(struct module *mod, const struct load_info *info)
 {
 	unsigned int notes, loaded, i;
 	struct module_notes_attrs *notes_attrs;
+	struct bin_attribute **gattr;
 	struct bin_attribute *nattr;
 	int ret;
 
@@ -184,7 +182,15 @@ static int add_notes_attrs(struct module *mod, const struct load_info *info)
 	if (!notes_attrs)
 		return -ENOMEM;
 
-	notes_attrs->notes = notes;
+	gattr = kcalloc(notes + 1, sizeof(*gattr), GFP_KERNEL);
+	if (!gattr) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	notes_attrs->grp.name = "notes";
+	notes_attrs->grp.bin_attrs = gattr;
+
 	nattr = &notes_attrs->attrs[0];
 	for (loaded = i = 0; i < info->hdr->e_shnum; ++i) {
 		if (sect_empty(&info->sechdrs[i]))
@@ -196,35 +202,27 @@ static int add_notes_attrs(struct module *mod, const struct load_info *info)
 			nattr->size = info->sechdrs[i].sh_size;
 			nattr->private = (void *)info->sechdrs[i].sh_addr;
 			nattr->read = sysfs_bin_attr_simple_read;
-			++nattr;
+			*(gattr++) = nattr++;
 		}
 		++loaded;
 	}
 
-	notes_attrs->dir = kobject_create_and_add("notes", &mod->mkobj.kobj);
-	if (!notes_attrs->dir) {
-		ret = -ENOMEM;
+	ret = sysfs_create_group(&mod->mkobj.kobj, &notes_attrs->grp);
+	if (ret)
 		goto out;
-	}
-
-	for (i = 0; i < notes; ++i) {
-		ret = sysfs_create_bin_file(notes_attrs->dir, &notes_attrs->attrs[i]);
-		if (ret)
-			goto out;
-	}
 
 	mod->notes_attrs = notes_attrs;
 	return 0;
 
 out:
-	free_notes_attrs(notes_attrs, i);
+	free_notes_attrs(notes_attrs);
 	return ret;
 }
 
 static void remove_notes_attrs(struct module *mod)
 {
 	if (mod->notes_attrs)
-		free_notes_attrs(mod->notes_attrs, mod->notes_attrs->notes);
+		free_notes_attrs(mod->notes_attrs);
 }
 
 #else /* !CONFIG_KALLSYMS */
