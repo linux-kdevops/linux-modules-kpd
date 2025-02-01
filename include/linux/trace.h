@@ -26,6 +26,11 @@ struct trace_export {
 	int flags;
 };
 
+struct ftrace_rel_caller {
+	int		offset;
+	unsigned int	build_id32;
+} __packed;
+
 struct trace_array;
 
 #ifdef CONFIG_TRACING
