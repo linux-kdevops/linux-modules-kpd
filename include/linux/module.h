@@ -302,17 +302,6 @@ static typeof(name) __mod_device_table__##type##__##name		\
 
 struct notifier_block;
 
-#ifdef CONFIG_MODULES
-
-extern int modules_disabled; /* for sysctl */
-/* Get/put a kernel symbol (calls must be symmetric) */
-void *__symbol_get(const char *symbol);
-void *__symbol_get_gpl(const char *symbol);
-#define symbol_get(x)	({ \
-	static const char __notrim[] \
-		__used __section(".no_trim_symbol") = __stringify(x); \
-	(typeof(&x))(__symbol_get(__stringify(x))); })
-
 enum module_state {
 	MODULE_STATE_LIVE,	/* Normal state. */
 	MODULE_STATE_COMING,	/* Full formed, running module_init. */
@@ -593,6 +582,18 @@ struct module {
 	struct _ddebug_info dyndbg_info;
 #endif
 } ____cacheline_aligned __randomize_layout;
+
+#ifdef CONFIG_MODULES
+
+extern int modules_disabled; /* for sysctl */
+/* Get/put a kernel symbol (calls must be symmetric) */
+void *__symbol_get(const char *symbol);
+void *__symbol_get_gpl(const char *symbol);
+#define symbol_get(x)	({ \
+	static const char __notrim[] \
+		__used __section(".no_trim_symbol") = __stringify(x); \
+	(typeof(&x))(__symbol_get(__stringify(x))); })
+
 #ifndef MODULE_ARCH_INIT
 #define MODULE_ARCH_INIT {}
 #endif
