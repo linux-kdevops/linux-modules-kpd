@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-2.0
+---
+name: Setup kdevops
+description: Setup kdevops workspace
+
+inputs:
+  dir:
+    description: 'Directory'
+    required: true
+    default: 'workdir'
+  ci_workflow:
+    required: false
+    type: string
+    default: 'demo'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run CI tests
+      working-directory: ${{ inputs.dir }}/kdevops
+      shell: bash
+      run: |
+        make ci-test CI_WORKFLOW="${{ inputs.ci_workflow }}"
+
+        echo -e "Kernel tests results:\n" > ci.commit_extra
+
+    - name: Generate CI commit info
+      working-directory: ${{ inputs.dir }}/kdevops
+      shell: bash
+      run: |
+        find workflows/blktests/results/last-run/ -name '*.dmesg.log' \
+        -exec tail -n 1 {} + >> ci.commit_extra
+
+        echo -e "\n\n" >> ci.commit_extra
+        echo -e "Userspace test results:\n" >> ci.commit_extra
+        find workflows/blktests/results/last-run/ -name '*.userspace.log' \
+        -exec tail -n 1 {} + >> ci.commit_extra
+        echo -e "\n\n" >> ci.commit_extra
+
+        if grep -i -q "fail" ci.commit_extra ; then
+          echo "fail" > ci.result
+        else
+          echo "ok" > ci.result
+        fi
