@@ -163,6 +163,7 @@ jobs:
           LINUX_TREE=$LINUX_TREE \
           LINUX_TREE_REF=$LINUX_TREE_REF \
           ANSIBLE_CFG_CALLBACK_PLUGIN="debug" \
+          KMOD_TIMEOUT="175" \
           defconfig-${{ env.KDEVOPS_DEFCONFIG }}"
           echo "Going to run:"
           echo "make $KDEVOPS_ARGS"
