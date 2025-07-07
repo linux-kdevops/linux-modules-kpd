@@ -1410,15 +1410,8 @@ static bool ahci_broken_suspend(struct pci_dev *pdev)
 
 static bool ahci_broken_lpm(struct pci_dev *pdev)
 {
-	/*
-	 * Platforms with LPM problems.
-	 * If driver_data is NULL, there is no existing BIOS version with
-	 * functioning LPM.
-	 * If driver_data is non-NULL, then driver_data contains the DMI BIOS
-	 * build date of the first BIOS version with functioning LPM (i.e. older
-	 * BIOS versions have broken LPM).
-	 */
 	static const struct dmi_system_id sysids[] = {
+		/* Various Lenovo 50 series have LPM issues with older BIOSen */
 		{
 			.matches = {
 				DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
@@ -1445,30 +1438,13 @@ static bool ahci_broken_lpm(struct pci_dev *pdev)
 				DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
 				DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad W541"),
 			},
-			.driver_data = "20180409", /* 2.35 */
-		},
-		{
-			.matches = {
-				DMI_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-				DMI_MATCH(DMI_PRODUCT_NAME, "ASUSPRO D840MB_M840SA"),
-			},
-			/* 320 is broken, there is no known good version. */
-		},
-		{
 			/*
-			 * AMD 500 Series Chipset SATA Controller [1022:43eb]
-			 * on this motherboard timeouts on ports 5 and 6 when
-			 * LPM is enabled, at least with WDC WD20EFAX-68FB5N0
-			 * hard drives. LPM with the same drive works fine on
-			 * all other ports on the same controller.
+			 * Note date based on release notes, 2.35 has been
+			 * reported to be good, but I've been unable to get
+			 * a hold of the reporter to get the DMI BIOS date.
+			 * TODO: fix this.
 			 */
-			.matches = {
-				DMI_MATCH(DMI_BOARD_VENDOR,
-					  "ASUSTeK COMPUTER INC."),
-				DMI_MATCH(DMI_BOARD_NAME,
-					  "ROG STRIX B550-F GAMING (WI-FI)"),
-			},
-			/* 3621 is broken, there is no known good version. */
+			.driver_data = "20180310", /* 2.35 */
 		},
 		{ }	/* terminate list */
 	};
@@ -1478,9 +1454,6 @@ static bool ahci_broken_lpm(struct pci_dev *pdev)
 
 	if (!dmi)
 		return false;
-
-	if (!dmi->driver_data)
-		return true;
 
 	dmi_get_date(DMI_BIOS_DATE, &year, &month, &date);
 	snprintf(buf, sizeof(buf), "%04d%02d%02d", year, month, date);

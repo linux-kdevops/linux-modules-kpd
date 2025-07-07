@@ -541,14 +541,10 @@ int xe_pxp_exec_queue_add(struct xe_pxp *pxp, struct xe_exec_queue *q)
 	 */
 	xe_pm_runtime_get(pxp->xe);
 
-	/* get_readiness_status() returns 0 for in-progress and 1 for done */
-	ret = xe_pxp_get_readiness_status(pxp);
-	if (ret <= 0) {
-		if (!ret)
-			ret = -EBUSY;
+	if (!pxp_prerequisites_done(pxp)) {
+		ret = -EBUSY;
 		goto out;
 	}
-	ret = 0;
 
 wait_for_idle:
 	/*

@@ -875,8 +875,15 @@ globalroot:
 			abs_path += sizeof("\\DosDevices\\")-1;
 		else if (strstarts(abs_path, "\\GLOBAL??\\"))
 			abs_path += sizeof("\\GLOBAL??\\")-1;
-		else
-			goto out_unhandled_target;
+		else {
+			/* Unhandled absolute symlink, points outside of DOS/Win32 */
+			cifs_dbg(VFS,
+				 "absolute symlink '%s' cannot be converted from NT format "
+				 "because points to unknown target\n",
+				 smb_target);
+			rc = -EIO;
+			goto out;
+		}
 
 		/* Sometimes path separator after \?? is double backslash */
 		if (abs_path[0] == '\\')
@@ -903,7 +910,13 @@ globalroot:
 			abs_path++;
 			abs_path[0] = drive_letter;
 		} else {
-			goto out_unhandled_target;
+			/* Unhandled absolute symlink. Report an error. */
+			cifs_dbg(VFS,
+				 "absolute symlink '%s' cannot be converted from NT format "
+				 "because points to unknown target\n",
+				 smb_target);
+			rc = -EIO;
+			goto out;
 		}
 
 		abs_path_len = strlen(abs_path)+1;
@@ -953,7 +966,6 @@ globalroot:
 		 * These paths have same format as Linux symlinks, so no
 		 * conversion is needed.
 		 */
-out_unhandled_target:
 		linux_target = smb_target;
 		smb_target = NULL;
 	}
@@ -1160,6 +1172,7 @@ out:
 	if (!have_xattr_dev && (tag == IO_REPARSE_TAG_LX_CHR || tag == IO_REPARSE_TAG_LX_BLK))
 		return false;
 
+	fattr->cf_dtype = S_DT(fattr->cf_mode);
 	return true;
 }
 

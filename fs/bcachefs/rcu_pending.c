@@ -182,6 +182,11 @@ static inline void kfree_bulk(size_t nr, void ** p)
 	while (nr--)
 		kfree(*p);
 }
+
+#define local_irq_save(flags)		\
+do {					\
+	flags = 0;			\
+} while (0)
 #endif
 
 static noinline void __process_finished_items(struct rcu_pending *pending,
@@ -424,15 +429,9 @@ __rcu_pending_enqueue(struct rcu_pending *pending, struct rcu_head *head,
 
 	BUG_ON((ptr != NULL) != (pending->process == RCU_PENDING_KVFREE_FN));
 
-	/* We could technically be scheduled before taking the lock and end up
-	 * using a different cpu's rcu_pending_pcpu: that's ok, it needs a lock
-	 * anyways
-	 *
-	 * And we have to do it this way to avoid breaking PREEMPT_RT, which
-	 * redefines how spinlocks work:
-	 */
-	p = raw_cpu_ptr(pending->p);
-	spin_lock_irqsave(&p->lock, flags);
+	local_irq_save(flags);
+	p = this_cpu_ptr(pending->p);
+	spin_lock(&p->lock);
 	rcu_gp_poll_state_t seq = __get_state_synchronize_rcu(pending->srcu);
 restart:
 	if (may_sleep &&
@@ -521,8 +520,9 @@ check_expired:
 		goto free_node;
 	}
 
-	p = raw_cpu_ptr(pending->p);
-	spin_lock_irqsave(&p->lock, flags);
+	local_irq_save(flags);
+	p = this_cpu_ptr(pending->p);
+	spin_lock(&p->lock);
 	goto restart;
 }
 

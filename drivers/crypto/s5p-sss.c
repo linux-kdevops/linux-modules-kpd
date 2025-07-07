@@ -9,17 +9,11 @@
 //
 // Hash part based on omap-sham.c driver.
 
-#include <crypto/aes.h>
-#include <crypto/ctr.h>
-#include <crypto/internal/hash.h>
-#include <crypto/internal/skcipher.h>
-#include <crypto/md5.h>
-#include <crypto/scatterwalk.h>
-#include <crypto/sha1.h>
-#include <crypto/sha2.h>
 #include <linux/clk.h>
+#include <linux/crypto.h>
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
+#include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -28,9 +22,17 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/scatterlist.h>
-#include <linux/slab.h>
-#include <linux/spinlock.h>
-#include <linux/string.h>
+
+#include <crypto/ctr.h>
+#include <crypto/aes.h>
+#include <crypto/algapi.h>
+#include <crypto/scatterwalk.h>
+
+#include <crypto/hash.h>
+#include <crypto/md5.h>
+#include <crypto/sha1.h>
+#include <crypto/sha2.h>
+#include <crypto/internal/hash.h>
 
 #define _SBF(s, v)			((v) << (s))
 

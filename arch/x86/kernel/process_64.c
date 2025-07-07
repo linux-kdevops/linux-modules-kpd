@@ -57,7 +57,6 @@
 #include <asm/unistd.h>
 #include <asm/fsgsbase.h>
 #include <asm/fred.h>
-#include <asm/msr.h>
 #ifdef CONFIG_IA32_EMULATION
 /* Not included via unistd.h */
 #include <asm/unistd_32_ia32.h>
@@ -96,8 +95,8 @@ void __show_regs(struct pt_regs *regs, enum show_regs_mode mode,
 		return;
 
 	if (mode == SHOW_REGS_USER) {
-		rdmsrq(MSR_FS_BASE, fs);
-		rdmsrq(MSR_KERNEL_GS_BASE, shadowgs);
+		rdmsrl(MSR_FS_BASE, fs);
+		rdmsrl(MSR_KERNEL_GS_BASE, shadowgs);
 		printk("%sFS:  %016lx GS:  %016lx\n",
 		       log_lvl, fs, shadowgs);
 		return;
@@ -108,9 +107,9 @@ void __show_regs(struct pt_regs *regs, enum show_regs_mode mode,
 	asm("movl %%fs,%0" : "=r" (fsindex));
 	asm("movl %%gs,%0" : "=r" (gsindex));
 
-	rdmsrq(MSR_FS_BASE, fs);
-	rdmsrq(MSR_GS_BASE, gs);
-	rdmsrq(MSR_KERNEL_GS_BASE, shadowgs);
+	rdmsrl(MSR_FS_BASE, fs);
+	rdmsrl(MSR_GS_BASE, gs);
+	rdmsrl(MSR_KERNEL_GS_BASE, shadowgs);
 
 	cr0 = read_cr0();
 	cr2 = read_cr2();
@@ -133,7 +132,7 @@ void __show_regs(struct pt_regs *regs, enum show_regs_mode mode,
 
 	/* Only print out debug registers if they are in their non-default state. */
 	if (!((d0 == 0) && (d1 == 0) && (d2 == 0) && (d3 == 0) &&
-	    (d6 == DR6_RESERVED) && (d7 == DR7_FIXED_1))) {
+	    (d6 == DR6_RESERVED) && (d7 == 0x400))) {
 		printk("%sDR0: %016lx DR1: %016lx DR2: %016lx\n",
 		       log_lvl, d0, d1, d2);
 		printk("%sDR3: %016lx DR6: %016lx DR7: %016lx\n",
@@ -196,7 +195,7 @@ static noinstr unsigned long __rdgsbase_inactive(void)
 		native_swapgs();
 	} else {
 		instrumentation_begin();
-		rdmsrq(MSR_KERNEL_GS_BASE, gsbase);
+		rdmsrl(MSR_KERNEL_GS_BASE, gsbase);
 		instrumentation_end();
 	}
 
@@ -222,7 +221,7 @@ static noinstr void __wrgsbase_inactive(unsigned long gsbase)
 		native_swapgs();
 	} else {
 		instrumentation_begin();
-		wrmsrq(MSR_KERNEL_GS_BASE, gsbase);
+		wrmsrl(MSR_KERNEL_GS_BASE, gsbase);
 		instrumentation_end();
 	}
 }
@@ -354,7 +353,7 @@ static __always_inline void load_seg_legacy(unsigned short prev_index,
 		} else {
 			if (prev_index != next_index)
 				loadseg(which, next_index);
-			wrmsrq(which == FS ? MSR_FS_BASE : MSR_KERNEL_GS_BASE,
+			wrmsrl(which == FS ? MSR_FS_BASE : MSR_KERNEL_GS_BASE,
 			       next_base);
 		}
 	} else {
@@ -464,7 +463,7 @@ unsigned long x86_gsbase_read_cpu_inactive(void)
 		gsbase = __rdgsbase_inactive();
 		local_irq_restore(flags);
 	} else {
-		rdmsrq(MSR_KERNEL_GS_BASE, gsbase);
+		rdmsrl(MSR_KERNEL_GS_BASE, gsbase);
 	}
 
 	return gsbase;
@@ -479,7 +478,7 @@ void x86_gsbase_write_cpu_inactive(unsigned long gsbase)
 		__wrgsbase_inactive(gsbase);
 		local_irq_restore(flags);
 	} else {
-		wrmsrq(MSR_KERNEL_GS_BASE, gsbase);
+		wrmsrl(MSR_KERNEL_GS_BASE, gsbase);
 	}
 }
 
@@ -617,7 +616,8 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	WARN_ON_ONCE(IS_ENABLED(CONFIG_DEBUG_ENTRY) &&
 		     this_cpu_read(hardirq_stack_inuse));
 
-	switch_fpu(prev_p, cpu);
+	if (!test_tsk_thread_flag(prev_p, TIF_NEED_FPU_LOAD))
+		switch_fpu_prepare(prev_p, cpu);
 
 	/* We must save %fs and %gs before load_TLS() because
 	 * %fs and %gs may be cleared by load_TLS().
@@ -671,6 +671,8 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	raw_cpu_write(current_task, next_p);
 	raw_cpu_write(cpu_current_top_of_stack, task_top_of_stack(next_p));
 
+	switch_fpu_finish(next_p);
+
 	/* Reload sp0. */
 	update_task_stack(next_p);
 
@@ -705,7 +707,7 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	}
 
 	/* Load the Intel cache allocation PQR MSR. */
-	resctrl_arch_sched_in(next_p);
+	resctrl_sched_in(next_p);
 
 	return prev_p;
 }

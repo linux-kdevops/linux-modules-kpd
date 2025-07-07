@@ -108,7 +108,6 @@ imx8qxp_pc_bridge_mode_valid(struct drm_bridge *bridge,
 }
 
 static int imx8qxp_pc_bridge_attach(struct drm_bridge *bridge,
-				    struct drm_encoder *encoder,
 				    enum drm_bridge_attach_flags flags)
 {
 	struct imx8qxp_pc_channel *ch = bridge->driver_private;
@@ -120,7 +119,7 @@ static int imx8qxp_pc_bridge_attach(struct drm_bridge *bridge,
 		return -EINVAL;
 	}
 
-	return drm_bridge_attach(encoder,
+	return drm_bridge_attach(bridge->encoder,
 				 ch->next_bridge, bridge,
 				 DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 }

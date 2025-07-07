@@ -4,8 +4,6 @@
 
 #include <asm/rsi.h>
 
-struct device;
-
 struct arm64_mem_crypt_ops {
 	int (*encrypt)(unsigned long addr, int numpages);
 	int (*decrypt)(unsigned long addr, int numpages);

@@ -2475,19 +2475,23 @@ static int __net_init gtp_net_init(struct net *net)
 	return 0;
 }
 
-static void __net_exit gtp_net_exit_rtnl(struct net *net,
-					 struct list_head *dev_to_kill)
+static void __net_exit gtp_net_exit_batch_rtnl(struct list_head *net_list,
+					       struct list_head *dev_to_kill)
 {
-	struct gtp_net *gn = net_generic(net, gtp_net_id);
-	struct gtp_dev *gtp, *gtp_next;
+	struct net *net;
 
-	list_for_each_entry_safe(gtp, gtp_next, &gn->gtp_dev_list, list)
-		gtp_dellink(gtp->dev, dev_to_kill);
+	list_for_each_entry(net, net_list, exit_list) {
+		struct gtp_net *gn = net_generic(net, gtp_net_id);
+		struct gtp_dev *gtp, *gtp_next;
+
+		list_for_each_entry_safe(gtp, gtp_next, &gn->gtp_dev_list, list)
+			gtp_dellink(gtp->dev, dev_to_kill);
+	}
 }
 
 static struct pernet_operations gtp_net_ops = {
 	.init	= gtp_net_init,
-	.exit_rtnl = gtp_net_exit_rtnl,
+	.exit_batch_rtnl = gtp_net_exit_batch_rtnl,
 	.id	= &gtp_net_id,
 	.size	= sizeof(struct gtp_net),
 };

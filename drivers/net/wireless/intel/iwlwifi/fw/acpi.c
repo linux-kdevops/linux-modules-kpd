@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2019-2025 Intel Corporation
+ * Copyright (C) 2019-2024 Intel Corporation
  */
 #include <linux/uuid.h>
 #include "iwl-drv.h"
@@ -847,12 +847,12 @@ int iwl_acpi_get_ppag_table(struct iwl_fw_runtime *fwrt)
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	/* try to read ppag table rev 1 to 4 (all have the same data size) */
+	/* try to read ppag table rev 3, 2 or 1 (all have the same data size) */
 	wifi_pkg = iwl_acpi_get_wifi_pkg(fwrt->dev, data,
 				ACPI_PPAG_WIFI_DATA_SIZE_V2, &tbl_rev);
 
 	if (!IS_ERR(wifi_pkg)) {
-		if (tbl_rev >= 1 && tbl_rev <= 4) {
+		if (tbl_rev >= 1 && tbl_rev <= 3) {
 			num_sub_bands = IWL_NUM_SUB_BANDS_V2;
 			IWL_DEBUG_RADIO(fwrt,
 					"Reading PPAG table (tbl_rev=%d)\n",
@@ -882,7 +882,7 @@ int iwl_acpi_get_ppag_table(struct iwl_fw_runtime *fwrt)
 	goto out_free;
 
 read_table:
-	fwrt->ppag_bios_rev = tbl_rev;
+	fwrt->ppag_ver = tbl_rev;
 	flags = &wifi_pkg->package.elements[1];
 
 	if (flags->type != ACPI_TYPE_INTEGER) {
@@ -891,7 +891,7 @@ read_table:
 	}
 
 	fwrt->ppag_flags = iwl_bios_get_ppag_flags(flags->integer.value,
-						   fwrt->ppag_bios_rev);
+						   fwrt->ppag_ver);
 
 	/*
 	 * read, verify gain values and save them into the PPAG table.
@@ -912,7 +912,6 @@ read_table:
 		}
 	}
 
-	fwrt->ppag_bios_source = BIOS_SOURCE_ACPI;
 	ret = 0;
 
 out_free:
@@ -920,39 +919,40 @@ out_free:
 	return ret;
 }
 
-int iwl_acpi_get_phy_filters(struct iwl_fw_runtime *fwrt)
+void iwl_acpi_get_phy_filters(struct iwl_fw_runtime *fwrt,
+			      struct iwl_phy_specific_cfg *filters)
 {
-	struct iwl_phy_specific_cfg *filters = &fwrt->phy_filters;
 	struct iwl_phy_specific_cfg tmp = {};
-	union acpi_object *wifi_pkg, *data __free(kfree);
+	union acpi_object *wifi_pkg, *data;
 	int tbl_rev, i;
 
 	data = iwl_acpi_get_object(fwrt->dev, ACPI_WPFC_METHOD);
 	if (IS_ERR(data))
-		return PTR_ERR(data);
+		return;
 
 	wifi_pkg = iwl_acpi_get_wifi_pkg(fwrt->dev, data,
 					 ACPI_WPFC_WIFI_DATA_SIZE,
 					 &tbl_rev);
 	if (IS_ERR(wifi_pkg))
-		return PTR_ERR(wifi_pkg);
+		goto out_free;
 
 	if (tbl_rev != 0)
-		return -EINVAL;
+		goto out_free;
 
 	BUILD_BUG_ON(ARRAY_SIZE(filters->filter_cfg_chains) !=
 		     ACPI_WPFC_WIFI_DATA_SIZE - 1);
 
 	for (i = 0; i < ARRAY_SIZE(filters->filter_cfg_chains); i++) {
 		if (wifi_pkg->package.elements[i + 1].type != ACPI_TYPE_INTEGER)
-			return -EINVAL;
+			goto out_free;
 		tmp.filter_cfg_chains[i] =
 			cpu_to_le32(wifi_pkg->package.elements[i + 1].integer.value);
 	}
 
 	IWL_DEBUG_RADIO(fwrt, "Loaded WPFC filter config from ACPI\n");
 	*filters = tmp;
-	return 0;
+out_free:
+	kfree(data);
 }
 IWL_EXPORT_SYMBOL(iwl_acpi_get_phy_filters);
 

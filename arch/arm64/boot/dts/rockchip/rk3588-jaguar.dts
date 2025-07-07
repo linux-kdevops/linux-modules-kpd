@@ -303,10 +303,6 @@
 	};
 };
 
-&hdmi0_sound {
-	status = "okay";
-};
-
 &hdptxphy0 {
 	status = "okay";
 };
@@ -514,10 +510,6 @@
 			regulator-off-in-suspend;
 		};
 	};
-};
-
-&i2s5_8ch {
-	status = "okay";
 };
 
 &mdio0 {

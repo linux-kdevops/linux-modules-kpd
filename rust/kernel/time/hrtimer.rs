@@ -68,25 +68,9 @@
 //! `start` operation.
 
 use super::ClockId;
-use crate::{prelude::*, types::Opaque};
+use crate::{prelude::*, time::Ktime, types::Opaque};
 use core::marker::PhantomData;
 use pin_init::PinInit;
-
-/// A Rust wrapper around a `ktime_t`.
-// NOTE: Ktime is going to be removed when hrtimer is converted to Instant/Delta.
-#[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
-pub struct Ktime {
-    inner: bindings::ktime_t,
-}
-
-impl Ktime {
-    /// Returns the number of nanoseconds.
-    #[inline]
-    pub fn to_ns(self) -> i64 {
-        self.inner
-    }
-}
 
 /// A timer backed by a C `struct hrtimer`.
 ///
@@ -400,9 +384,11 @@ pub unsafe trait HasHrTimer<T> {
 #[repr(u32)]
 pub enum HrTimerRestart {
     /// Timer should not be restarted.
-    NoRestart = bindings::hrtimer_restart_HRTIMER_NORESTART,
+    #[allow(clippy::unnecessary_cast)]
+    NoRestart = bindings::hrtimer_restart_HRTIMER_NORESTART as u32,
     /// Timer should be restarted.
-    Restart = bindings::hrtimer_restart_HRTIMER_RESTART,
+    #[allow(clippy::unnecessary_cast)]
+    Restart = bindings::hrtimer_restart_HRTIMER_RESTART as u32,
 }
 
 impl HrTimerRestart {
@@ -517,7 +503,7 @@ macro_rules! impl_has_hr_timer {
             ) -> *mut Self {
                 // SAFETY: As per the safety requirement of this function, `ptr`
                 // is pointing inside a `$timer_type`.
-                unsafe { ::kernel::container_of!(ptr, $timer_type, $field) }
+                unsafe { ::kernel::container_of!(ptr, $timer_type, $field).cast_mut() }
             }
         }
     }

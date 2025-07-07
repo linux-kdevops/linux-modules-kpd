@@ -262,6 +262,7 @@ enum btrfs_ref_type {
 	BTRFS_REF_NOT_SET,
 	BTRFS_REF_DATA,
 	BTRFS_REF_METADATA,
+	BTRFS_REF_LAST,
 } __packed;
 
 struct btrfs_ref {

@@ -115,10 +115,6 @@ torture_param(int, nreaders, -1, "Number of RCU reader threads");
 torture_param(int, object_debug, 0, "Enable debug-object double call_rcu() testing");
 torture_param(int, onoff_holdoff, 0, "Time after boot before CPU hotplugs (s)");
 torture_param(int, onoff_interval, 0, "Time between CPU hotplugs (jiffies), 0=disable");
-torture_param(bool, gpwrap_lag, true, "Enable grace-period wrap lag testing");
-torture_param(int, gpwrap_lag_gps, 8, "Value to set for set_gpwrap_lag during an active testing period.");
-torture_param(int, gpwrap_lag_cycle_mins, 30, "Total cycle duration for gpwrap lag testing (in minutes)");
-torture_param(int, gpwrap_lag_active_mins, 5, "Duration for which gpwrap lag is active within each cycle (in minutes)");
 torture_param(int, nocbs_nthreads, 0, "Number of NOCB toggle threads, 0 to disable");
 torture_param(int, nocbs_toggle, 1000, "Time between toggling nocb state (ms)");
 torture_param(int, preempt_duration, 0, "Preemption duration (ms), zero to disable");
@@ -417,8 +413,6 @@ struct rcu_torture_ops {
 	bool (*reader_blocked)(void);
 	unsigned long long (*gather_gp_seqs)(void);
 	void (*format_gp_seqs)(unsigned long long seqs, char *cp, size_t len);
-	void (*set_gpwrap_lag)(unsigned long lag);
-	int (*get_gpwrap_count)(int cpu);
 	long cbflood_max;
 	int irq_capable;
 	int can_boost;
@@ -625,8 +619,6 @@ static struct rcu_torture_ops rcu_ops = {
 				  : NULL,
 	.gather_gp_seqs		= rcutorture_gather_gp_seqs,
 	.format_gp_seqs		= rcutorture_format_gp_seqs,
-	.set_gpwrap_lag		= rcu_set_gpwrap_lag,
-	.get_gpwrap_count	= rcu_get_gpwrap_count,
 	.irq_capable		= 1,
 	.can_boost		= IS_ENABLED(CONFIG_RCU_BOOST),
 	.extendables		= RCUTORTURE_MAX_EXTEND,
@@ -2172,70 +2164,53 @@ rcutorture_loop_extend(int *readstate, bool insoftirq, struct torture_random_sta
 	return &rtrsp[j];
 }
 
-struct rcu_torture_one_read_state {
-	bool checkpolling;
+/*
+ * Do one read-side critical section, returning false if there was
+ * no data to read.  Can be invoked both from process context and
+ * from a timer handler.
+ */
+static bool rcu_torture_one_read(struct torture_random_state *trsp, long myid)
+{
+	bool checkpolling = !(torture_random(trsp) & 0xfff);
 	unsigned long cookie;
 	struct rcu_gp_oldstate cookie_full;
-	unsigned long started;
-	struct rcu_torture *p;
-	int readstate;
-	struct rt_read_seg rtseg[RCUTORTURE_RDR_MAX_SEGS];
-	struct rt_read_seg *rtrsp;
-	unsigned long long ts;
-};
-
-static void init_rcu_torture_one_read_state(struct rcu_torture_one_read_state *rtorsp,
-					    struct torture_random_state *trsp)
-{
-	memset(rtorsp, 0, sizeof(*rtorsp));
-	rtorsp->checkpolling = !(torture_random(trsp) & 0xfff);
-	rtorsp->rtrsp = &rtorsp->rtseg[0];
-}
-
-/*
- * Set up the first segment of a series of overlapping read-side
- * critical sections.  The caller must have actually initiated the
- * outermost read-side critical section.
- */
-static bool rcu_torture_one_read_start(struct rcu_torture_one_read_state *rtorsp,
-				       struct torture_random_state *trsp, long myid)
-{
-	if (rtorsp->checkpolling) {
-		if (cur_ops->get_gp_state && cur_ops->poll_gp_state)
-			rtorsp->cookie = cur_ops->get_gp_state();
-		if (cur_ops->get_gp_state_full && cur_ops->poll_gp_state_full)
-			cur_ops->get_gp_state_full(&rtorsp->cookie_full);
-	}
-	rtorsp->started = cur_ops->get_gp_seq();
-	rtorsp->ts = rcu_trace_clock_local();
-	rtorsp->p = rcu_dereference_check(rcu_torture_current,
-				  !cur_ops->readlock_held || cur_ops->readlock_held());
-	if (rtorsp->p == NULL) {
-		/* Wait for rcu_torture_writer to get underway */
-		rcutorture_one_extend(&rtorsp->readstate, 0, myid < 0, trsp, rtorsp->rtrsp);
-		return false;
-	}
-	if (rtorsp->p->rtort_mbtest == 0)
-		atomic_inc(&n_rcu_torture_mberror);
-	rcu_torture_reader_do_mbchk(myid, rtorsp->p, trsp);
-	return true;
-}
-
-/*
- * Complete the last segment of a series of overlapping read-side
- * critical sections and check for errors.
- */
-static void rcu_torture_one_read_end(struct rcu_torture_one_read_state *rtorsp,
-				     struct torture_random_state *trsp, long myid)
-{
 	int i;
+	unsigned long started;
 	unsigned long completed;
+	int newstate;
+	struct rcu_torture *p;
 	int pipe_count;
 	bool preempted = false;
+	int readstate = 0;
+	struct rt_read_seg rtseg[RCUTORTURE_RDR_MAX_SEGS] = { { 0 } };
+	struct rt_read_seg *rtrsp = &rtseg[0];
 	struct rt_read_seg *rtrsp1;
+	unsigned long long ts;
 
+	WARN_ON_ONCE(!rcu_is_watching());
+	newstate = rcutorture_extend_mask(readstate, trsp);
+	rcutorture_one_extend(&readstate, newstate, myid < 0, trsp, rtrsp++);
+	if (checkpolling) {
+		if (cur_ops->get_gp_state && cur_ops->poll_gp_state)
+			cookie = cur_ops->get_gp_state();
+		if (cur_ops->get_gp_state_full && cur_ops->poll_gp_state_full)
+			cur_ops->get_gp_state_full(&cookie_full);
+	}
+	started = cur_ops->get_gp_seq();
+	ts = rcu_trace_clock_local();
+	p = rcu_dereference_check(rcu_torture_current,
+				  !cur_ops->readlock_held || cur_ops->readlock_held());
+	if (p == NULL) {
+		/* Wait for rcu_torture_writer to get underway */
+		rcutorture_one_extend(&readstate, 0, myid < 0, trsp, rtrsp);
+		return false;
+	}
+	if (p->rtort_mbtest == 0)
+		atomic_inc(&n_rcu_torture_mberror);
+	rcu_torture_reader_do_mbchk(myid, p, trsp);
+	rtrsp = rcutorture_loop_extend(&readstate, myid < 0, trsp, rtrsp);
 	preempt_disable();
-	pipe_count = READ_ONCE(rtorsp->p->rtort_pipe_count);
+	pipe_count = READ_ONCE(p->rtort_pipe_count);
 	if (pipe_count > RCU_TORTURE_PIPE_LEN) {
 		// Should not happen in a correct RCU implementation,
 		// happens quite often for torture_type=busted.
@@ -2243,28 +2218,28 @@ static void rcu_torture_one_read_end(struct rcu_torture_one_read_state *rtorsp,
 	}
 	completed = cur_ops->get_gp_seq();
 	if (pipe_count > 1) {
-		do_trace_rcu_torture_read(cur_ops->name, &rtorsp->p->rtort_rcu,
-					  rtorsp->ts, rtorsp->started, completed);
+		do_trace_rcu_torture_read(cur_ops->name, &p->rtort_rcu,
+					  ts, started, completed);
 		rcu_ftrace_dump(DUMP_ALL);
 	}
 	__this_cpu_inc(rcu_torture_count[pipe_count]);
-	completed = rcutorture_seq_diff(completed, rtorsp->started);
+	completed = rcutorture_seq_diff(completed, started);
 	if (completed > RCU_TORTURE_PIPE_LEN) {
 		/* Should not happen, but... */
 		completed = RCU_TORTURE_PIPE_LEN;
 	}
 	__this_cpu_inc(rcu_torture_batch[completed]);
 	preempt_enable();
-	if (rtorsp->checkpolling) {
+	if (checkpolling) {
 		if (cur_ops->get_gp_state && cur_ops->poll_gp_state)
-			WARN_ONCE(cur_ops->poll_gp_state(rtorsp->cookie),
+			WARN_ONCE(cur_ops->poll_gp_state(cookie),
 				  "%s: Cookie check 2 failed %s(%d) %lu->%lu\n",
 				  __func__,
 				  rcu_torture_writer_state_getname(),
 				  rcu_torture_writer_state,
-				  rtorsp->cookie, cur_ops->get_gp_state());
+				  cookie, cur_ops->get_gp_state());
 		if (cur_ops->get_gp_state_full && cur_ops->poll_gp_state_full)
-			WARN_ONCE(cur_ops->poll_gp_state_full(&rtorsp->cookie_full),
+			WARN_ONCE(cur_ops->poll_gp_state_full(&cookie_full),
 				  "%s: Cookie check 6 failed %s(%d) online %*pbl\n",
 				  __func__,
 				  rcu_torture_writer_state_getname(),
@@ -2273,42 +2248,21 @@ static void rcu_torture_one_read_end(struct rcu_torture_one_read_state *rtorsp,
 	}
 	if (cur_ops->reader_blocked)
 		preempted = cur_ops->reader_blocked();
-	rcutorture_one_extend(&rtorsp->readstate, 0, myid < 0, trsp, rtorsp->rtrsp);
-	WARN_ON_ONCE(rtorsp->readstate);
+	rcutorture_one_extend(&readstate, 0, myid < 0, trsp, rtrsp);
+	WARN_ON_ONCE(readstate);
 	// This next splat is expected behavior if leakpointer, especially
 	// for CONFIG_RCU_STRICT_GRACE_PERIOD=y kernels.
-	WARN_ON_ONCE(leakpointer && READ_ONCE(rtorsp->p->rtort_pipe_count) > 1);
+	WARN_ON_ONCE(leakpointer && READ_ONCE(p->rtort_pipe_count) > 1);
 
 	/* If error or close call, record the sequence of reader protections. */
 	if ((pipe_count > 1 || completed > 1) && !xchg(&err_segs_recorded, 1)) {
 		i = 0;
-		for (rtrsp1 = &rtorsp->rtseg[0]; rtrsp1 < rtorsp->rtrsp; rtrsp1++)
+		for (rtrsp1 = &rtseg[0]; rtrsp1 < rtrsp; rtrsp1++)
 			err_segs[i++] = *rtrsp1;
 		rt_read_nsegs = i;
 		rt_read_preempted = preempted;
 	}
-}
 
-/*
- * Do one read-side critical section, returning false if there was
- * no data to read.  Can be invoked both from process context and
- * from a timer handler.
- */
-static bool rcu_torture_one_read(struct torture_random_state *trsp, long myid)
-{
-	int newstate;
-	struct rcu_torture_one_read_state rtors;
-
-	WARN_ON_ONCE(!rcu_is_watching());
-	init_rcu_torture_one_read_state(&rtors, trsp);
-	newstate = rcutorture_extend_mask(rtors.readstate, trsp);
-	rcutorture_one_extend(&rtors.readstate, newstate, myid < 0, trsp, rtors.rtrsp++);
-	if (!rcu_torture_one_read_start(&rtors, trsp, myid)) {
-		rcutorture_one_extend(&rtors.readstate, 0, myid < 0, trsp, rtors.rtrsp);
-		return false;
-	}
-	rtors.rtrsp = rcutorture_loop_extend(&rtors.readstate, myid < 0, trsp, rtors.rtrsp);
-	rcu_torture_one_read_end(&rtors, trsp, myid);
 	return true;
 }
 
@@ -2353,7 +2307,7 @@ rcu_torture_reader(void *arg)
 	set_user_nice(current, MAX_NICE);
 	if (irqreader && cur_ops->irq_capable)
 		timer_setup_on_stack(&t, rcu_torture_timer, 0);
-	tick_dep_set_task(current, TICK_DEP_BIT_RCU);  // CPU bound, so need tick.
+	tick_dep_set_task(current, TICK_DEP_BIT_RCU);
 	do {
 		if (irqreader && cur_ops->irq_capable) {
 			if (!timer_pending(&t))
@@ -2371,7 +2325,7 @@ rcu_torture_reader(void *arg)
 	} while (!torture_must_stop());
 	if (irqreader && cur_ops->irq_capable) {
 		timer_delete_sync(&t);
-		timer_destroy_on_stack(&t);
+		destroy_timer_on_stack(&t);
 	}
 	tick_dep_clear_task(current, TICK_DEP_BIT_RCU);
 	torture_kthread_stopping("rcu_torture_reader");
@@ -2440,7 +2394,6 @@ rcu_torture_stats_print(void)
 	int i;
 	long pipesummary[RCU_TORTURE_PIPE_LEN + 1] = { 0 };
 	long batchsummary[RCU_TORTURE_PIPE_LEN + 1] = { 0 };
-	long n_gpwraps = 0;
 	struct rcu_torture *rtcp;
 	static unsigned long rtcv_snap = ULONG_MAX;
 	static bool splatted;
@@ -2451,8 +2404,6 @@ rcu_torture_stats_print(void)
 			pipesummary[i] += READ_ONCE(per_cpu(rcu_torture_count, cpu)[i]);
 			batchsummary[i] += READ_ONCE(per_cpu(rcu_torture_batch, cpu)[i]);
 		}
-		if (cur_ops->get_gpwrap_count)
-			n_gpwraps += cur_ops->get_gpwrap_count(cpu);
 	}
 	for (i = RCU_TORTURE_PIPE_LEN; i >= 0; i--) {
 		if (pipesummary[i] != 0)
@@ -2484,9 +2435,8 @@ rcu_torture_stats_print(void)
 		data_race(n_barrier_attempts),
 		data_race(n_rcu_torture_barrier_error));
 	pr_cont("read-exits: %ld ", data_race(n_read_exits)); // Statistic.
-	pr_cont("nocb-toggles: %ld:%ld ",
+	pr_cont("nocb-toggles: %ld:%ld\n",
 		atomic_long_read(&n_nocb_offload), atomic_long_read(&n_nocb_deoffload));
-	pr_cont("gpwraps: %ld\n", n_gpwraps);
 
 	pr_alert("%s%s ", torture_type, TORTURE_FLAG);
 	if (atomic_read(&n_rcu_torture_mberror) ||
@@ -3086,7 +3036,7 @@ static void rcu_torture_fwd_prog_cr(struct rcu_fwd *rfp)
 	cver = READ_ONCE(rcu_torture_current_version);
 	gps = cur_ops->get_gp_seq();
 	rfp->rcu_launder_gp_seq_start = gps;
-	tick_dep_set_task(current, TICK_DEP_BIT_RCU);  // CPU bound, so need tick.
+	tick_dep_set_task(current, TICK_DEP_BIT_RCU);
 	while (time_before(jiffies, stopat) &&
 	       !shutdown_time_arrived() &&
 	       !READ_ONCE(rcu_fwd_emergency_stop) && !torture_must_stop()) {
@@ -3657,57 +3607,6 @@ static int rcu_torture_preempt(void *unused)
 
 static enum cpuhp_state rcutor_hp;
 
-static struct hrtimer gpwrap_lag_timer;
-static bool gpwrap_lag_active;
-
-/* Timer handler for toggling RCU grace-period sequence overflow test lag value */
-static enum hrtimer_restart rcu_gpwrap_lag_timer(struct hrtimer *timer)
-{
-	ktime_t next_delay;
-
-	if (gpwrap_lag_active) {
-		pr_alert("rcu-torture: Disabling gpwrap lag (value=0)\n");
-		cur_ops->set_gpwrap_lag(0);
-		gpwrap_lag_active = false;
-		next_delay = ktime_set((gpwrap_lag_cycle_mins - gpwrap_lag_active_mins) * 60, 0);
-	} else {
-		pr_alert("rcu-torture: Enabling gpwrap lag (value=%d)\n", gpwrap_lag_gps);
-		cur_ops->set_gpwrap_lag(gpwrap_lag_gps);
-		gpwrap_lag_active = true;
-		next_delay = ktime_set(gpwrap_lag_active_mins * 60, 0);
-	}
-
-	if (torture_must_stop_irq())
-		return HRTIMER_NORESTART;
-
-	hrtimer_forward_now(timer, next_delay);
-	return HRTIMER_RESTART;
-}
-
-static int rcu_gpwrap_lag_init(void)
-{
-	if (!gpwrap_lag)
-		return 0;
-
-	if (gpwrap_lag_cycle_mins <= 0 || gpwrap_lag_active_mins <= 0) {
-		pr_alert("rcu-torture: lag timing parameters must be positive\n");
-		return -EINVAL;
-	}
-
-	hrtimer_setup(&gpwrap_lag_timer, rcu_gpwrap_lag_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	gpwrap_lag_active = false;
-	hrtimer_start(&gpwrap_lag_timer,
-		      ktime_set((gpwrap_lag_cycle_mins - gpwrap_lag_active_mins) * 60, 0), HRTIMER_MODE_REL);
-
-	return 0;
-}
-
-static void rcu_gpwrap_lag_cleanup(void)
-{
-	hrtimer_cancel(&gpwrap_lag_timer);
-	cur_ops->set_gpwrap_lag(0);
-	gpwrap_lag_active = false;
-}
 static void
 rcu_torture_cleanup(void)
 {
@@ -3877,9 +3776,6 @@ rcu_torture_cleanup(void)
 	torture_cleanup_end();
 	if (cur_ops->gp_slow_unregister)
 		cur_ops->gp_slow_unregister(NULL);
-
-	if (gpwrap_lag && cur_ops->set_gpwrap_lag)
-		rcu_gpwrap_lag_cleanup();
 }
 
 static void rcu_torture_leak_cb(struct rcu_head *rhp)
@@ -4376,17 +4272,9 @@ rcu_torture_init(void)
 	}
 	if (object_debug)
 		rcu_test_debug_objects();
-
+	torture_init_end();
 	if (cur_ops->gp_slow_register && !WARN_ON_ONCE(!cur_ops->gp_slow_unregister))
 		cur_ops->gp_slow_register(&rcu_fwd_cb_nodelay);
-
-	if (gpwrap_lag && cur_ops->set_gpwrap_lag) {
-		firsterr = rcu_gpwrap_lag_init();
-		if (torture_init_error(firsterr))
-			goto unwind;
-	}
-
-	torture_init_end();
 	return 0;
 
 unwind:

@@ -1726,8 +1726,7 @@ end:
 	return ret;
 }
 
-static int peb2466_chip_gpio_set(struct gpio_chip *c, unsigned int offset,
-				 int val)
+static void peb2466_chip_gpio_set(struct gpio_chip *c, unsigned int offset, int val)
 {
 	struct peb2466 *peb2466 = gpiochip_get_data(c);
 	unsigned int xr_reg;
@@ -1741,14 +1740,14 @@ static int peb2466_chip_gpio_set(struct gpio_chip *c, unsigned int offset,
 		 */
 		dev_warn(&peb2466->spi->dev, "cannot set gpio %d (read-only)\n",
 			 offset);
-		return -EINVAL;
+		return;
 	}
 
 	ret = peb2466_chip_gpio_offset_to_data_regmask(offset, &xr_reg, &mask);
 	if (ret) {
 		dev_err(&peb2466->spi->dev, "cannot set gpio %d (%d)\n",
 			offset, ret);
-		return ret;
+		return;
 	}
 
 	ret = peb2466_chip_gpio_update_bits(peb2466, xr_reg, mask, val ? mask : 0);
@@ -1756,8 +1755,6 @@ static int peb2466_chip_gpio_set(struct gpio_chip *c, unsigned int offset,
 		dev_err(&peb2466->spi->dev, "set gpio %d (0x%x, 0x%x) failed (%d)\n",
 			offset, xr_reg, mask, ret);
 	}
-
-	return ret;
 }
 
 static int peb2466_chip_gpio_get(struct gpio_chip *c, unsigned int offset)
@@ -1882,9 +1879,7 @@ static int peb2466_chip_direction_output(struct gpio_chip *c, unsigned int offse
 		return -EINVAL;
 	}
 
-	ret = peb2466_chip_gpio_set(c, offset, val);
-	if (ret)
-		return ret;
+	peb2466_chip_gpio_set(c, offset, val);
 
 	if (offset < 16) {
 		/* SOx_{0,1} */
@@ -1945,7 +1940,7 @@ static int peb2466_gpio_init(struct peb2466 *peb2466)
 	peb2466->gpio.gpio_chip.direction_input = peb2466_chip_direction_input;
 	peb2466->gpio.gpio_chip.direction_output = peb2466_chip_direction_output;
 	peb2466->gpio.gpio_chip.get = peb2466_chip_gpio_get;
-	peb2466->gpio.gpio_chip.set_rv = peb2466_chip_gpio_set;
+	peb2466->gpio.gpio_chip.set = peb2466_chip_gpio_set;
 	peb2466->gpio.gpio_chip.can_sleep = true;
 
 	return devm_gpiochip_add_data(&peb2466->spi->dev, &peb2466->gpio.gpio_chip,

@@ -68,7 +68,6 @@
 #include <asm/vdso.h>
 #include <asm/tdx.h>
 #include <asm/cfi.h>
-#include <asm/msr.h>
 
 #ifdef CONFIG_X86_64
 #include <asm/x86_init.h>
@@ -352,7 +351,7 @@ static noinstr bool handle_bug(struct pt_regs *regs)
 	case BUG_UD1_UBSAN:
 		if (IS_ENABLED(CONFIG_UBSAN_TRAP)) {
 			pr_crit("%s at %pS\n",
-				report_ubsan_failure(ud_imm),
+				report_ubsan_failure(regs, ud_imm),
 				(void *)regs->ip);
 		}
 		break;
@@ -750,7 +749,7 @@ static bool try_fixup_enqcmd_gp(void)
 	if (current->pasid_activated)
 		return false;
 
-	wrmsrq(MSR_IA32_PASID, pasid | MSR_IA32_PASID_VALID);
+	wrmsrl(MSR_IA32_PASID, pasid | MSR_IA32_PASID_VALID);
 	current->pasid_activated = 1;
 
 	return true;
@@ -883,16 +882,16 @@ static void do_int3_user(struct pt_regs *regs)
 DEFINE_IDTENTRY_RAW(exc_int3)
 {
 	/*
-	 * smp_text_poke_int3_handler() is completely self contained code; it does (and
+	 * poke_int3_handler() is completely self contained code; it does (and
 	 * must) *NOT* call out to anything, lest it hits upon yet another
 	 * INT3.
 	 */
-	if (smp_text_poke_int3_handler(regs))
+	if (poke_int3_handler(regs))
 		return;
 
 	/*
 	 * irqentry_enter_from_user_mode() uses static_branch_{,un}likely()
-	 * and therefore can trigger INT3, hence smp_text_poke_int3_handler() must
+	 * and therefore can trigger INT3, hence poke_int3_handler() must
 	 * be done before. If the entry came from kernel mode, then use
 	 * nmi_enter() because the INT3 could have been hit in any context
 	 * including NMI.
@@ -1022,32 +1021,24 @@ static bool is_sysenter_singlestep(struct pt_regs *regs)
 #endif
 }
 
-static __always_inline unsigned long debug_read_reset_dr6(void)
+static __always_inline unsigned long debug_read_clear_dr6(void)
 {
 	unsigned long dr6;
-
-	get_debugreg(dr6, 6);
-	dr6 ^= DR6_RESERVED; /* Flip to positive polarity */
 
 	/*
 	 * The Intel SDM says:
 	 *
-	 *   Certain debug exceptions may clear bits 0-3 of DR6.
+	 *   Certain debug exceptions may clear bits 0-3. The remaining
+	 *   contents of the DR6 register are never cleared by the
+	 *   processor. To avoid confusion in identifying debug
+	 *   exceptions, debug handlers should clear the register before
+	 *   returning to the interrupted task.
 	 *
-	 *   BLD induced #DB clears DR6.BLD and any other debug
-	 *   exception doesn't modify DR6.BLD.
-	 *
-	 *   RTM induced #DB clears DR6.RTM and any other debug
-	 *   exception sets DR6.RTM.
-	 *
-	 *   To avoid confusion in identifying debug exceptions,
-	 *   debug handlers should set DR6.BLD and DR6.RTM, and
-	 *   clear other DR6 bits before returning.
-	 *
-	 * Keep it simple: write DR6 with its architectural reset
-	 * value 0xFFFF0FF0, defined as DR6_RESERVED, immediately.
+	 * Keep it simple: clear DR6 immediately.
 	 */
+	get_debugreg(dr6, 6);
 	set_debugreg(DR6_RESERVED, 6);
+	dr6 ^= DR6_RESERVED; /* Flip to positive polarity */
 
 	return dr6;
 }
@@ -1129,9 +1120,9 @@ static noinstr void exc_debug_kernel(struct pt_regs *regs, unsigned long dr6)
 		 */
 		unsigned long debugctl;
 
-		rdmsrq(MSR_IA32_DEBUGCTLMSR, debugctl);
+		rdmsrl(MSR_IA32_DEBUGCTLMSR, debugctl);
 		debugctl |= DEBUGCTLMSR_BTF;
-		wrmsrq(MSR_IA32_DEBUGCTLMSR, debugctl);
+		wrmsrl(MSR_IA32_DEBUGCTLMSR, debugctl);
 	}
 
 	/*
@@ -1247,13 +1238,13 @@ out:
 /* IST stack entry */
 DEFINE_IDTENTRY_DEBUG(exc_debug)
 {
-	exc_debug_kernel(regs, debug_read_reset_dr6());
+	exc_debug_kernel(regs, debug_read_clear_dr6());
 }
 
 /* User entry, runs on regular task stack */
 DEFINE_IDTENTRY_DEBUG_USER(exc_debug)
 {
-	exc_debug_user(regs, debug_read_reset_dr6());
+	exc_debug_user(regs, debug_read_clear_dr6());
 }
 
 #ifdef CONFIG_X86_FRED
@@ -1272,7 +1263,7 @@ DEFINE_FREDENTRY_DEBUG(exc_debug)
 {
 	/*
 	 * FRED #DB stores DR6 on the stack in the format which
-	 * debug_read_reset_dr6() returns for the IDT entry points.
+	 * debug_read_clear_dr6() returns for the IDT entry points.
 	 */
 	unsigned long dr6 = fred_event_data(regs);
 
@@ -1287,7 +1278,7 @@ DEFINE_FREDENTRY_DEBUG(exc_debug)
 /* 32 bit does not have separate entry points. */
 DEFINE_IDTENTRY_RAW(exc_debug)
 {
-	unsigned long dr6 = debug_read_reset_dr6();
+	unsigned long dr6 = debug_read_clear_dr6();
 
 	if (user_mode(regs))
 		exc_debug_user(regs, dr6);
@@ -1304,7 +1295,7 @@ DEFINE_IDTENTRY_RAW(exc_debug)
 static void math_error(struct pt_regs *regs, int trapnr)
 {
 	struct task_struct *task = current;
-	struct fpu *fpu = x86_task_fpu(task);
+	struct fpu *fpu = &task->thread.fpu;
 	int si_code;
 	char *str = (trapnr == X86_TRAP_MF) ? "fpu exception" :
 						"simd exception";
@@ -1395,11 +1386,11 @@ static bool handle_xfd_event(struct pt_regs *regs)
 	if (!IS_ENABLED(CONFIG_X86_64) || !cpu_feature_enabled(X86_FEATURE_XFD))
 		return false;
 
-	rdmsrq(MSR_IA32_XFD_ERR, xfd_err);
+	rdmsrl(MSR_IA32_XFD_ERR, xfd_err);
 	if (!xfd_err)
 		return false;
 
-	wrmsrq(MSR_IA32_XFD_ERR, 0);
+	wrmsrl(MSR_IA32_XFD_ERR, 0);
 
 	/* Die if that happens in kernel space */
 	if (WARN_ON(!user_mode(regs)))

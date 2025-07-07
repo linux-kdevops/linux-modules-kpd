@@ -436,25 +436,6 @@ allocate_blocks:
 	return 0;
 }
 
-static bool
-xfs_ioend_needs_wq_completion(
-	struct iomap_ioend	*ioend)
-{
-	/* Changing inode size requires a transaction. */
-	if (xfs_ioend_is_append(ioend))
-		return true;
-
-	/* Extent manipulation requires a transaction. */
-	if (ioend->io_flags & (IOMAP_IOEND_UNWRITTEN | IOMAP_IOEND_SHARED))
-		return true;
-
-	/* Page cache invalidation cannot be done in irq context. */
-	if (ioend->io_flags & IOMAP_IOEND_DONTCACHE)
-		return true;
-
-	return false;
-}
-
 static int
 xfs_submit_ioend(
 	struct iomap_writepage_ctx *wpc,
@@ -479,7 +460,8 @@ xfs_submit_ioend(
 	memalloc_nofs_restore(nofs_flag);
 
 	/* send ioends that might require a transaction to the completion wq */
-	if (xfs_ioend_needs_wq_completion(ioend))
+	if (xfs_ioend_is_append(ioend) ||
+	    (ioend->io_flags & (IOMAP_IOEND_UNWRITTEN | IOMAP_IOEND_SHARED)))
 		ioend->io_bio.bi_end_io = xfs_end_bio;
 
 	if (status)

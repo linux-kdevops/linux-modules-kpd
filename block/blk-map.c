@@ -317,26 +317,64 @@ static void bio_map_kern_endio(struct bio *bio)
 	kfree(bio);
 }
 
-static struct bio *bio_map_kern(void *data, unsigned int len, enum req_op op,
-		gfp_t gfp_mask)
+/**
+ *	bio_map_kern	-	map kernel address into bio
+ *	@q: the struct request_queue for the bio
+ *	@data: pointer to buffer to map
+ *	@len: length in bytes
+ *	@gfp_mask: allocation flags for bio allocation
+ *
+ *	Map the kernel address into a bio suitable for io to a block
+ *	device. Returns an error pointer in case of error.
+ */
+static struct bio *bio_map_kern(struct request_queue *q, void *data,
+		unsigned int len, gfp_t gfp_mask)
 {
-	unsigned int nr_vecs = bio_add_max_vecs(data, len);
+	unsigned long kaddr = (unsigned long)data;
+	unsigned long end = (kaddr + len + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	unsigned long start = kaddr >> PAGE_SHIFT;
+	const int nr_pages = end - start;
+	bool is_vmalloc = is_vmalloc_addr(data);
+	struct page *page;
+	int offset, i;
 	struct bio *bio;
 
-	bio = bio_kmalloc(nr_vecs, gfp_mask);
+	bio = bio_kmalloc(nr_pages, gfp_mask);
 	if (!bio)
 		return ERR_PTR(-ENOMEM);
-	bio_init(bio, NULL, bio->bi_inline_vecs, nr_vecs, op);
-	if (is_vmalloc_addr(data)) {
+	bio_init(bio, NULL, bio->bi_inline_vecs, nr_pages, 0);
+
+	if (is_vmalloc) {
+		flush_kernel_vmap_range(data, len);
 		bio->bi_private = data;
-		if (!bio_add_vmalloc(bio, data, len)) {
+	}
+
+	offset = offset_in_page(kaddr);
+	for (i = 0; i < nr_pages; i++) {
+		unsigned int bytes = PAGE_SIZE - offset;
+
+		if (len <= 0)
+			break;
+
+		if (bytes > len)
+			bytes = len;
+
+		if (!is_vmalloc)
+			page = virt_to_page(data);
+		else
+			page = vmalloc_to_page(data);
+		if (bio_add_page(bio, page, bytes, offset) < bytes) {
+			/* we don't support partial mappings */
 			bio_uninit(bio);
 			kfree(bio);
 			return ERR_PTR(-EINVAL);
 		}
-	} else {
-		bio_add_virt_nofail(bio, data, len);
+
+		data += bytes;
+		len -= bytes;
+		offset = 0;
 	}
+
 	bio->bi_end_io = bio_map_kern_endio;
 	return bio;
 }
@@ -364,16 +402,17 @@ static void bio_copy_kern_endio_read(struct bio *bio)
 
 /**
  *	bio_copy_kern	-	copy kernel address into bio
+ *	@q: the struct request_queue for the bio
  *	@data: pointer to buffer to copy
  *	@len: length in bytes
- *	@op: bio/request operation
  *	@gfp_mask: allocation flags for bio and page allocation
+ *	@reading: data direction is READ
  *
  *	copy the kernel address into a bio suitable for io to a block
  *	device. Returns an error pointer in case of error.
  */
-static struct bio *bio_copy_kern(void *data, unsigned int len, enum req_op op,
-		gfp_t gfp_mask)
+static struct bio *bio_copy_kern(struct request_queue *q, void *data,
+		unsigned int len, gfp_t gfp_mask, int reading)
 {
 	unsigned long kaddr = (unsigned long)data;
 	unsigned long end = (kaddr + len + PAGE_SIZE - 1) >> PAGE_SHIFT;
@@ -392,7 +431,7 @@ static struct bio *bio_copy_kern(void *data, unsigned int len, enum req_op op,
 	bio = bio_kmalloc(nr_pages, gfp_mask);
 	if (!bio)
 		return ERR_PTR(-ENOMEM);
-	bio_init(bio, NULL, bio->bi_inline_vecs, nr_pages, op);
+	bio_init(bio, NULL, bio->bi_inline_vecs, nr_pages, 0);
 
 	while (len) {
 		struct page *page;
@@ -405,7 +444,7 @@ static struct bio *bio_copy_kern(void *data, unsigned int len, enum req_op op,
 		if (!page)
 			goto cleanup;
 
-		if (op_is_write(op))
+		if (!reading)
 			memcpy(page_address(page), p, bytes);
 
 		if (bio_add_page(bio, page, bytes, 0) < bytes)
@@ -415,11 +454,11 @@ static struct bio *bio_copy_kern(void *data, unsigned int len, enum req_op op,
 		p += bytes;
 	}
 
-	if (op_is_write(op)) {
-		bio->bi_end_io = bio_copy_kern_endio;
-	} else {
+	if (reading) {
 		bio->bi_end_io = bio_copy_kern_endio_read;
 		bio->bi_private = data;
+	} else {
+		bio->bi_end_io = bio_copy_kern_endio;
 	}
 
 	return bio;
@@ -516,6 +555,8 @@ int blk_rq_map_user_iov(struct request_queue *q, struct request *rq,
 	int ret = -EINVAL;
 
 	if (map_data)
+		copy = true;
+	else if (blk_queue_may_bounce(q))
 		copy = true;
 	else if (iov_iter_alignment(iter) & align)
 		copy = true;
@@ -648,6 +689,7 @@ EXPORT_SYMBOL(blk_rq_unmap_user);
 
 /**
  * blk_rq_map_kern - map kernel data to a request, for passthrough requests
+ * @q:		request queue where request should be inserted
  * @rq:		request to fill
  * @kbuf:	the kernel buffer
  * @len:	length of user data
@@ -658,25 +700,30 @@ EXPORT_SYMBOL(blk_rq_unmap_user);
  *    buffer is used. Can be called multiple times to append multiple
  *    buffers.
  */
-int blk_rq_map_kern(struct request *rq, void *kbuf, unsigned int len,
-		gfp_t gfp_mask)
+int blk_rq_map_kern(struct request_queue *q, struct request *rq, void *kbuf,
+		    unsigned int len, gfp_t gfp_mask)
 {
+	int reading = rq_data_dir(rq) == READ;
 	unsigned long addr = (unsigned long) kbuf;
 	struct bio *bio;
 	int ret;
 
-	if (len > (queue_max_hw_sectors(rq->q) << SECTOR_SHIFT))
+	if (len > (queue_max_hw_sectors(q) << 9))
 		return -EINVAL;
 	if (!len || !kbuf)
 		return -EINVAL;
 
-	if (!blk_rq_aligned(rq->q, addr, len) || object_is_on_stack(kbuf))
-		bio = bio_copy_kern(kbuf, len, req_op(rq), gfp_mask);
+	if (!blk_rq_aligned(q, addr, len) || object_is_on_stack(kbuf) ||
+	    blk_queue_may_bounce(q))
+		bio = bio_copy_kern(q, kbuf, len, gfp_mask, reading);
 	else
-		bio = bio_map_kern(kbuf, len, req_op(rq), gfp_mask);
+		bio = bio_map_kern(q, kbuf, len, gfp_mask);
 
 	if (IS_ERR(bio))
 		return PTR_ERR(bio);
+
+	bio->bi_opf &= ~REQ_OP_MASK;
+	bio->bi_opf |= req_op(rq);
 
 	ret = blk_rq_append_bio(rq, bio);
 	if (unlikely(ret)) {

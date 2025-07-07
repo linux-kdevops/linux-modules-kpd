@@ -34,7 +34,7 @@
 
 static u32 i2c_dw_get_clk_rate_khz(struct dw_i2c_dev *dev)
 {
-	return clk_get_rate(dev->clk) / HZ_PER_KHZ;
+	return clk_get_rate(dev->clk) / KILO;
 }
 
 #ifdef CONFIG_OF

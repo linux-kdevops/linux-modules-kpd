@@ -309,7 +309,6 @@
 };
 
 &main_gpio1 {
-	bootph-all;
 	status = "okay";
 };
 

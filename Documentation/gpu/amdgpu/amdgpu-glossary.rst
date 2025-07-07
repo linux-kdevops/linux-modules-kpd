@@ -12,20 +12,8 @@ we have a dedicated glossary for Display Core at
       The number of CUs that are active on the system.  The number of active
       CUs may be less than SE * SH * CU depending on the board configuration.
 
-    BACO
-      Bus Alive, Chip Off
-
-    BOCO
-      Bus Off, Chip Off
-
     CE
       Constant Engine
-
-    CIK
-      Sea Islands
-
-    CB
-      Color Buffer
 
     CP
       Command Processor
@@ -33,17 +21,8 @@ we have a dedicated glossary for Display Core at
     CPLIB
       Content Protection Library
 
-    CS
-      Command Submission
-
-    CSB
-      Clear State Indirect Buffer
-
     CU
       Compute Unit
-
-    DB
-      Depth Buffer
 
     DFS
       Digital Frequency Synthesizer
@@ -53,9 +32,6 @@ we have a dedicated glossary for Display Core at
 
     EOP
       End Of Pipe/Pipeline
-
-    FLR
-      Function Level Reset
 
     GART
       Graphics Address Remapping Table.  This is the name we use for the GPUVM
@@ -68,12 +44,6 @@ we have a dedicated glossary for Display Core at
 
     GC
       Graphics and Compute
-
-    GDS
-      Global Data Share
-
-    GE
-      Geometry Engine
 
     GMC
       Graphic Memory Controller
@@ -110,9 +80,6 @@ we have a dedicated glossary for Display Core at
     KCQ
       Kernel Compute Queue
 
-    KFD
-      Kernel Fusion Driver
-
     KGQ
       Kernel Graphics Queue
 
@@ -121,9 +88,6 @@ we have a dedicated glossary for Display Core at
 
     MC
       Memory Controller
-
-    MCBP
-      Mid Command Buffer Preemption
 
     ME
       MicroEngine (Graphics)
@@ -140,9 +104,6 @@ we have a dedicated glossary for Display Core at
     MQD
       Memory Queue Descriptor
 
-    PA
-      Primitive Assembler / Physical Address
-
     PFP
       Pre-Fetch Parser (Graphics)
 
@@ -152,17 +113,11 @@ we have a dedicated glossary for Display Core at
     PSP
         Platform Security Processor
 
-    RB
-      Render Backends. Some people called it ROPs.
-
     RLC
       RunList Controller. This name is a remnant of past ages and doesn't have
       much meaning today. It's a group of general-purpose helper engines for
       the GFX block. It's involved in GFX power management and SR-IOV, among
       other things.
-
-    SC
-      Scan Converter
 
     SDMA
       System DMA
@@ -170,20 +125,11 @@ we have a dedicated glossary for Display Core at
     SE
       Shader Engine
 
-    SGPR
-      Scalar General-Purpose Registers
-
     SH
       SHader array
 
-    SI
-      Southern Islands
-
     SMU/SMC
       System Management Unit / System Management Controller
-
-    SPI (AMDGPU)
-      Shader Processor Input
 
     SRLC
       Save/Restore List Control
@@ -197,20 +143,11 @@ we have a dedicated glossary for Display Core at
     SS
       Spread Spectrum
 
-    SX
-      Shader Export
-
     TA
       Trusted Application
 
-    TC
-      Texture Cache
-
     TOC
       Table of Contents
-
-    UMSCH
-      User Mode Scheduler
 
     UVD
       Unified Video Decoder
@@ -221,17 +158,5 @@ we have a dedicated glossary for Display Core at
     VCN
       Video Codec Next
 
-    VGPR
-      Vector General-Purpose Registers
-
-    VMID
-      Virtual Memory ID
-
     VPE
       Video Processing Engine
-
-    XCC
-      Accelerator Core Complex
-
-    XCP
-      Accelerator Core Partition

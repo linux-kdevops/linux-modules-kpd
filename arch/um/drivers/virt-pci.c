@@ -538,6 +538,11 @@ void um_pci_platform_device_unregister(struct um_pci_device *dev)
 
 static int __init um_pci_init(void)
 {
+	struct irq_domain_info inner_domain_info = {
+		.size		= MAX_MSI_VECTORS,
+		.hwirq_max	= MAX_MSI_VECTORS,
+		.ops		= &um_pci_inner_domain_ops,
+	};
 	int err, i;
 
 	WARN_ON(logic_iomem_add_region(&virt_cfgspace_resource,
@@ -559,10 +564,10 @@ static int __init um_pci_init(void)
 		goto free;
 	}
 
-	um_pci_inner_domain = irq_domain_create_linear(um_pci_fwnode, MAX_MSI_VECTORS,
-						       &um_pci_inner_domain_ops, NULL);
-	if (!um_pci_inner_domain) {
-		err = -ENOMEM;
+	inner_domain_info.fwnode = um_pci_fwnode;
+	um_pci_inner_domain = irq_domain_instantiate(&inner_domain_info);
+	if (IS_ERR(um_pci_inner_domain)) {
+		err = PTR_ERR(um_pci_inner_domain);
 		goto free;
 	}
 
@@ -597,7 +602,7 @@ static int __init um_pci_init(void)
 	return 0;
 
 free:
-	if (um_pci_inner_domain)
+	if (!IS_ERR_OR_NULL(um_pci_inner_domain))
 		irq_domain_remove(um_pci_inner_domain);
 	if (um_pci_fwnode)
 		irq_domain_free_fwnode(um_pci_fwnode);

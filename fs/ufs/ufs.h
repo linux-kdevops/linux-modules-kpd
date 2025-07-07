@@ -24,8 +24,7 @@ struct ufs_sb_info {
 	struct ufs_cg_private_info * s_ucpi[UFS_MAX_GROUP_LOADED];
 	unsigned s_cgno[UFS_MAX_GROUP_LOADED];
 	unsigned short s_cg_loaded;
-	unsigned s_flavour;
-	unsigned s_on_err;
+	unsigned s_mount_opt;
 	struct super_block *sb;
 	int work_queued; /* non-zero if the delayed work is queued */
 	struct delayed_work sync_work; /* FS sync delayed work */
@@ -53,11 +52,13 @@ struct ufs_inode_info {
 };
 
 /* mount options */
+#define UFS_MOUNT_ONERROR		0x0000000F
 #define UFS_MOUNT_ONERROR_PANIC		0x00000001
 #define UFS_MOUNT_ONERROR_LOCK		0x00000002
 #define UFS_MOUNT_ONERROR_UMOUNT	0x00000004
 #define UFS_MOUNT_ONERROR_REPAIR	0x00000008
 
+#define UFS_MOUNT_UFSTYPE		0x0000FFF0
 #define UFS_MOUNT_UFSTYPE_OLD		0x00000010
 #define UFS_MOUNT_UFSTYPE_44BSD		0x00000020
 #define UFS_MOUNT_UFSTYPE_SUN		0x00000040
@@ -68,6 +69,10 @@ struct ufs_inode_info {
 #define UFS_MOUNT_UFSTYPE_HP	        0x00000800
 #define UFS_MOUNT_UFSTYPE_UFS2		0x00001000
 #define UFS_MOUNT_UFSTYPE_SUNOS		0x00002000
+
+#define ufs_clear_opt(o,opt)	o &= ~UFS_MOUNT_##opt
+#define ufs_set_opt(o,opt)	o |= UFS_MOUNT_##opt
+#define ufs_test_opt(o,opt)	((o) & UFS_MOUNT_##opt)
 
 /*
  * Debug code

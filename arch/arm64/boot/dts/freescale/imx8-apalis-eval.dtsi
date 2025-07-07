@@ -104,10 +104,7 @@
 	status = "okay";
 };
 
-/* Apalis PCIE1 */
-&pciea {
-	status = "okay";
-};
+/* TODO: Apalis PCIE1 */
 
 /* TODO: Apalis BKL1_PWM */
 
@@ -124,10 +121,7 @@
 	status = "okay";
 };
 
-/* Apalis SATA1 */
-&sata {
-	status = "okay";
-};
+/* TODO: Apalis SATA1 */
 
 /* Apalis SPDIF1 */
 &spdif0 {

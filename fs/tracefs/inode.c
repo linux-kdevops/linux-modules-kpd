@@ -555,7 +555,7 @@ struct dentry *tracefs_start_creating(const char *name, struct dentry *parent)
 	if (unlikely(IS_DEADDIR(d_inode(parent))))
 		dentry = ERR_PTR(-ENOENT);
 	else
-		dentry = lookup_noperm(&QSTR(name), parent);
+		dentry = lookup_one_len(name, parent, strlen(name));
 	if (!IS_ERR(dentry) && d_inode(dentry)) {
 		dput(dentry);
 		dentry = ERR_PTR(-EEXIST);

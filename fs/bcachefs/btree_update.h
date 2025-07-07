@@ -4,7 +4,6 @@
 
 #include "btree_iter.h"
 #include "journal.h"
-#include "snapshot.h"
 
 struct bch_fs;
 struct btree;
@@ -75,7 +74,7 @@ static inline int bch2_btree_delete_at_buffered(struct btree_trans *trans,
 }
 
 int __bch2_insert_snapshot_whiteouts(struct btree_trans *, enum btree_id,
-				     struct bpos, snapshot_id_list *);
+				     struct bpos, struct bpos);
 
 /*
  * For use when splitting extents in existing snapshots:
@@ -89,20 +88,11 @@ static inline int bch2_insert_snapshot_whiteouts(struct btree_trans *trans,
 						 struct bpos old_pos,
 						 struct bpos new_pos)
 {
-	BUG_ON(old_pos.snapshot != new_pos.snapshot);
-
 	if (!btree_type_has_snapshots(btree) ||
 	    bkey_eq(old_pos, new_pos))
 		return 0;
 
-	snapshot_id_list s;
-	int ret = bch2_get_snapshot_overwrites(trans, btree, old_pos, &s);
-	if (ret)
-		return ret;
-
-	return s.nr
-		? __bch2_insert_snapshot_whiteouts(trans, btree, new_pos, &s)
-		: 0;
+	return __bch2_insert_snapshot_whiteouts(trans, btree, old_pos, new_pos);
 }
 
 int bch2_trans_update_extent_overwrite(struct btree_trans *, struct btree_iter *,
@@ -112,65 +102,32 @@ int bch2_trans_update_extent_overwrite(struct btree_trans *, struct btree_iter *
 int bch2_bkey_get_empty_slot(struct btree_trans *, struct btree_iter *,
 			     enum btree_id, struct bpos);
 
-int __must_check bch2_trans_update_ip(struct btree_trans *, struct btree_iter *,
-				      struct bkey_i *, enum btree_iter_update_trigger_flags,
-				      unsigned long);
+int __must_check bch2_trans_update(struct btree_trans *, struct btree_iter *,
+				   struct bkey_i *, enum btree_iter_update_trigger_flags);
 
-static inline int __must_check
-bch2_trans_update(struct btree_trans *trans, struct btree_iter *iter,
-		  struct bkey_i *k, enum btree_iter_update_trigger_flags flags)
-{
-	return bch2_trans_update_ip(trans, iter, k, flags, _THIS_IP_);
-}
-
-static inline void *btree_trans_subbuf_base(struct btree_trans *trans,
-					    struct btree_trans_subbuf *buf)
-{
-	return (u64 *) trans->mem + buf->base;
-}
-
-static inline void *btree_trans_subbuf_top(struct btree_trans *trans,
-					   struct btree_trans_subbuf *buf)
-{
-	return (u64 *) trans->mem + buf->base + buf->u64s;
-}
-
-void *__bch2_trans_subbuf_alloc(struct btree_trans *,
-				struct btree_trans_subbuf *,
-				unsigned);
-
-static inline void *
-bch2_trans_subbuf_alloc(struct btree_trans *trans,
-			struct btree_trans_subbuf *buf,
-			unsigned u64s)
-{
-	if (buf->u64s + u64s > buf->size)
-		return __bch2_trans_subbuf_alloc(trans, buf, u64s);
-
-	void *p = btree_trans_subbuf_top(trans, buf);
-	buf->u64s += u64s;
-	return p;
-}
-
-static inline struct jset_entry *btree_trans_journal_entries_start(struct btree_trans *trans)
-{
-	return btree_trans_subbuf_base(trans, &trans->journal_entries);
-}
+struct jset_entry *__bch2_trans_jset_entry_alloc(struct btree_trans *, unsigned);
 
 static inline struct jset_entry *btree_trans_journal_entries_top(struct btree_trans *trans)
 {
-	return btree_trans_subbuf_top(trans, &trans->journal_entries);
+	return (void *) ((u64 *) trans->journal_entries + trans->journal_entries_u64s);
 }
 
 static inline struct jset_entry *
 bch2_trans_jset_entry_alloc(struct btree_trans *trans, unsigned u64s)
 {
-	return bch2_trans_subbuf_alloc(trans, &trans->journal_entries, u64s);
+	if (!trans->journal_entries ||
+	    trans->journal_entries_u64s + u64s > trans->journal_entries_size)
+		return __bch2_trans_jset_entry_alloc(trans, u64s);
+
+	struct jset_entry *e = btree_trans_journal_entries_top(trans);
+	trans->journal_entries_u64s += u64s;
+	return e;
 }
 
 int bch2_btree_insert_clone_trans(struct btree_trans *, enum btree_id, struct bkey_i *);
 
-int bch2_btree_write_buffer_insert_err(struct bch_fs *, enum btree_id, struct bkey_i *);
+int bch2_btree_write_buffer_insert_err(struct btree_trans *,
+				       enum btree_id, struct bkey_i *);
 
 static inline int __must_check bch2_trans_update_buffered(struct btree_trans *trans,
 					    enum btree_id btree,
@@ -178,10 +135,8 @@ static inline int __must_check bch2_trans_update_buffered(struct btree_trans *tr
 {
 	kmsan_check_memory(k, bkey_bytes(&k->k));
 
-	EBUG_ON(k->k.u64s > BTREE_WRITE_BUFERED_U64s_MAX);
-
 	if (unlikely(!btree_type_uses_write_buffer(btree))) {
-		int ret = bch2_btree_write_buffer_insert_err(trans->c, btree, k);
+		int ret = bch2_btree_write_buffer_insert_err(trans, btree, k);
 		dump_stack();
 		return ret;
 	}
@@ -214,7 +169,6 @@ void bch2_trans_commit_hook(struct btree_trans *,
 			    struct btree_trans_commit_hook *);
 int __bch2_trans_commit(struct btree_trans *, unsigned);
 
-int bch2_trans_log_str(struct btree_trans *, const char *);
 int bch2_trans_log_msg(struct btree_trans *, struct printbuf *);
 int bch2_trans_log_bkey(struct btree_trans *, enum btree_id, unsigned, struct bkey_i *);
 
@@ -263,15 +217,12 @@ static inline void bch2_trans_reset_updates(struct btree_trans *trans)
 		bch2_path_put(trans, i->path, true);
 
 	trans->nr_updates		= 0;
-	trans->journal_entries.u64s	= 0;
-	trans->journal_entries.size	= 0;
-	trans->accounting.u64s		= 0;
-	trans->accounting.size		= 0;
+	trans->journal_entries_u64s	= 0;
 	trans->hooks			= NULL;
 	trans->extra_disk_res		= 0;
 }
 
-static __always_inline struct bkey_i *__bch2_bkey_make_mut_noupdate(struct btree_trans *trans, struct bkey_s_c k,
+static inline struct bkey_i *__bch2_bkey_make_mut_noupdate(struct btree_trans *trans, struct bkey_s_c k,
 						  unsigned type, unsigned min_bytes)
 {
 	unsigned bytes = max_t(unsigned, min_bytes, bkey_bytes(k.k));
@@ -294,7 +245,7 @@ static __always_inline struct bkey_i *__bch2_bkey_make_mut_noupdate(struct btree
 	return mut;
 }
 
-static __always_inline struct bkey_i *bch2_bkey_make_mut_noupdate(struct btree_trans *trans, struct bkey_s_c k)
+static inline struct bkey_i *bch2_bkey_make_mut_noupdate(struct btree_trans *trans, struct bkey_s_c k)
 {
 	return __bch2_bkey_make_mut_noupdate(trans, k, 0, 0);
 }

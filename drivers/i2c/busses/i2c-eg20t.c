@@ -690,7 +690,7 @@ static u32 pch_i2c_func(struct i2c_adapter *adap)
 }
 
 static const struct i2c_algorithm pch_algorithm = {
-	.xfer = pch_i2c_xfer,
+	.master_xfer = pch_i2c_xfer,
 	.functionality = pch_i2c_func
 };
 

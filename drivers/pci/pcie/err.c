@@ -271,6 +271,7 @@ failed:
 
 	pci_uevent_ers(bridge, PCI_ERS_RESULT_DISCONNECT);
 
+	/* TODO: Should kernel panic here? */
 	pci_info(bridge, "device recovery failed\n");
 
 	return status;

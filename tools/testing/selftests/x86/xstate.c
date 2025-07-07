@@ -31,8 +31,7 @@
 	 (1 << XFEATURE_OPMASK)	|	\
 	 (1 << XFEATURE_ZMM_Hi256) |	\
 	 (1 << XFEATURE_Hi16_ZMM) |	\
-	 (1 << XFEATURE_XTILEDATA) |	\
-	 (1 << XFEATURE_APX))
+	 (1 << XFEATURE_XTILEDATA))
 
 static inline uint64_t xgetbv(uint32_t index)
 {

@@ -201,13 +201,6 @@ static const struct xe_ggtt_pt_ops xelpg_pt_wa_ops = {
 	.ggtt_set_pte = xe_ggtt_set_pte_and_flush,
 };
 
-static void dev_fini_ggtt(void *arg)
-{
-	struct xe_ggtt *ggtt = arg;
-
-	drain_workqueue(ggtt->wq);
-}
-
 /**
  * xe_ggtt_init_early - Early GGTT initialization
  * @ggtt: the &xe_ggtt to be initialized
@@ -261,10 +254,6 @@ int xe_ggtt_init_early(struct xe_ggtt *ggtt)
 	primelockdep(ggtt);
 
 	err = drmm_add_action_or_reset(&xe->drm, ggtt_fini_early, ggtt);
-	if (err)
-		return err;
-
-	err = devm_add_action_or_reset(xe->drm.dev, dev_fini_ggtt, ggtt);
 	if (err)
 		return err;
 
@@ -376,7 +365,7 @@ int xe_ggtt_init(struct xe_ggtt *ggtt)
 	 * scratch entries, rather keep the scratch page in system memory on
 	 * platforms where 64K pages are needed for VRAM.
 	 */
-	flags = 0;
+	flags = XE_BO_FLAG_PINNED;
 	if (ggtt->flags & XE_GGTT_FLAGS_64K)
 		flags |= XE_BO_FLAG_SYSTEM;
 	else

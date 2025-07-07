@@ -491,9 +491,8 @@ static int img_hash_init(struct ahash_request *req)
 	struct img_hash_ctx *ctx = crypto_ahash_ctx(tfm);
 
 	ahash_request_set_tfm(&rctx->fallback_req, ctx->fallback);
-	ahash_request_set_callback(&rctx->fallback_req,
-				   req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP,
-				   req->base.complete, req->base.data);
+	rctx->fallback_req.base.flags =	req->base.flags
+		& CRYPTO_TFM_REQ_MAY_SLEEP;
 
 	return crypto_ahash_init(&rctx->fallback_req);
 }
@@ -556,10 +555,10 @@ static int img_hash_update(struct ahash_request *req)
 	struct img_hash_ctx *ctx = crypto_ahash_ctx(tfm);
 
 	ahash_request_set_tfm(&rctx->fallback_req, ctx->fallback);
-	ahash_request_set_callback(&rctx->fallback_req,
-				   req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP,
-				   req->base.complete, req->base.data);
-	ahash_request_set_crypt(&rctx->fallback_req, req->src, NULL, req->nbytes);
+	rctx->fallback_req.base.flags = req->base.flags
+		& CRYPTO_TFM_REQ_MAY_SLEEP;
+	rctx->fallback_req.nbytes = req->nbytes;
+	rctx->fallback_req.src = req->src;
 
 	return crypto_ahash_update(&rctx->fallback_req);
 }
@@ -571,10 +570,9 @@ static int img_hash_final(struct ahash_request *req)
 	struct img_hash_ctx *ctx = crypto_ahash_ctx(tfm);
 
 	ahash_request_set_tfm(&rctx->fallback_req, ctx->fallback);
-	ahash_request_set_callback(&rctx->fallback_req,
-				   req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP,
-				   req->base.complete, req->base.data);
-	ahash_request_set_crypt(&rctx->fallback_req, NULL, req->result, 0);
+	rctx->fallback_req.base.flags = req->base.flags
+		& CRYPTO_TFM_REQ_MAY_SLEEP;
+	rctx->fallback_req.result = req->result;
 
 	return crypto_ahash_final(&rctx->fallback_req);
 }
@@ -586,12 +584,11 @@ static int img_hash_finup(struct ahash_request *req)
 	struct img_hash_ctx *ctx = crypto_ahash_ctx(tfm);
 
 	ahash_request_set_tfm(&rctx->fallback_req, ctx->fallback);
-	ahash_request_set_callback(&rctx->fallback_req,
-				   req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP,
-				   req->base.complete, req->base.data);
-	ahash_request_set_crypt(&rctx->fallback_req, req->src, req->result,
-				req->nbytes);
-
+	rctx->fallback_req.base.flags = req->base.flags
+		& CRYPTO_TFM_REQ_MAY_SLEEP;
+	rctx->fallback_req.nbytes = req->nbytes;
+	rctx->fallback_req.src = req->src;
+	rctx->fallback_req.result = req->result;
 
 	return crypto_ahash_finup(&rctx->fallback_req);
 }
@@ -603,9 +600,8 @@ static int img_hash_import(struct ahash_request *req, const void *in)
 	struct img_hash_ctx *ctx = crypto_ahash_ctx(tfm);
 
 	ahash_request_set_tfm(&rctx->fallback_req, ctx->fallback);
-	ahash_request_set_callback(&rctx->fallback_req,
-				   req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP,
-				   req->base.complete, req->base.data);
+	rctx->fallback_req.base.flags = req->base.flags
+		& CRYPTO_TFM_REQ_MAY_SLEEP;
 
 	return crypto_ahash_import(&rctx->fallback_req, in);
 }
@@ -617,9 +613,8 @@ static int img_hash_export(struct ahash_request *req, void *out)
 	struct img_hash_ctx *ctx = crypto_ahash_ctx(tfm);
 
 	ahash_request_set_tfm(&rctx->fallback_req, ctx->fallback);
-	ahash_request_set_callback(&rctx->fallback_req,
-				   req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP,
-				   req->base.complete, req->base.data);
+	rctx->fallback_req.base.flags = req->base.flags
+		& CRYPTO_TFM_REQ_MAY_SLEEP;
 
 	return crypto_ahash_export(&rctx->fallback_req, out);
 }

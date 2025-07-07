@@ -149,15 +149,15 @@ void btrfs_tree_read_lock_nested(struct extent_buffer *eb, enum btrfs_lock_nesti
 /*
  * Try-lock for read.
  *
- * Return true if the rwlock has been taken, false otherwise
+ * Return 1 if the rwlock has been taken, 0 otherwise
  */
-bool btrfs_try_tree_read_lock(struct extent_buffer *eb)
+int btrfs_try_tree_read_lock(struct extent_buffer *eb)
 {
 	if (down_read_trylock(&eb->lock)) {
 		trace_btrfs_try_tree_read_lock(eb);
-		return true;
+		return 1;
 	}
-	return false;
+	return 0;
 }
 
 /*

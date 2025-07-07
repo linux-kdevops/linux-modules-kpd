@@ -4,8 +4,7 @@
 
 set -e
 
-if [ ! -f /sys/bus/event_source/devices/cpu/caps/branches ] &&
-   [ ! -f /sys/bus/event_source/devices/cpu_core/caps/branches ]
+if [ ! -f /sys/devices/cpu/caps/branches ] && [ ! -f /sys/devices/cpu_core/caps/branches ]
 then
   echo "Skip: only x86 CPUs support LBR"
   exit 2
@@ -94,7 +93,7 @@ lbr_test() {
     return
   fi
 
-  zero_nr=$(echo "$out" | grep -A3 'branch stack: nr:0' | grep thread | grep -cv swapper || true)
+  zero_nr=$(echo "$out" | grep -c 'branch stack: nr:0' || true)
   r=$(($zero_nr * 100 / $bs_nr))
   if [ $r -gt $threshold ]; then
     echo "$test [Failed empty br stack ratio exceed $threshold%: $r%]"

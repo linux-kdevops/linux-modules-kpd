@@ -1370,9 +1370,9 @@ static int adv7511_set_fmt(struct v4l2_subdev *sd,
 	case V4L2_COLORSPACE_BT2020:
 		c = HDMI_COLORIMETRY_EXTENDED;
 		if (y && format->format.ycbcr_enc == V4L2_YCBCR_ENC_BT2020_CONST_LUM)
-			ec = HDMI_EXTENDED_COLORIMETRY_BT2020_CONST_LUM;
+			ec = 5; /* Not yet available in hdmi.h */
 		else
-			ec = HDMI_EXTENDED_COLORIMETRY_BT2020;
+			ec = 6; /* Not yet available in hdmi.h */
 		break;
 	default:
 		break;

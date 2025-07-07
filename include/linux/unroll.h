@@ -11,8 +11,10 @@
 
 #ifdef CONFIG_CC_IS_CLANG
 #define __pick_unrolled(x, y)		_Pragma(#x)
-#else
+#elif CONFIG_GCC_VERSION >= 80000
 #define __pick_unrolled(x, y)		_Pragma(#y)
+#else
+#define __pick_unrolled(x, y)		/* not supported */
 #endif
 
 /**

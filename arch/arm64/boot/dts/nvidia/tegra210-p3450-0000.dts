@@ -419,12 +419,6 @@
 		nvidia,sys-clock-req-active-high;
 	};
 
-	cec@70015000 {
-		status = "okay";
-
-		hdmi-phandle = <&sor1>;
-	};
-
 	hda@70030000 {
 		nvidia,model = "NVIDIA Jetson Nano HDA";
 

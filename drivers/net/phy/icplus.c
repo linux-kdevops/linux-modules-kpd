@@ -520,14 +520,12 @@ static int ip101a_g_match_phy_device(struct phy_device *phydev, bool ip101a)
 	return ip101a == !ret;
 }
 
-static int ip101a_match_phy_device(struct phy_device *phydev,
-				   const struct phy_driver *phydrv)
+static int ip101a_match_phy_device(struct phy_device *phydev)
 {
 	return ip101a_g_match_phy_device(phydev, true);
 }
 
-static int ip101g_match_phy_device(struct phy_device *phydev,
-				   const struct phy_driver *phydrv)
+static int ip101g_match_phy_device(struct phy_device *phydev)
 {
 	return ip101a_g_match_phy_device(phydev, false);
 }

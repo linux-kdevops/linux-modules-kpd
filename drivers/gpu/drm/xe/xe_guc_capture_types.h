@@ -39,8 +39,6 @@ struct __guc_mmio_reg_descr {
 	u32 flags;
 	/** @mask: The mask to apply */
 	u32 mask;
-	/** @dss_id: Cached index for steered registers */
-	u32 dss_id;
 	/** @regname: Name of the register */
 	const char *regname;
 };

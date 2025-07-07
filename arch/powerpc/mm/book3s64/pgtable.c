@@ -269,6 +269,11 @@ pud_t pfn_pud(unsigned long pfn, pgprot_t pgprot)
 	return __pud_mkhuge(pud_set_protbits(__pud(pudv), pgprot));
 }
 
+pmd_t mk_pmd(struct page *page, pgprot_t pgprot)
+{
+	return pfn_pmd(page_to_pfn(page), pgprot);
+}
+
 pmd_t pmd_modify(pmd_t pmd, pgprot_t newprot)
 {
 	unsigned long pmdv;
@@ -417,7 +422,7 @@ static pmd_t *__alloc_for_pmdcache(struct mm_struct *mm)
 	ptdesc = pagetable_alloc(gfp, 0);
 	if (!ptdesc)
 		return NULL;
-	if (!pagetable_pmd_ctor(mm, ptdesc)) {
+	if (!pagetable_pmd_ctor(ptdesc)) {
 		pagetable_free(ptdesc);
 		return NULL;
 	}

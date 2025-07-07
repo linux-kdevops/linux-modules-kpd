@@ -15,7 +15,6 @@
 #include <linux/firmware/samsung/exynos-acpm-protocol.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
-#include <linux/ktime.h>
 #include <linux/mailbox/exynos-message.h>
 #include <linux/mailbox_client.h>
 #include <linux/module.h>
@@ -33,7 +32,8 @@
 
 #define ACPM_PROTOCOL_SEQNUM		GENMASK(21, 16)
 
-#define ACPM_POLL_TIMEOUT_US		(100 * USEC_PER_MSEC)
+/* The unit of counter is 20 us. 5000 * 20 = 100 ms */
+#define ACPM_POLL_TIMEOUT		5000
 #define ACPM_TX_TIMEOUT_US		500000
 
 #define ACPM_GS101_INITDATA_BASE	0xa000
@@ -185,29 +185,6 @@ struct acpm_match_data {
 #define handle_to_acpm_info(h) container_of(h, struct acpm_info, handle)
 
 /**
- * acpm_get_saved_rx() - get the response if it was already saved.
- * @achan:	ACPM channel info.
- * @xfer:	reference to the transfer to get response for.
- * @tx_seqnum:	xfer TX sequence number.
- */
-static void acpm_get_saved_rx(struct acpm_chan *achan,
-			      const struct acpm_xfer *xfer, u32 tx_seqnum)
-{
-	const struct acpm_rx_data *rx_data = &achan->rx_data[tx_seqnum - 1];
-	u32 rx_seqnum;
-
-	if (!rx_data->response)
-		return;
-
-	rx_seqnum = FIELD_GET(ACPM_PROTOCOL_SEQNUM, rx_data->cmd[0]);
-
-	if (rx_seqnum == tx_seqnum) {
-		memcpy(xfer->rxd, rx_data->cmd, xfer->rxlen);
-		clear_bit(rx_seqnum - 1, achan->bitmap_seqnum);
-	}
-}
-
-/**
  * acpm_get_rx() - get response from RX queue.
  * @achan:	ACPM channel info.
  * @xfer:	reference to the transfer to get response for.
@@ -227,15 +204,14 @@ static int acpm_get_rx(struct acpm_chan *achan, const struct acpm_xfer *xfer)
 	rx_front = readl(achan->rx.front);
 	i = readl(achan->rx.rear);
 
-	tx_seqnum = FIELD_GET(ACPM_PROTOCOL_SEQNUM, xfer->txd[0]);
-
-	if (i == rx_front) {
-		acpm_get_saved_rx(achan, xfer, tx_seqnum);
+	/* Bail out if RX is empty. */
+	if (i == rx_front)
 		return 0;
-	}
 
 	base = achan->rx.base;
 	mlen = achan->mlen;
+
+	tx_seqnum = FIELD_GET(ACPM_PROTOCOL_SEQNUM, xfer->txd[0]);
 
 	/* Drain RX queue. */
 	do {
@@ -283,8 +259,16 @@ static int acpm_get_rx(struct acpm_chan *achan, const struct acpm_xfer *xfer)
 	 * If the response was not in this iteration of the queue, check if the
 	 * RX data was previously saved.
 	 */
-	if (!rx_set)
-		acpm_get_saved_rx(achan, xfer, tx_seqnum);
+	rx_data = &achan->rx_data[tx_seqnum - 1];
+	if (!rx_set && rx_data->response) {
+		rx_seqnum = FIELD_GET(ACPM_PROTOCOL_SEQNUM,
+				      rx_data->cmd[0]);
+
+		if (rx_seqnum == tx_seqnum) {
+			memcpy(xfer->rxd, rx_data->cmd, xfer->rxlen);
+			clear_bit(rx_seqnum - 1, achan->bitmap_seqnum);
+		}
+	}
 
 	return 0;
 }
@@ -300,13 +284,12 @@ static int acpm_dequeue_by_polling(struct acpm_chan *achan,
 				   const struct acpm_xfer *xfer)
 {
 	struct device *dev = achan->acpm->dev;
-	ktime_t timeout;
+	unsigned int cnt_20us = 0;
 	u32 seqnum;
 	int ret;
 
 	seqnum = FIELD_GET(ACPM_PROTOCOL_SEQNUM, xfer->txd[0]);
 
-	timeout = ktime_add_us(ktime_get(), ACPM_POLL_TIMEOUT_US);
 	do {
 		ret = acpm_get_rx(achan, xfer);
 		if (ret)
@@ -316,11 +299,12 @@ static int acpm_dequeue_by_polling(struct acpm_chan *achan,
 			return 0;
 
 		/* Determined experimentally. */
-		udelay(20);
-	} while (ktime_before(ktime_get(), timeout));
+		usleep_range(20, 30);
+		cnt_20us++;
+	} while (cnt_20us < ACPM_POLL_TIMEOUT);
 
-	dev_err(dev, "Timeout! ch:%u s:%u bitmap:%lx.\n",
-		achan->id, seqnum, achan->bitmap_seqnum[0]);
+	dev_err(dev, "Timeout! ch:%u s:%u bitmap:%lx, cnt_20us = %d.\n",
+		achan->id, seqnum, achan->bitmap_seqnum[0], cnt_20us);
 
 	return -ETIME;
 }
@@ -649,7 +633,7 @@ static int acpm_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, acpm);
 
-	return devm_of_platform_populate(dev);
+	return 0;
 }
 
 /**
@@ -677,30 +661,43 @@ static void devm_acpm_release(struct device *dev, void *res)
 }
 
 /**
- * acpm_get_by_node() - get the ACPM handle using node pointer.
- * @dev:	device pointer requesting ACPM handle.
- * @np:		ACPM device tree node.
+ * acpm_get_by_phandle() - get the ACPM handle using DT phandle.
+ * @dev:        device pointer requesting ACPM handle.
+ * @property:   property name containing phandle on ACPM node.
  *
  * Return: pointer to handle on success, ERR_PTR(-errno) otherwise.
  */
-static const struct acpm_handle *acpm_get_by_node(struct device *dev,
-						  struct device_node *np)
+static const struct acpm_handle *acpm_get_by_phandle(struct device *dev,
+						     const char *property)
 {
 	struct platform_device *pdev;
+	struct device_node *acpm_np;
 	struct device_link *link;
 	struct acpm_info *acpm;
 
-	pdev = of_find_device_by_node(np);
-	if (!pdev)
+	acpm_np = of_parse_phandle(dev->of_node, property, 0);
+	if (!acpm_np)
+		return ERR_PTR(-ENODEV);
+
+	pdev = of_find_device_by_node(acpm_np);
+	if (!pdev) {
+		dev_err(dev, "Cannot find device node %s\n", acpm_np->name);
+		of_node_put(acpm_np);
 		return ERR_PTR(-EPROBE_DEFER);
+	}
+
+	of_node_put(acpm_np);
 
 	acpm = platform_get_drvdata(pdev);
 	if (!acpm) {
+		dev_err(dev, "Cannot get drvdata from %s\n",
+			dev_name(&pdev->dev));
 		platform_device_put(pdev);
 		return ERR_PTR(-EPROBE_DEFER);
 	}
 
 	if (!try_module_get(pdev->dev.driver->owner)) {
+		dev_err(dev, "Cannot get module reference.\n");
 		platform_device_put(pdev);
 		return ERR_PTR(-EPROBE_DEFER);
 	}
@@ -719,14 +716,14 @@ static const struct acpm_handle *acpm_get_by_node(struct device *dev,
 }
 
 /**
- * devm_acpm_get_by_node() - managed get handle using node pointer.
- * @dev: device pointer requesting ACPM handle.
- * @np:  ACPM device tree node.
+ * devm_acpm_get_by_phandle() - managed get handle using phandle.
+ * @dev:        device pointer requesting ACPM handle.
+ * @property:   property name containing phandle on ACPM node.
  *
  * Return: pointer to handle on success, ERR_PTR(-errno) otherwise.
  */
-const struct acpm_handle *devm_acpm_get_by_node(struct device *dev,
-						struct device_node *np)
+const struct acpm_handle *devm_acpm_get_by_phandle(struct device *dev,
+						   const char *property)
 {
 	const struct acpm_handle **ptr, *handle;
 
@@ -734,7 +731,7 @@ const struct acpm_handle *devm_acpm_get_by_node(struct device *dev,
 	if (!ptr)
 		return ERR_PTR(-ENOMEM);
 
-	handle = acpm_get_by_node(dev, np);
+	handle = acpm_get_by_phandle(dev, property);
 	if (!IS_ERR(handle)) {
 		*ptr = handle;
 		devres_add(dev, ptr);
@@ -744,7 +741,6 @@ const struct acpm_handle *devm_acpm_get_by_node(struct device *dev,
 
 	return handle;
 }
-EXPORT_SYMBOL_GPL(devm_acpm_get_by_node);
 
 static const struct acpm_match_data acpm_gs101 = {
 	.initdata_base = ACPM_GS101_INITDATA_BASE,

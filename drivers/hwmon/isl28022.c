@@ -154,7 +154,6 @@ static int isl28022_read_current(struct device *dev, u32 attr, long *val)
 	struct isl28022_data *data = dev_get_drvdata(dev);
 	unsigned int regval;
 	int err;
-	u16 sign_bit;
 
 	switch (attr) {
 	case hwmon_curr_input:
@@ -162,9 +161,8 @@ static int isl28022_read_current(struct device *dev, u32 attr, long *val)
 				  ISL28022_REG_CURRENT, &regval);
 		if (err < 0)
 			return err;
-		sign_bit = (regval >> 15) & 0x01;
-		*val = (((long)(((u16)regval) & 0x7FFF) - (sign_bit * 32768)) *
-			1250L * (long)data->gain) / (long)data->shunt;
+		*val = ((long)regval * 1250L * (long)data->gain) /
+			(long)data->shunt;
 		break;
 	default:
 		return -EOPNOTSUPP;
@@ -303,7 +301,7 @@ static const struct regmap_config isl28022_regmap_config = {
 	.writeable_reg = isl28022_is_writeable_reg,
 	.volatile_reg = isl28022_is_volatile_reg,
 	.val_format_endian = REGMAP_ENDIAN_BIG,
-	.cache_type = REGCACHE_MAPLE,
+	.cache_type = REGCACHE_RBTREE,
 	.use_single_read = true,
 	.use_single_write = true,
 };

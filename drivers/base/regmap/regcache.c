@@ -34,10 +34,21 @@ static int regcache_defaults_cmp(const void *a, const void *b)
 		return 0;
 }
 
+static void regcache_defaults_swap(void *a, void *b, int size)
+{
+	struct reg_default *x = a;
+	struct reg_default *y = b;
+	struct reg_default tmp;
+
+	tmp = *x;
+	*x = *y;
+	*y = tmp;
+}
+
 void regcache_sort_defaults(struct reg_default *defaults, unsigned int ndefaults)
 {
 	sort(defaults, ndefaults, sizeof(*defaults),
-	     regcache_defaults_cmp, NULL);
+	     regcache_defaults_cmp, regcache_defaults_swap);
 }
 EXPORT_SYMBOL_GPL(regcache_sort_defaults);
 

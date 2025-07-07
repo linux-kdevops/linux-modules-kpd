@@ -39,7 +39,7 @@
 
 #define KVM_MAX_VCPUS VGIC_V3_MAX_CPUS
 
-#define KVM_VCPU_MAX_FEATURES 9
+#define KVM_VCPU_MAX_FEATURES 7
 #define KVM_VCPU_VALID_FEATURES	(BIT(KVM_VCPU_MAX_FEATURES) - 1)
 
 #define KVM_REQ_SLEEP \
@@ -53,7 +53,6 @@
 #define KVM_REQ_RESYNC_PMU_EL0		KVM_ARCH_REQ(7)
 #define KVM_REQ_NESTED_S2_UNMAP		KVM_ARCH_REQ(8)
 #define KVM_REQ_GUEST_HYP_IRQ_PENDING	KVM_ARCH_REQ(9)
-#define KVM_REQ_MAP_L1_VNCR_EL2		KVM_ARCH_REQ(10)
 
 #define KVM_DIRTY_LOG_MANUAL_CAPS   (KVM_DIRTY_LOG_MANUAL_PROTECT_ENABLE | \
 				     KVM_DIRTY_LOG_INITIALLY_SET)
@@ -274,17 +273,11 @@ struct kvm_sysreg_masks;
 
 enum fgt_group_id {
 	__NO_FGT_GROUP__,
-	HFGRTR_GROUP,
-	HFGWTR_GROUP = HFGRTR_GROUP,
+	HFGxTR_GROUP,
 	HDFGRTR_GROUP,
 	HDFGWTR_GROUP = HDFGRTR_GROUP,
 	HFGITR_GROUP,
 	HAFGRTR_GROUP,
-	HFGRTR2_GROUP,
-	HFGWTR2_GROUP = HFGRTR2_GROUP,
-	HDFGRTR2_GROUP,
-	HDFGWTR2_GROUP = HDFGRTR2_GROUP,
-	HFGITR2_GROUP,
 
 	/* Must be last */
 	__NR_FGT_GROUP_IDS__
@@ -366,8 +359,8 @@ struct kvm_arch {
 
 	cpumask_var_t supported_cpus;
 
-	/* Maximum number of counters for the guest */
-	u8 nr_pmu_counters;
+	/* PMCR_EL0.N value for the guest */
+	u8 pmcr_n;
 
 	/* Iterator for idreg debugfs */
 	u8	idreg_debugfs_iter;
@@ -395,9 +388,6 @@ struct kvm_arch {
 
 	/* Masks for VNCR-backed and general EL2 sysregs */
 	struct kvm_sysreg_masks	*sysreg_masks;
-
-	/* Count the number of VNCR_EL2 currently mapped */
-	atomic_t vncr_map_count;
 
 	/*
 	 * For an untrusted host VM, 'pkvm.handle' is used to lookup
@@ -571,13 +561,6 @@ enum vcpu_sysreg {
 	VNCR(HDFGRTR_EL2),
 	VNCR(HDFGWTR_EL2),
 	VNCR(HAFGRTR_EL2),
-	VNCR(HFGRTR2_EL2),
-	VNCR(HFGWTR2_EL2),
-	VNCR(HFGITR2_EL2),
-	VNCR(HDFGRTR2_EL2),
-	VNCR(HDFGWTR2_EL2),
-
-	VNCR(VNCR_EL2),
 
 	VNCR(CNTVOFF_EL2),
 	VNCR(CNTV_CVAL_EL0),
@@ -622,37 +605,6 @@ struct kvm_sysreg_masks {
 		u64	res1;
 	} mask[NR_SYS_REGS - __SANITISED_REG_START__];
 };
-
-struct fgt_masks {
-	const char	*str;
-	u64		mask;
-	u64		nmask;
-	u64		res0;
-};
-
-extern struct fgt_masks hfgrtr_masks;
-extern struct fgt_masks hfgwtr_masks;
-extern struct fgt_masks hfgitr_masks;
-extern struct fgt_masks hdfgrtr_masks;
-extern struct fgt_masks hdfgwtr_masks;
-extern struct fgt_masks hafgrtr_masks;
-extern struct fgt_masks hfgrtr2_masks;
-extern struct fgt_masks hfgwtr2_masks;
-extern struct fgt_masks hfgitr2_masks;
-extern struct fgt_masks hdfgrtr2_masks;
-extern struct fgt_masks hdfgwtr2_masks;
-
-extern struct fgt_masks kvm_nvhe_sym(hfgrtr_masks);
-extern struct fgt_masks kvm_nvhe_sym(hfgwtr_masks);
-extern struct fgt_masks kvm_nvhe_sym(hfgitr_masks);
-extern struct fgt_masks kvm_nvhe_sym(hdfgrtr_masks);
-extern struct fgt_masks kvm_nvhe_sym(hdfgwtr_masks);
-extern struct fgt_masks kvm_nvhe_sym(hafgrtr_masks);
-extern struct fgt_masks kvm_nvhe_sym(hfgrtr2_masks);
-extern struct fgt_masks kvm_nvhe_sym(hfgwtr2_masks);
-extern struct fgt_masks kvm_nvhe_sym(hfgitr2_masks);
-extern struct fgt_masks kvm_nvhe_sym(hdfgrtr2_masks);
-extern struct fgt_masks kvm_nvhe_sym(hdfgwtr2_masks);
 
 struct kvm_cpu_context {
 	struct user_pt_regs regs;	/* sp = sp_el0 */
@@ -702,8 +654,6 @@ struct kvm_host_data {
 #define KVM_HOST_DATA_FLAG_HAS_TRBE			1
 #define KVM_HOST_DATA_FLAG_TRBE_ENABLED			4
 #define KVM_HOST_DATA_FLAG_EL1_TRACING_CONFIGURED	5
-#define KVM_HOST_DATA_FLAG_VCPU_IN_HYP_CONTEXT		6
-#define KVM_HOST_DATA_FLAG_L1_VNCR_MAPPED		7
 	unsigned long flags;
 
 	struct kvm_cpu_context host_ctxt;
@@ -779,8 +729,6 @@ struct vcpu_reset_state {
 	bool		be;
 	bool		reset;
 };
-
-struct vncr_tlb;
 
 struct kvm_vcpu_arch {
 	struct kvm_cpu_context ctxt;
@@ -876,9 +824,6 @@ struct kvm_vcpu_arch {
 
 	/* Per-vcpu CCSIDR override or NULL */
 	u32 *ccsidr;
-
-	/* Per-vcpu TLB for VNCR_EL2 -- NULL when !NV */
-	struct vncr_tlb	*vncr_tlb;
 };
 
 /*
@@ -1026,21 +971,19 @@ struct kvm_vcpu_arch {
 #define vcpu_sve_zcr_elx(vcpu)						\
 	(unlikely(is_hyp_ctxt(vcpu)) ? ZCR_EL2 : ZCR_EL1)
 
-#define sve_state_size_from_vl(sve_max_vl) ({				\
+#define vcpu_sve_state_size(vcpu) ({					\
 	size_t __size_ret;						\
-	unsigned int __vq;						\
+	unsigned int __vcpu_vq;						\
 									\
-	if (WARN_ON(!sve_vl_valid(sve_max_vl))) {			\
+	if (WARN_ON(!sve_vl_valid((vcpu)->arch.sve_max_vl))) {		\
 		__size_ret = 0;						\
 	} else {							\
-		__vq = sve_vq_from_vl(sve_max_vl);			\
-		__size_ret = SVE_SIG_REGS_SIZE(__vq);			\
+		__vcpu_vq = vcpu_sve_max_vq(vcpu);			\
+		__size_ret = SVE_SIG_REGS_SIZE(__vcpu_vq);		\
 	}								\
 									\
 	__size_ret;							\
 })
-
-#define vcpu_sve_state_size(vcpu) sve_state_size_from_vl((vcpu)->arch.sve_max_vl)
 
 #define KVM_GUESTDBG_VALID_MASK (KVM_GUESTDBG_ENABLE | \
 				 KVM_GUESTDBG_USE_SW_BP | \
@@ -1107,36 +1050,14 @@ static inline u64 *___ctxt_sys_reg(const struct kvm_cpu_context *ctxt, int r)
 #define ctxt_sys_reg(c,r)	(*__ctxt_sys_reg(c,r))
 
 u64 kvm_vcpu_apply_reg_masks(const struct kvm_vcpu *, enum vcpu_sysreg, u64);
-
-#define __vcpu_assign_sys_reg(v, r, val)				\
-	do {								\
-		const struct kvm_cpu_context *ctxt = &(v)->arch.ctxt;	\
-		u64 __v = (val);					\
-		if (vcpu_has_nv((v)) && (r) >= __SANITISED_REG_START__)	\
-			__v = kvm_vcpu_apply_reg_masks((v), (r), __v);	\
-									\
-		ctxt_sys_reg(ctxt, (r)) = __v;				\
-	} while (0)
-
-#define __vcpu_rmw_sys_reg(v, r, op, val)				\
-	do {								\
-		const struct kvm_cpu_context *ctxt = &(v)->arch.ctxt;	\
-		u64 __v = ctxt_sys_reg(ctxt, (r));			\
-		__v op (val);						\
-		if (vcpu_has_nv((v)) && (r) >= __SANITISED_REG_START__)	\
-			__v = kvm_vcpu_apply_reg_masks((v), (r), __v);	\
-									\
-		ctxt_sys_reg(ctxt, (r)) = __v;				\
-	} while (0)
-
 #define __vcpu_sys_reg(v,r)						\
-	({								\
+	(*({								\
 		const struct kvm_cpu_context *ctxt = &(v)->arch.ctxt;	\
-		u64 __v = ctxt_sys_reg(ctxt, (r));			\
+		u64 *__r = __ctxt_sys_reg(ctxt, (r));			\
 		if (vcpu_has_nv((v)) && (r) >= __SANITISED_REG_START__)	\
-			__v = kvm_vcpu_apply_reg_masks((v), (r), __v);	\
-		__v;							\
-	})
+			*__r = kvm_vcpu_apply_reg_masks((v), (r), *__r);\
+		__r;							\
+	}))
 
 u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg);
 void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg);
@@ -1289,8 +1210,9 @@ void kvm_arm_resume_guest(struct kvm *kvm);
 	})
 
 /*
- * The isb() below is there to guarantee the same behaviour on VHE as on !VHE,
- * where the eret to EL1 acts as a context synchronization event.
+ * The couple of isb() below are there to guarantee the same behaviour
+ * on VHE as on !VHE, where the eret to EL1 acts as a context
+ * synchronization event.
  */
 #define kvm_call_hyp(f, ...)						\
 	do {								\
@@ -1308,6 +1230,7 @@ void kvm_arm_resume_guest(struct kvm *kvm);
 									\
 		if (has_vhe()) {					\
 			ret = f(__VA_ARGS__);				\
+			isb();						\
 		} else {						\
 			ret = kvm_call_hyp_nvhe(f, ##__VA_ARGS__);	\
 		}							\
@@ -1339,6 +1262,9 @@ struct sys_reg_desc;
 int __init populate_sysreg_config(const struct sys_reg_desc *sr,
 				  unsigned int idx);
 int __init populate_nv_trap_config(void);
+
+bool lock_all_vcpus(struct kvm *kvm);
+void unlock_all_vcpus(struct kvm *kvm);
 
 void kvm_calculate_traps(struct kvm_vcpu *vcpu);
 
@@ -1624,15 +1550,11 @@ void kvm_set_vm_id_reg(struct kvm *kvm, u32 reg, u64 val);
 	 kvm_cmp_feat_signed(kvm, id, fld, op, limit) :			\
 	 kvm_cmp_feat_unsigned(kvm, id, fld, op, limit))
 
-#define __kvm_has_feat(kvm, id, fld, limit)				\
+#define kvm_has_feat(kvm, id, fld, limit)				\
 	kvm_cmp_feat(kvm, id, fld, >=, limit)
 
-#define kvm_has_feat(kvm, ...) __kvm_has_feat(kvm, __VA_ARGS__)
-
-#define __kvm_has_feat_enum(kvm, id, fld, val)				\
+#define kvm_has_feat_enum(kvm, id, fld, val)				\
 	kvm_cmp_feat_unsigned(kvm, id, fld, ==, val)
-
-#define kvm_has_feat_enum(kvm, ...) __kvm_has_feat_enum(kvm, __VA_ARGS__)
 
 #define kvm_has_feat_range(kvm, id, fld, min, max)			\
 	(kvm_cmp_feat(kvm, id, fld, >=, min) &&				\
@@ -1670,10 +1592,5 @@ static inline bool kvm_arch_has_irq_bypass(void)
 {
 	return true;
 }
-
-void compute_fgu(struct kvm *kvm, enum fgt_group_id fgt);
-void get_reg_fixed_bits(struct kvm *kvm, enum vcpu_sysreg reg, u64 *res0, u64 *res1);
-void check_feature_map(void);
-
 
 #endif /* __ARM64_KVM_HOST_H__ */

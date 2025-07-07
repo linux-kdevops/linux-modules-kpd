@@ -477,7 +477,7 @@ void *text_poke_copy(void *addr, const void *opcode, size_t len)
 	return text_poke(addr, opcode, len);
 }
 
-void smp_text_poke_sync_each_cpu(void)
+void text_poke_sync(void)
 {
 }
 

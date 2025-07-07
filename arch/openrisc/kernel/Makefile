@@ -3,7 +3,7 @@
 # Makefile for the linux kernel.
 #
 
-always-$(KBUILD_BUILTIN)	:= vmlinux.lds
+extra-y	:= vmlinux.lds
 
 obj-y	:= head.o setup.o or32_ksyms.o process.o dma.o \
 	   traps.o time.o irq.o entry.o ptrace.o signal.o \

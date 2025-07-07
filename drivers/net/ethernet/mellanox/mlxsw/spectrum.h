@@ -233,10 +233,9 @@ struct mlxsw_sp_ptp_ops {
 			    u16 local_port);
 
 	int (*hwtstamp_get)(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct kernel_hwtstamp_config *config);
+			    struct hwtstamp_config *config);
 	int (*hwtstamp_set)(struct mlxsw_sp_port *mlxsw_sp_port,
-			    struct kernel_hwtstamp_config *config,
-			    struct netlink_ext_ack *extack);
+			    struct hwtstamp_config *config);
 	void (*shaper_work)(struct work_struct *work);
 	int (*get_ts_info)(struct mlxsw_sp *mlxsw_sp,
 			   struct kernel_ethtool_ts_info *info);
@@ -352,7 +351,7 @@ struct mlxsw_sp_port {
 	struct mlxsw_sp_flow_block *eg_flow_block;
 	struct {
 		struct delayed_work shaper_dw;
-		struct kernel_hwtstamp_config hwtstamp_config;
+		struct hwtstamp_config hwtstamp_config;
 		u16 ing_types;
 		u16 egr_types;
 		struct mlxsw_sp_ptp_port_stats stats;

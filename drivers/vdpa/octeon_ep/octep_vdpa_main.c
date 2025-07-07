@@ -454,9 +454,6 @@ static void octep_vdpa_remove_pf(struct pci_dev *pdev)
 		octep_iounmap_region(pdev, octpf->base, OCTEP_HW_MBOX_BAR);
 
 	octep_vdpa_pf_bar_expand(octpf);
-
-	/* The pf version does not use managed PCI. */
-	pci_disable_device(pdev);
 }
 
 static void octep_vdpa_vf_bar_shrink(struct pci_dev *pdev)
@@ -828,7 +825,7 @@ static int octep_vdpa_probe_pf(struct pci_dev *pdev)
 	struct octep_pf *octpf;
 	int ret;
 
-	ret = pci_enable_device(pdev);
+	ret = pcim_enable_device(pdev);
 	if (ret) {
 		dev_err(dev, "Failed to enable device\n");
 		return ret;
@@ -837,17 +834,15 @@ static int octep_vdpa_probe_pf(struct pci_dev *pdev)
 	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
 	if (ret) {
 		dev_err(dev, "No usable DMA configuration\n");
-		goto disable_pci;
+		return ret;
 	}
 	octpf = devm_kzalloc(dev, sizeof(*octpf), GFP_KERNEL);
-	if (!octpf) {
-		ret = -ENOMEM;
-		goto disable_pci;
-	}
+	if (!octpf)
+		return -ENOMEM;
 
 	ret = octep_iomap_region(pdev, octpf->base, OCTEP_HW_MBOX_BAR);
 	if (ret)
-		goto disable_pci;
+		return ret;
 
 	pci_set_master(pdev);
 	pci_set_drvdata(pdev, octpf);
@@ -861,8 +856,6 @@ static int octep_vdpa_probe_pf(struct pci_dev *pdev)
 
 unmap_region:
 	octep_iounmap_region(pdev, octpf->base, OCTEP_HW_MBOX_BAR);
-disable_pci:
-	pci_disable_device(pdev);
 	return ret;
 }
 

@@ -23,8 +23,9 @@ definitions:
     name-prefix: ovs-vport-type-
     entries: [ unspec, netdev, internal, gre, vxlan, geneve ]
   -
-    name: ovs-vport-stats
+    name: vport-stats
     type: struct
+    enum-name: ovs-vport-stats
     members:
       -
         name: rx-packets
@@ -105,7 +106,7 @@ attribute-sets:
       -
         name: stats
         type: binary
-        struct: ovs-vport-stats
+        struct: vport-stats
       -
         name: pad
         type: unused

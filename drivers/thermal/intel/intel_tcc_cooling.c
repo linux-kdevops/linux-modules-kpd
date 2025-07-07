@@ -11,7 +11,6 @@
 #include <linux/module.h>
 #include <linux/thermal.h>
 #include <asm/cpu_device_id.h>
-#include <asm/msr.h>
 
 #define TCC_PROGRAMMABLE	BIT(30)
 #define TCC_LOCKED		BIT(31)
@@ -82,14 +81,14 @@ static int __init tcc_cooling_init(void)
 	if (!id)
 		return -ENODEV;
 
-	err = rdmsrq_safe(MSR_PLATFORM_INFO, &val);
+	err = rdmsrl_safe(MSR_PLATFORM_INFO, &val);
 	if (err)
 		return err;
 
 	if (!(val & TCC_PROGRAMMABLE))
 		return -ENODEV;
 
-	err = rdmsrq_safe(MSR_IA32_TEMPERATURE_TARGET, &val);
+	err = rdmsrl_safe(MSR_IA32_TEMPERATURE_TARGET, &val);
 	if (err)
 		return err;
 

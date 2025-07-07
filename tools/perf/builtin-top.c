@@ -35,7 +35,6 @@
 #include "util/mmap.h"
 #include "util/session.h"
 #include "util/thread.h"
-#include "util/stat.h"
 #include "util/symbol.h"
 #include "util/synthetic-events.h"
 #include "util/top.h"
@@ -1310,11 +1309,7 @@ static int __cmd_top(struct perf_top *top)
 		}
 	}
 
-	/*
-	 * Use global stat_config that is zero meaning aggr_mode is AGGR_NONE
-	 * and hybrid_merge is false.
-	 */
-	evlist__uniquify_evsel_names(top->evlist, &stat_config);
+	evlist__uniquify_name(top->evlist);
 	ret = perf_top__start_counters(top);
 	if (ret)
 		return ret;
@@ -1795,7 +1790,7 @@ int cmd_top(int argc, const char **argv)
 
 	if (!callchain_param.enabled) {
 		symbol_conf.cumulate_callchain = false;
-		perf_hpp__cancel_cumulate(top.evlist);
+		perf_hpp__cancel_cumulate();
 	}
 
 	if (symbol_conf.cumulate_callchain && !callchain_param.order_set)

@@ -271,7 +271,7 @@ static int read_btree_nodes_worker(void *p)
 err:
 	bio_put(bio);
 	free_page((unsigned long) buf);
-	enumerated_ref_put(&ca->io_ref[READ], BCH_DEV_READ_REF_btree_node_scan);
+	percpu_ref_put(&ca->io_ref[READ]);
 	closure_put(w->cl);
 	kfree(w);
 	return 0;
@@ -285,13 +285,13 @@ static int read_btree_nodes(struct find_btree_nodes *f)
 
 	closure_init_stack(&cl);
 
-	for_each_online_member(c, ca, BCH_DEV_READ_REF_btree_node_scan) {
+	for_each_online_member(c, ca) {
 		if (!(ca->mi.data_allowed & BIT(BCH_DATA_btree)))
 			continue;
 
 		struct find_btree_nodes_worker *w = kmalloc(sizeof(*w), GFP_KERNEL);
 		if (!w) {
-			enumerated_ref_put(&ca->io_ref[READ], BCH_DEV_READ_REF_btree_node_scan);
+			percpu_ref_put(&ca->io_ref[READ]);
 			ret = -ENOMEM;
 			goto err;
 		}
@@ -303,14 +303,14 @@ static int read_btree_nodes(struct find_btree_nodes *f)
 		struct task_struct *t = kthread_create(read_btree_nodes_worker, w, "read_btree_nodes/%s", ca->name);
 		ret = PTR_ERR_OR_ZERO(t);
 		if (ret) {
-			enumerated_ref_put(&ca->io_ref[READ], BCH_DEV_READ_REF_btree_node_scan);
+			percpu_ref_put(&ca->io_ref[READ]);
 			kfree(w);
 			bch_err_msg(c, ret, "starting kthread");
 			break;
 		}
 
 		closure_get(&cl);
-		enumerated_ref_get(&ca->io_ref[READ], BCH_DEV_READ_REF_btree_node_scan);
+		percpu_ref_get(&ca->io_ref[READ]);
 		wake_up_process(t);
 	}
 err:
@@ -363,8 +363,6 @@ static int handle_overwrites(struct bch_fs *c,
 				min_heap_sift_down(nodes_heap, 0, &found_btree_node_heap_cbs, NULL);
 			}
 		}
-
-		cond_resched();
 	}
 
 	return 0;
@@ -397,7 +395,7 @@ int bch2_scan_for_btree_nodes(struct bch_fs *c)
 		printbuf_reset(&buf);
 		prt_printf(&buf, "%s: nodes found:\n", __func__);
 		found_btree_nodes_to_text(&buf, c, f->nodes);
-		bch2_print_str(c, KERN_INFO, buf.buf);
+		bch2_print_string_as_lines(KERN_INFO, buf.buf);
 	}
 
 	sort_nonatomic(f->nodes.data, f->nodes.nr, sizeof(f->nodes.data[0]), found_btree_node_cmp_cookie, NULL);
@@ -426,7 +424,7 @@ int bch2_scan_for_btree_nodes(struct bch_fs *c)
 		printbuf_reset(&buf);
 		prt_printf(&buf, "%s: nodes after merging replicas:\n", __func__);
 		found_btree_nodes_to_text(&buf, c, f->nodes);
-		bch2_print_str(c, KERN_INFO, buf.buf);
+		bch2_print_string_as_lines(KERN_INFO, buf.buf);
 	}
 
 	swap(nodes_heap, f->nodes);
@@ -472,7 +470,7 @@ int bch2_scan_for_btree_nodes(struct bch_fs *c)
 		printbuf_reset(&buf);
 		prt_printf(&buf, "%s: nodes found after overwrites:\n", __func__);
 		found_btree_nodes_to_text(&buf, c, f->nodes);
-		bch2_print_str(c, KERN_INFO, buf.buf);
+		bch2_print_string_as_lines(KERN_INFO, buf.buf);
 	} else {
 		bch_info(c, "btree node scan found %zu nodes after overwrites", f->nodes.nr);
 	}
@@ -521,12 +519,8 @@ bool bch2_btree_node_is_stale(struct bch_fs *c, struct btree *b)
 	return false;
 }
 
-int bch2_btree_has_scanned_nodes(struct bch_fs *c, enum btree_id btree)
+bool bch2_btree_has_scanned_nodes(struct bch_fs *c, enum btree_id btree)
 {
-	int ret = bch2_run_print_explicit_recovery_pass(c, BCH_RECOVERY_PASS_scan_for_btree_nodes);
-	if (ret)
-		return ret;
-
 	struct found_btree_node search = {
 		.btree_id	= btree,
 		.level		= 0,
@@ -547,7 +541,7 @@ int bch2_get_scanned_nodes(struct bch_fs *c, enum btree_id btree,
 
 	struct find_btree_nodes *f = &c->found_btree_nodes;
 
-	int ret = bch2_run_print_explicit_recovery_pass(c, BCH_RECOVERY_PASS_scan_for_btree_nodes);
+	int ret = bch2_run_explicit_recovery_pass(c, BCH_RECOVERY_PASS_scan_for_btree_nodes);
 	if (ret)
 		return ret;
 

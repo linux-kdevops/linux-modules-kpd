@@ -132,9 +132,8 @@ static int softnet_seq_show(struct seq_file *seq, void *v)
 
 	rcu_read_lock();
 	fl = rcu_dereference(sd->flow_limit);
-	/* Pairs with WRITE_ONCE() in skb_flow_limit() */
 	if (fl)
-		flow_limit_count = READ_ONCE(fl->count);
+		flow_limit_count = fl->count;
 	rcu_read_unlock();
 #endif
 
@@ -145,11 +144,11 @@ static int softnet_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq,
 		   "%08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x "
 		   "%08x %08x\n",
-		   READ_ONCE(sd->processed), atomic_read(&sd->dropped),
-		   READ_ONCE(sd->time_squeeze), 0,
+		   sd->processed, atomic_read(&sd->dropped),
+		   sd->time_squeeze, 0,
 		   0, 0, 0, 0, /* was fastroute */
 		   0,	/* was cpu_collision */
-		   READ_ONCE(sd->received_rps), flow_limit_count,
+		   sd->received_rps, flow_limit_count,
 		   input_qlen + process_qlen, (int)seq->index,
 		   input_qlen, process_qlen);
 	return 0;

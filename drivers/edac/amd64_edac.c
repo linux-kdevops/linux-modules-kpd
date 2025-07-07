@@ -2,8 +2,8 @@
 #include <linux/ras.h>
 #include <linux/string_choices.h>
 #include "amd64_edac.h"
-#include <asm/amd/nb.h>
-#include <asm/amd/node.h>
+#include <asm/amd_nb.h>
+#include <asm/amd_node.h>
 
 static struct edac_pci_ctl_info *pci_ctl;
 
@@ -1209,9 +1209,7 @@ static int umc_get_cs_mode(int dimm, u8 ctrl, struct amd64_pvt *pvt)
 	if (csrow_enabled(2 * dimm + 1, ctrl, pvt))
 		cs_mode |= CS_ODD_PRIMARY;
 
-	if (csrow_sec_enabled(2 * dimm, ctrl, pvt))
-		cs_mode |= CS_EVEN_SECONDARY;
-
+	/* Asymmetric dual-rank DIMM support. */
 	if (csrow_sec_enabled(2 * dimm + 1, ctrl, pvt))
 		cs_mode |= CS_ODD_SECONDARY;
 
@@ -1232,13 +1230,12 @@ static int umc_get_cs_mode(int dimm, u8 ctrl, struct amd64_pvt *pvt)
 	return cs_mode;
 }
 
-static int calculate_cs_size(u32 mask, unsigned int cs_mode)
+static int __addr_mask_to_cs_size(u32 addr_mask_orig, unsigned int cs_mode,
+				  int csrow_nr, int dimm)
 {
-	int msb, weight, num_zero_bits;
-	u32 deinterleaved_mask;
-
-	if (!mask)
-		return 0;
+	u32 msb, weight, num_zero_bits;
+	u32 addr_mask_deinterleaved;
+	int size = 0;
 
 	/*
 	 * The number of zero bits in the mask is equal to the number of bits
@@ -1251,30 +1248,19 @@ static int calculate_cs_size(u32 mask, unsigned int cs_mode)
 	 * without swapping with the most significant bit. This can be handled
 	 * by keeping the MSB where it is and ignoring the single zero bit.
 	 */
-	msb = fls(mask) - 1;
-	weight = hweight_long(mask);
+	msb = fls(addr_mask_orig) - 1;
+	weight = hweight_long(addr_mask_orig);
 	num_zero_bits = msb - weight - !!(cs_mode & CS_3R_INTERLEAVE);
 
 	/* Take the number of zero bits off from the top of the mask. */
-	deinterleaved_mask = GENMASK(msb - num_zero_bits, 1);
-	edac_dbg(1, "  Deinterleaved AddrMask: 0x%x\n", deinterleaved_mask);
-
-	return (deinterleaved_mask >> 2) + 1;
-}
-
-static int __addr_mask_to_cs_size(u32 addr_mask, u32 addr_mask_sec,
-				  unsigned int cs_mode, int csrow_nr, int dimm)
-{
-	int size;
+	addr_mask_deinterleaved = GENMASK_ULL(msb - num_zero_bits, 1);
 
 	edac_dbg(1, "CS%d DIMM%d AddrMasks:\n", csrow_nr, dimm);
-	edac_dbg(1, "  Primary AddrMask: 0x%x\n", addr_mask);
+	edac_dbg(1, "  Original AddrMask: 0x%x\n", addr_mask_orig);
+	edac_dbg(1, "  Deinterleaved AddrMask: 0x%x\n", addr_mask_deinterleaved);
 
 	/* Register [31:1] = Address [39:9]. Size is in kBs here. */
-	size = calculate_cs_size(addr_mask, cs_mode);
-
-	edac_dbg(1, "  Secondary AddrMask: 0x%x\n", addr_mask_sec);
-	size += calculate_cs_size(addr_mask_sec, cs_mode);
+	size = (addr_mask_deinterleaved >> 2) + 1;
 
 	/* Return size in MBs. */
 	return size >> 10;
@@ -1283,8 +1269,8 @@ static int __addr_mask_to_cs_size(u32 addr_mask, u32 addr_mask_sec,
 static int umc_addr_mask_to_cs_size(struct amd64_pvt *pvt, u8 umc,
 				    unsigned int cs_mode, int csrow_nr)
 {
-	u32 addr_mask = 0, addr_mask_sec = 0;
 	int cs_mask_nr = csrow_nr;
+	u32 addr_mask_orig;
 	int dimm, size = 0;
 
 	/* No Chip Selects are enabled. */
@@ -1322,13 +1308,13 @@ static int umc_addr_mask_to_cs_size(struct amd64_pvt *pvt, u8 umc,
 	if (!pvt->flags.zn_regs_v2)
 		cs_mask_nr >>= 1;
 
-	if (cs_mode & (CS_EVEN_PRIMARY | CS_ODD_PRIMARY))
-		addr_mask = pvt->csels[umc].csmasks[cs_mask_nr];
+	/* Asymmetric dual-rank DIMM support. */
+	if ((csrow_nr & 1) && (cs_mode & CS_ODD_SECONDARY))
+		addr_mask_orig = pvt->csels[umc].csmasks_sec[cs_mask_nr];
+	else
+		addr_mask_orig = pvt->csels[umc].csmasks[cs_mask_nr];
 
-	if (cs_mode & (CS_EVEN_SECONDARY | CS_ODD_SECONDARY))
-		addr_mask_sec = pvt->csels[umc].csmasks_sec[cs_mask_nr];
-
-	return __addr_mask_to_cs_size(addr_mask, addr_mask_sec, cs_mode, csrow_nr, dimm);
+	return __addr_mask_to_cs_size(addr_mask_orig, cs_mode, csrow_nr, dimm);
 }
 
 static void umc_debug_display_dimm_sizes(struct amd64_pvt *pvt, u8 ctrl)
@@ -2956,13 +2942,13 @@ static void dct_read_mc_regs(struct amd64_pvt *pvt)
 	 * Retrieve TOP_MEM and TOP_MEM2; no masking off of reserved bits since
 	 * those are Read-As-Zero.
 	 */
-	rdmsrq(MSR_K8_TOP_MEM1, pvt->top_mem);
+	rdmsrl(MSR_K8_TOP_MEM1, pvt->top_mem);
 	edac_dbg(0, "  TOP_MEM:  0x%016llx\n", pvt->top_mem);
 
 	/* Check first whether TOP_MEM2 is enabled: */
-	rdmsrq(MSR_AMD64_SYSCFG, msr_val);
+	rdmsrl(MSR_AMD64_SYSCFG, msr_val);
 	if (msr_val & BIT(21)) {
-		rdmsrq(MSR_K8_TOP_MEM2, pvt->top_mem2);
+		rdmsrl(MSR_K8_TOP_MEM2, pvt->top_mem2);
 		edac_dbg(0, "  TOP_MEM2: 0x%016llx\n", pvt->top_mem2);
 	} else {
 		edac_dbg(0, "  TOP_MEM2 disabled\n");
@@ -3526,10 +3512,9 @@ static void gpu_get_err_info(struct mce *m, struct err_info *err)
 static int gpu_addr_mask_to_cs_size(struct amd64_pvt *pvt, u8 umc,
 				    unsigned int cs_mode, int csrow_nr)
 {
-	u32 addr_mask		= pvt->csels[umc].csmasks[csrow_nr];
-	u32 addr_mask_sec	= pvt->csels[umc].csmasks_sec[csrow_nr];
+	u32 addr_mask_orig = pvt->csels[umc].csmasks[csrow_nr];
 
-	return __addr_mask_to_cs_size(addr_mask, addr_mask_sec, cs_mode, csrow_nr, csrow_nr >> 1);
+	return __addr_mask_to_cs_size(addr_mask_orig, cs_mode, csrow_nr, csrow_nr >> 1);
 }
 
 static void gpu_debug_display_dimm_sizes(struct amd64_pvt *pvt, u8 ctrl)
@@ -3894,7 +3879,6 @@ static int per_family_init(struct amd64_pvt *pvt)
 			break;
 		case 0x70 ... 0x7f:
 			pvt->ctl_name			= "F19h_M70h";
-			pvt->max_mcs			= 4;
 			pvt->flags.zn_regs_v2		= 1;
 			break;
 		case 0x90 ... 0x9f:

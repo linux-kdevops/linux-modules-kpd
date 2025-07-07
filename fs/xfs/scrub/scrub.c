@@ -680,6 +680,8 @@ xfs_scrub_metadata(
 	if (error)
 		goto out;
 
+	xfs_warn_experimental(mp, XFS_EXPERIMENTAL_SCRUB);
+
 	sc = kzalloc(sizeof(struct xfs_scrub), XCHK_GFP_FLAGS);
 	if (!sc) {
 		error = -ENOMEM;

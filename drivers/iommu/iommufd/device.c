@@ -221,6 +221,7 @@ struct iommufd_device *iommufd_device_bind(struct iommufd_ctx *ictx,
 	refcount_inc(&idev->obj.users);
 	/* igroup refcount moves into iommufd_device */
 	idev->igroup = igroup;
+	mutex_init(&idev->iopf_lock);
 
 	/*
 	 * If the caller fails after this success it must call
@@ -424,34 +425,12 @@ static int iommufd_hwpt_pasid_compat(struct iommufd_hw_pagetable *hwpt,
 	return 0;
 }
 
-static bool iommufd_hwpt_compatible_device(struct iommufd_hw_pagetable *hwpt,
-					   struct iommufd_device *idev)
-{
-	struct pci_dev *pdev;
-
-	if (!hwpt->fault || !dev_is_pci(idev->dev))
-		return true;
-
-	/*
-	 * Once we turn on PCI/PRI support for VF, the response failure code
-	 * should not be forwarded to the hardware due to PRI being a shared
-	 * resource between PF and VFs. There is no coordination for this
-	 * shared capability. This waits for a vPRI reset to recover.
-	 */
-	pdev = to_pci_dev(idev->dev);
-
-	return (!pdev->is_virtfn || !pci_pri_supported(pdev));
-}
-
 static int iommufd_hwpt_attach_device(struct iommufd_hw_pagetable *hwpt,
 				      struct iommufd_device *idev,
 				      ioasid_t pasid)
 {
 	struct iommufd_attach_handle *handle;
 	int rc;
-
-	if (!iommufd_hwpt_compatible_device(hwpt, idev))
-		return -EINVAL;
 
 	rc = iommufd_hwpt_pasid_compat(hwpt, idev, pasid);
 	if (rc)
@@ -461,6 +440,12 @@ static int iommufd_hwpt_attach_device(struct iommufd_hw_pagetable *hwpt,
 	if (!handle)
 		return -ENOMEM;
 
+	if (hwpt->fault) {
+		rc = iommufd_fault_iopf_enable(idev);
+		if (rc)
+			goto out_free_handle;
+	}
+
 	handle->idev = idev;
 	if (pasid == IOMMU_NO_PASID)
 		rc = iommu_attach_group_handle(hwpt->domain, idev->igroup->group,
@@ -469,10 +454,13 @@ static int iommufd_hwpt_attach_device(struct iommufd_hw_pagetable *hwpt,
 		rc = iommu_attach_device_pasid(hwpt->domain, idev->dev, pasid,
 					       &handle->handle);
 	if (rc)
-		goto out_free_handle;
+		goto out_disable_iopf;
 
 	return 0;
 
+out_disable_iopf:
+	if (hwpt->fault)
+		iommufd_fault_iopf_disable(idev);
 out_free_handle:
 	kfree(handle);
 	return rc;
@@ -504,7 +492,10 @@ static void iommufd_hwpt_detach_device(struct iommufd_hw_pagetable *hwpt,
 	else
 		iommu_detach_device_pasid(hwpt->domain, idev->dev, pasid);
 
-	iommufd_auto_response_faults(hwpt, handle);
+	if (hwpt->fault) {
+		iommufd_auto_response_faults(hwpt, handle);
+		iommufd_fault_iopf_disable(idev);
+	}
 	kfree(handle);
 }
 
@@ -516,9 +507,6 @@ static int iommufd_hwpt_replace_device(struct iommufd_device *idev,
 	struct iommufd_attach_handle *handle, *old_handle;
 	int rc;
 
-	if (!iommufd_hwpt_compatible_device(hwpt, idev))
-		return -EINVAL;
-
 	rc = iommufd_hwpt_pasid_compat(hwpt, idev, pasid);
 	if (rc)
 		return rc;
@@ -529,6 +517,12 @@ static int iommufd_hwpt_replace_device(struct iommufd_device *idev,
 	if (!handle)
 		return -ENOMEM;
 
+	if (hwpt->fault && !old->fault) {
+		rc = iommufd_fault_iopf_enable(idev);
+		if (rc)
+			goto out_free_handle;
+	}
+
 	handle->idev = idev;
 	if (pasid == IOMMU_NO_PASID)
 		rc = iommu_replace_group_handle(idev->igroup->group,
@@ -537,13 +531,20 @@ static int iommufd_hwpt_replace_device(struct iommufd_device *idev,
 		rc = iommu_replace_device_pasid(hwpt->domain, idev->dev,
 						pasid, &handle->handle);
 	if (rc)
-		goto out_free_handle;
+		goto out_disable_iopf;
 
-	iommufd_auto_response_faults(hwpt, old_handle);
+	if (old->fault) {
+		iommufd_auto_response_faults(hwpt, old_handle);
+		if (!hwpt->fault)
+			iommufd_fault_iopf_disable(idev);
+	}
 	kfree(old_handle);
 
 	return 0;
 
+out_disable_iopf:
+	if (hwpt->fault && !old->fault)
+		iommufd_fault_iopf_disable(idev);
 out_free_handle:
 	kfree(handle);
 	return rc;

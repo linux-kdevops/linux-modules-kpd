@@ -1950,18 +1950,17 @@ static int ocelot_gpio_get(struct gpio_chip *chip, unsigned int offset)
 	return !!(val & BIT(offset % 32));
 }
 
-static int ocelot_gpio_set(struct gpio_chip *chip, unsigned int offset,
-			   int value)
+static void ocelot_gpio_set(struct gpio_chip *chip, unsigned int offset,
+			    int value)
 {
 	struct ocelot_pinctrl *info = gpiochip_get_data(chip);
 
 	if (value)
-		return regmap_write(info->map,
-				    REG(OCELOT_GPIO_OUT_SET, info, offset),
-				    BIT(offset % 32));
-
-	return regmap_write(info->map, REG(OCELOT_GPIO_OUT_CLR, info, offset),
-			    BIT(offset % 32));
+		regmap_write(info->map, REG(OCELOT_GPIO_OUT_SET, info, offset),
+			     BIT(offset % 32));
+	else
+		regmap_write(info->map, REG(OCELOT_GPIO_OUT_CLR, info, offset),
+			     BIT(offset % 32));
 }
 
 static int ocelot_gpio_get_direction(struct gpio_chip *chip,
@@ -1997,7 +1996,7 @@ static int ocelot_gpio_direction_output(struct gpio_chip *chip,
 static const struct gpio_chip ocelot_gpiolib_chip = {
 	.request = gpiochip_generic_request,
 	.free = gpiochip_generic_free,
-	.set_rv = ocelot_gpio_set,
+	.set = ocelot_gpio_set,
 	.get = ocelot_gpio_get,
 	.get_direction = ocelot_gpio_get_direction,
 	.direction_input = pinctrl_gpio_direction_input,

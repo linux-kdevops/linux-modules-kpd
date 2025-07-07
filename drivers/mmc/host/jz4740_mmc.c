@@ -641,8 +641,7 @@ poll_timeout:
 
 static void jz4740_mmc_timeout(struct timer_list *t)
 {
-	struct jz4740_mmc_host *host = timer_container_of(host, t,
-							  timeout_timer);
+	struct jz4740_mmc_host *host = from_timer(host, t, timeout_timer);
 
 	if (!test_and_clear_bit(0, &host->waiting))
 		return;

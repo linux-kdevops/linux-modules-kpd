@@ -29,7 +29,6 @@
 #include <net/pkt_cls.h>
 #include <net/rtnetlink.h>
 #include <net/udp_tunnel.h>
-#include <net/busy_poll.h>
 
 #include "netdevsim.h"
 
@@ -358,7 +357,6 @@ static int nsim_rcv(struct nsim_rq *rq, int budget)
 			break;
 
 		skb = skb_dequeue(&rq->skb_queue);
-		skb_mark_napi_id(skb, &rq->napi);
 		netif_receive_skb(skb);
 	}
 
@@ -371,8 +369,7 @@ static int nsim_poll(struct napi_struct *napi, int budget)
 	int done;
 
 	done = nsim_rcv(rq, budget);
-	if (done < budget)
-		napi_complete_done(napi, done);
+	napi_complete(napi);
 
 	return done;
 }
@@ -882,13 +879,11 @@ static void nsim_setup(struct net_device *dev)
 			 NETIF_F_SG |
 			 NETIF_F_FRAGLIST |
 			 NETIF_F_HW_CSUM |
-			 NETIF_F_LRO |
 			 NETIF_F_TSO;
 	dev->hw_features |= NETIF_F_HW_TC |
 			    NETIF_F_SG |
 			    NETIF_F_FRAGLIST |
 			    NETIF_F_HW_CSUM |
-			    NETIF_F_LRO |
 			    NETIF_F_TSO;
 	dev->max_mtu = ETH_MAX_MTU;
 	dev->xdp_features = NETDEV_XDP_ACT_HW_OFFLOAD;

@@ -11,6 +11,7 @@
 
 #include <linux/device.h>
 #include <linux/mutex.h>
+#include <linux/notifier.h>
 
 #define LCD_POWER_ON			(0)
 #define LCD_POWER_REDUCED		(1) // deprecated; don't use in new code
@@ -78,11 +79,8 @@ struct lcd_device {
 	const struct lcd_ops *ops;
 	/* Serialise access to set_power method */
 	struct mutex update_lock;
-
-	/**
-	 * @entry: List entry of all registered lcd devices
-	 */
-	struct list_head entry;
+	/* The framebuffer notifier block */
+	struct notifier_block fb_notif;
 
 	struct device dev;
 };
@@ -126,19 +124,6 @@ extern struct lcd_device *devm_lcd_device_register(struct device *dev,
 extern void lcd_device_unregister(struct lcd_device *ld);
 extern void devm_lcd_device_unregister(struct device *dev,
 	struct lcd_device *ld);
-
-#if IS_REACHABLE(CONFIG_LCD_CLASS_DEVICE)
-void lcd_notify_blank_all(struct device *display_dev, int power);
-void lcd_notify_mode_change_all(struct device *display_dev,
-				unsigned int width, unsigned int height);
-#else
-static inline void lcd_notify_blank_all(struct device *display_dev, int power)
-{}
-
-static inline void lcd_notify_mode_change_all(struct device *display_dev,
-					      unsigned int width, unsigned int height)
-{}
-#endif
 
 #define to_lcd_device(obj) container_of(obj, struct lcd_device, dev)
 

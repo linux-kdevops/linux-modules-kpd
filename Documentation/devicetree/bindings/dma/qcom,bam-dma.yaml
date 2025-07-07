@@ -42,8 +42,6 @@ properties:
   interrupts:
     maxItems: 1
 
-  dma-coherent: true
-
   iommus:
     minItems: 1
     maxItems: 6

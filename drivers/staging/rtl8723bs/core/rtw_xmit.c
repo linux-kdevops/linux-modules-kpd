@@ -943,7 +943,7 @@ s32 rtw_make_wlanhdr(struct adapter *padapter, u8 *hdr, struct pkt_attrib *pattr
 
 			if (psta) {
 				psta->sta_xmitpriv.txseq_tid[pattrib->priority]++;
-				psta->sta_xmitpriv.txseq_tid[pattrib->priority] %= 4096u;
+				psta->sta_xmitpriv.txseq_tid[pattrib->priority] &= 0xFFF;
 				pattrib->seqnum = psta->sta_xmitpriv.txseq_tid[pattrib->priority];
 
 				SetSeqNum(hdr, pattrib->seqnum);
@@ -963,14 +963,11 @@ s32 rtw_make_wlanhdr(struct adapter *padapter, u8 *hdr, struct pkt_attrib *pattr
 					if (SN_LESS(pattrib->seqnum, tx_seq)) {
 						pattrib->ampdu_en = false;/* AGG BK */
 					} else if (SN_EQUAL(pattrib->seqnum, tx_seq)) {
-						psta->BA_starting_seqctrl[pattrib->priority & 0x0f] =
-							(tx_seq + 1) % 4096u;
+						psta->BA_starting_seqctrl[pattrib->priority & 0x0f] = (tx_seq+1)&0xfff;
 
 						pattrib->ampdu_en = true;/* AGG EN */
 					} else {
-						psta->BA_starting_seqctrl[pattrib->priority & 0x0f] =
-							(pattrib->seqnum + 1) % 4096u;
-
+						psta->BA_starting_seqctrl[pattrib->priority & 0x0f] = (pattrib->seqnum+1)&0xfff;
 						pattrib->ampdu_en = true;/* AGG EN */
 					}
 				}
@@ -1939,6 +1936,7 @@ static void do_queue_select(struct adapter	*padapter, struct pkt_attrib *pattrib
 s32 rtw_xmit(struct adapter *padapter, struct sk_buff **ppkt)
 {
 	static unsigned long start;
+	static u32 drop_cnt;
 
 	struct xmit_priv *pxmitpriv = &padapter->xmitpriv;
 	struct xmit_frame *pxmitframe = NULL;
@@ -1950,11 +1948,15 @@ s32 rtw_xmit(struct adapter *padapter, struct sk_buff **ppkt)
 
 	pxmitframe = rtw_alloc_xmitframe(pxmitpriv);
 
-	if (jiffies_to_msecs(jiffies - start) > 2000)
+	if (jiffies_to_msecs(jiffies - start) > 2000) {
 		start = jiffies;
+		drop_cnt = 0;
+	}
 
-	if (!pxmitframe)
+	if (!pxmitframe) {
+		drop_cnt++;
 		return -1;
+	}
 
 	res = update_attrib(padapter, *ppkt, &pxmitframe->attrib);
 

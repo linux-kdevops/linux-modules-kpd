@@ -1198,12 +1198,8 @@ bool file_seek_cur_needs_f_lock(struct file *file)
 	if (!(file->f_mode & FMODE_ATOMIC_POS) && !file->f_op->iterate_shared)
 		return false;
 
-	/*
-	 * Note that we are not guaranteed to be called after fdget_pos() on
-	 * this file obj, in which case the caller is expected to provide the
-	 * appropriate locking.
-	 */
-
+	VFS_WARN_ON_ONCE((file_count(file) > 1) &&
+			 !mutex_is_locked(&file->f_pos_lock));
 	return true;
 }
 

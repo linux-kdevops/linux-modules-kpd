@@ -198,7 +198,6 @@ struct fib6_info {
 					fib6_destroying:1,
 					unused:4;
 
-	struct list_head		purge_link;
 	struct rcu_head			rcu;
 	struct nexthop			*nh;
 	struct fib6_nh			fib6_nh[];

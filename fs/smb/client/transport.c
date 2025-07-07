@@ -1018,16 +1018,14 @@ struct TCP_Server_Info *cifs_pick_channel(struct cifs_ses *ses)
 	uint index = 0;
 	unsigned int min_in_flight = UINT_MAX, max_in_flight = 0;
 	struct TCP_Server_Info *server = NULL;
-	int i, start, cur;
+	int i;
 
 	if (!ses)
 		return NULL;
 
 	spin_lock(&ses->chan_lock);
-	start = atomic_inc_return(&ses->chan_seq);
 	for (i = 0; i < ses->chan_count; i++) {
-		cur = (start + i) % ses->chan_count;
-		server = ses->chans[cur].server;
+		server = ses->chans[i].server;
 		if (!server || server->terminate)
 			continue;
 
@@ -1044,15 +1042,17 @@ struct TCP_Server_Info *cifs_pick_channel(struct cifs_ses *ses)
 		 */
 		if (server->in_flight < min_in_flight) {
 			min_in_flight = server->in_flight;
-			index = cur;
+			index = i;
 		}
 		if (server->in_flight > max_in_flight)
 			max_in_flight = server->in_flight;
 	}
 
 	/* if all channels are equally loaded, fall back to round-robin */
-	if (min_in_flight == max_in_flight)
-		index = (uint)start % ses->chan_count;
+	if (min_in_flight == max_in_flight) {
+		index = (uint)atomic_inc_return(&ses->chan_seq);
+		index %= ses->chan_count;
+	}
 
 	server = ses->chans[index].server;
 	spin_unlock(&ses->chan_lock);

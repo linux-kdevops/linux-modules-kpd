@@ -43,7 +43,7 @@ extern struct start_info *xen_start_info;
 
 static inline uint32_t xen_cpuid_base(void)
 {
-	return cpuid_base_hypervisor(XEN_SIGNATURE, 2);
+	return hypervisor_cpuid_base(XEN_SIGNATURE, 2);
 }
 
 struct pci_dev;

@@ -243,11 +243,11 @@ static struct net_device *__ip_tunnel_create(struct net *net,
 	if (parms->name[0]) {
 		if (!dev_valid_name(parms->name))
 			goto failed;
-		strscpy(name, parms->name);
+		strscpy(name, parms->name, IFNAMSIZ);
 	} else {
 		if (strlen(ops->kind) > (IFNAMSIZ - 3))
 			goto failed;
-		strscpy(name, ops->kind);
+		strcpy(name, ops->kind);
 		strcat(name, "%d");
 	}
 
@@ -1174,15 +1174,12 @@ int ip_tunnel_init_net(struct net *net, unsigned int ip_tnl_net_id,
 }
 EXPORT_SYMBOL_GPL(ip_tunnel_init_net);
 
-void ip_tunnel_delete_net(struct net *net, unsigned int id,
-			  struct rtnl_link_ops *ops,
-			  struct list_head *head)
+static void ip_tunnel_destroy(struct net *net, struct ip_tunnel_net *itn,
+			      struct list_head *head,
+			      struct rtnl_link_ops *ops)
 {
-	struct ip_tunnel_net *itn = net_generic(net, id);
 	struct net_device *dev, *aux;
 	int h;
-
-	ASSERT_RTNL_NET(net);
 
 	for_each_netdev_safe(net, dev, aux)
 		if (dev->rtnl_link_ops == ops)
@@ -1201,7 +1198,21 @@ void ip_tunnel_delete_net(struct net *net, unsigned int id,
 				unregister_netdevice_queue(t->dev, head);
 	}
 }
-EXPORT_SYMBOL_GPL(ip_tunnel_delete_net);
+
+void ip_tunnel_delete_nets(struct list_head *net_list, unsigned int id,
+			   struct rtnl_link_ops *ops,
+			   struct list_head *dev_to_kill)
+{
+	struct ip_tunnel_net *itn;
+	struct net *net;
+
+	ASSERT_RTNL();
+	list_for_each_entry(net, net_list, exit_list) {
+		itn = net_generic(net, id);
+		ip_tunnel_destroy(net, itn, dev_to_kill, ops);
+	}
+}
+EXPORT_SYMBOL_GPL(ip_tunnel_delete_nets);
 
 int ip_tunnel_newlink(struct net *net, struct net_device *dev,
 		      struct nlattr *tb[], struct ip_tunnel_parm_kern *p,

@@ -637,7 +637,7 @@ static int btrfs_dev_replace_start(struct btrfs_fs_info *fs_info,
 		break;
 	case BTRFS_IOCTL_DEV_REPLACE_STATE_STARTED:
 	case BTRFS_IOCTL_DEV_REPLACE_STATE_SUSPENDED:
-		DEBUG_WARN("unexpected STARTED ot SUSPENDED dev-replace state");
+		ASSERT(0);
 		ret = BTRFS_IOCTL_DEV_REPLACE_RESULT_ALREADY_STARTED;
 		up_write(&dev_replace->rwsem);
 		goto leave;
@@ -794,17 +794,17 @@ static int btrfs_set_target_alloc_state(struct btrfs_device *srcdev,
 
 	lockdep_assert_held(&srcdev->fs_info->chunk_mutex);
 
-	while (btrfs_find_first_extent_bit(&srcdev->alloc_state, start,
-					   &found_start, &found_end,
-					   CHUNK_ALLOCATED, &cached_state)) {
-		ret = btrfs_set_extent_bit(&tgtdev->alloc_state, found_start,
-					   found_end, CHUNK_ALLOCATED, NULL);
+	while (find_first_extent_bit(&srcdev->alloc_state, start,
+				     &found_start, &found_end,
+				     CHUNK_ALLOCATED, &cached_state)) {
+		ret = set_extent_bit(&tgtdev->alloc_state, found_start,
+				     found_end, CHUNK_ALLOCATED, NULL);
 		if (ret)
 			break;
 		start = found_end + 1;
 	}
 
-	btrfs_free_extent_state(cached_state);
+	free_extent_state(cached_state);
 	return ret;
 }
 
@@ -1265,16 +1265,16 @@ static int btrfs_dev_replace_kthread(void *data)
 	return 0;
 }
 
-bool __pure btrfs_dev_replace_is_ongoing(struct btrfs_dev_replace *dev_replace)
+int __pure btrfs_dev_replace_is_ongoing(struct btrfs_dev_replace *dev_replace)
 {
 	if (!dev_replace->is_valid)
-		return false;
+		return 0;
 
 	switch (dev_replace->replace_state) {
 	case BTRFS_IOCTL_DEV_REPLACE_STATE_NEVER_STARTED:
 	case BTRFS_IOCTL_DEV_REPLACE_STATE_FINISHED:
 	case BTRFS_IOCTL_DEV_REPLACE_STATE_CANCELED:
-		return false;
+		return 0;
 	case BTRFS_IOCTL_DEV_REPLACE_STATE_STARTED:
 	case BTRFS_IOCTL_DEV_REPLACE_STATE_SUSPENDED:
 		/*
@@ -1289,7 +1289,7 @@ bool __pure btrfs_dev_replace_is_ongoing(struct btrfs_dev_replace *dev_replace)
 		 */
 		break;
 	}
-	return true;
+	return 1;
 }
 
 void btrfs_bio_counter_sub(struct btrfs_fs_info *fs_info, s64 amount)

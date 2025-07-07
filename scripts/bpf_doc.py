@@ -8,7 +8,6 @@
 from __future__ import print_function
 
 import argparse
-import json
 import re
 import sys, os
 import subprocess
@@ -38,17 +37,11 @@ class APIElement(object):
     @desc: textual description of the symbol
     @ret: (optional) description of any associated return value
     """
-    def __init__(self, proto='', desc='', ret=''):
+    def __init__(self, proto='', desc='', ret='', attrs=[]):
         self.proto = proto
         self.desc = desc
         self.ret = ret
-
-    def to_dict(self):
-        return {
-            'proto': self.proto,
-            'desc': self.desc,
-            'ret': self.ret
-        }
+        self.attrs = attrs
 
 
 class Helper(APIElement):
@@ -58,9 +51,8 @@ class Helper(APIElement):
     @desc: textual description of the helper function
     @ret: description of the return value of the helper function
     """
-    def __init__(self, proto='', desc='', ret='', attrs=[]):
-        super().__init__(proto, desc, ret)
-        self.attrs = attrs
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.enum_val = None
 
     def proto_break_down(self):
@@ -88,12 +80,6 @@ class Helper(APIElement):
             })
 
         return res
-
-    def to_dict(self):
-        d = super().to_dict()
-        d["attrs"] = self.attrs
-        d.update(self.proto_break_down())
-        return d
 
 
 ATTRS = {
@@ -689,7 +675,7 @@ COMMANDS
         self.print_elem(command)
 
 
-class PrinterHelpersHeader(Printer):
+class PrinterHelpers(Printer):
     """
     A printer for dumping collected information about helpers as C header to
     be included from BPF program.
@@ -910,43 +896,6 @@ class PrinterHelpersHeader(Printer):
         print(') = (void *) %d;' % helper.enum_val)
         print('')
 
-
-class PrinterHelpersJSON(Printer):
-    """
-    A printer for dumping collected information about helpers as a JSON file.
-    @parser: A HeaderParser with Helper objects
-    """
-
-    def __init__(self, parser):
-        self.elements = parser.helpers
-        self.elem_number_check(
-            parser.desc_unique_helpers,
-            parser.define_unique_helpers,
-            "helper",
-            "___BPF_FUNC_MAPPER",
-        )
-
-    def print_all(self):
-        helper_dicts = [helper.to_dict() for helper in self.elements]
-        out_dict = {'helpers': helper_dicts}
-        print(json.dumps(out_dict, indent=4))
-
-
-class PrinterSyscallJSON(Printer):
-    """
-    A printer for dumping collected syscall information as a JSON file.
-    @parser: A HeaderParser with APIElement objects
-    """
-
-    def __init__(self, parser):
-        self.elements = parser.commands
-        self.elem_number_check(parser.desc_syscalls, parser.enum_syscalls, 'syscall', 'bpf_cmd')
-
-    def print_all(self):
-        syscall_dicts = [syscall.to_dict() for syscall in self.elements]
-        out_dict = {'syscall': syscall_dicts}
-        print(json.dumps(out_dict, indent=4))
-
 ###############################################################################
 
 # If script is launched from scripts/ from kernel tree and can access
@@ -956,17 +905,9 @@ script = os.path.abspath(sys.argv[0])
 linuxRoot = os.path.dirname(os.path.dirname(script))
 bpfh = os.path.join(linuxRoot, 'include/uapi/linux/bpf.h')
 
-# target -> output format -> printer
 printers = {
-    'helpers': {
-        'rst': PrinterHelpersRST,
-        'json': PrinterHelpersJSON,
-        'header': PrinterHelpersHeader,
-    },
-    'syscall': {
-        'rst': PrinterSyscallRST,
-        'json': PrinterSyscallJSON
-    },
+        'helpers': PrinterHelpersRST,
+        'syscall': PrinterSyscallRST,
 }
 
 argParser = argparse.ArgumentParser(description="""
@@ -976,8 +917,6 @@ rst2man utility.
 """)
 argParser.add_argument('--header', action='store_true',
                        help='generate C header file')
-argParser.add_argument('--json', action='store_true',
-                       help='generate a JSON')
 if (os.path.isfile(bpfh)):
     argParser.add_argument('--filename', help='path to include/uapi/linux/bpf.h',
                            default=bpfh)
@@ -985,35 +924,17 @@ else:
     argParser.add_argument('--filename', help='path to include/uapi/linux/bpf.h')
 argParser.add_argument('target', nargs='?', default='helpers',
                        choices=printers.keys(), help='eBPF API target')
+args = argParser.parse_args()
 
-def error_die(message: str):
-    argParser.print_usage(file=sys.stderr)
-    print('Error: {}'.format(message), file=sys.stderr)
-    exit(1)
+# Parse file.
+headerParser = HeaderParser(args.filename)
+headerParser.run()
 
-def parse_and_dump():
-    args = argParser.parse_args()
-
-    # Parse file.
-    headerParser = HeaderParser(args.filename)
-    headerParser.run()
-
-    if args.header and args.json:
-        error_die('Use either --header or --json, not both')
-
-    output_format = 'rst'
-    if args.header:
-        output_format = 'header'
-    elif args.json:
-        output_format = 'json'
-
-    try:
-        printer = printers[args.target][output_format](headerParser)
-        # Print formatted output to standard output.
-        printer.print_all()
-    except KeyError:
-        error_die('Unsupported target/format combination: "{}", "{}"'
-                    .format(args.target, output_format))
-
-if __name__ == "__main__":
-    parse_and_dump()
+# Print formatted output to standard output.
+if args.header:
+    if args.target != 'helpers':
+        raise NotImplementedError('Only helpers header generation is supported')
+    printer = PrinterHelpers(headerParser)
+else:
+    printer = printers[args.target](headerParser)
+printer.print_all()

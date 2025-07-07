@@ -84,8 +84,10 @@ static inline int bucket_gen_get_rcu(struct bch_dev *ca, size_t b)
 
 static inline int bucket_gen_get(struct bch_dev *ca, size_t b)
 {
-	guard(rcu)();
-	return bucket_gen_get_rcu(ca, b);
+	rcu_read_lock();
+	int ret = bucket_gen_get_rcu(ca, b);
+	rcu_read_unlock();
+	return ret;
 }
 
 static inline size_t PTR_BUCKET_NR(const struct bch_dev *ca,
@@ -154,8 +156,10 @@ static inline int dev_ptr_stale_rcu(struct bch_dev *ca, const struct bch_extent_
  */
 static inline int dev_ptr_stale(struct bch_dev *ca, const struct bch_extent_ptr *ptr)
 {
-	guard(rcu)();
-	return dev_ptr_stale_rcu(ca, ptr);
+	rcu_read_lock();
+	int ret = dev_ptr_stale_rcu(ca, ptr);
+	rcu_read_unlock();
+	return ret;
 }
 
 /* Device usage: */

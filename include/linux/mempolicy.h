@@ -11,7 +11,6 @@
 #include <linux/slab.h>
 #include <linux/rbtree.h>
 #include <linux/spinlock.h>
-#include <linux/node.h>
 #include <linux/nodemask.h>
 #include <linux/pagemap.h>
 #include <uapi/linux/mempolicy.h>
@@ -178,9 +177,6 @@ static inline bool mpol_is_preferred_many(struct mempolicy *pol)
 }
 
 extern bool apply_policy_zone(struct mempolicy *policy, enum zone_type zone);
-
-extern int mempolicy_set_node_perf(unsigned int node,
-				   struct access_coordinate *coords);
 
 #else
 

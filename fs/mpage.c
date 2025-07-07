@@ -445,9 +445,10 @@ static void clean_buffers(struct folio *folio, unsigned first_unmapped)
 		try_to_free_buffers(folio);
 }
 
-static int mpage_write_folio(struct writeback_control *wbc, struct folio *folio,
-		struct mpage_data *mpd)
+static int __mpage_writepage(struct folio *folio, struct writeback_control *wbc,
+		      void *data)
 {
+	struct mpage_data *mpd = data;
 	struct bio *bio = mpd->bio;
 	struct address_space *mapping = folio->mapping;
 	struct inode *inode = mapping->host;
@@ -655,16 +656,14 @@ mpage_writepages(struct address_space *mapping,
 	struct mpage_data mpd = {
 		.get_block	= get_block,
 	};
-	struct folio *folio = NULL;
 	struct blk_plug plug;
-	int error;
+	int ret;
 
 	blk_start_plug(&plug);
-	while ((folio = writeback_iter(mapping, wbc, folio, &error)))
-		error = mpage_write_folio(wbc, folio, &mpd);
+	ret = write_cache_pages(mapping, wbc, __mpage_writepage, &mpd);
 	if (mpd.bio)
 		mpage_bio_submit_write(mpd.bio);
 	blk_finish_plug(&plug);
-	return error;
+	return ret;
 }
 EXPORT_SYMBOL(mpage_writepages);

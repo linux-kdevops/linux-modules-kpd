@@ -104,4 +104,4 @@ obj-$(CONFIG_HAVE_ARM_SMCCC)	+= smccc-call.o
 
 obj-$(CONFIG_GENERIC_CPU_VULNERABILITIES) += spectre.o
 
-always-$(KBUILD_BUILTIN) := vmlinux.lds
+extra-y := vmlinux.lds

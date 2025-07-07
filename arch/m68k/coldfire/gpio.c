@@ -123,12 +123,10 @@ static int mcfgpio_direction_output(struct gpio_chip *chip, unsigned offset,
 	return __mcfgpio_direction_output(offset, value);
 }
 
-static int mcfgpio_set_value(struct gpio_chip *chip, unsigned int offset,
-			     int value)
+static void mcfgpio_set_value(struct gpio_chip *chip, unsigned offset,
+			      int value)
 {
 	__mcfgpio_set_value(offset, value);
-
-	return 0;
 }
 
 static int mcfgpio_request(struct gpio_chip *chip, unsigned offset)
@@ -160,7 +158,7 @@ static struct gpio_chip mcfgpio_chip = {
 	.direction_input	= mcfgpio_direction_input,
 	.direction_output	= mcfgpio_direction_output,
 	.get			= mcfgpio_get_value,
-	.set_rv			= mcfgpio_set_value,
+	.set			= mcfgpio_set_value,
 	.to_irq			= mcfgpio_to_irq,
 	.base			= 0,
 	.ngpio			= MCFGPIO_PIN_MAX,

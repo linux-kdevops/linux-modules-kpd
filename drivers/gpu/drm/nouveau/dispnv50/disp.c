@@ -279,16 +279,6 @@ nv50_dmac_create(struct nouveau_drm *drm,
 	if (syncbuf < 0)
 		return 0;
 
-	/* No CTXDMAs on Blackwell. */
-	if (disp->oclass >= GB202_DISP) {
-		/* "handle != NULL_HANDLE" is used to determine enable status
-		 * in a number of places, so fill in some fake object handles.
-		 */
-		dmac->sync.handle = NV50_DISP_HANDLE_SYNCBUF;
-		dmac->vram.handle = NV50_DISP_HANDLE_VRAM;
-		return 0;
-	}
-
 	ret = nvif_object_ctor(&dmac->base.user, "kmsSyncCtxDma", NV50_DISP_HANDLE_SYNCBUF,
 			       NV_DMA_IN_MEMORY,
 			       &(struct nv_dma_v0) {
@@ -785,8 +775,10 @@ nv50_hdmi_enable(struct drm_encoder *encoder, struct nouveau_crtc *nv_crtc,
 	union hdmi_infoframe infoframe = { 0 };
 	const u8 rekey = 56; /* binary driver, and tegra, constant */
 	u32 max_ac_packet;
-	DEFINE_RAW_FLEX(struct nvif_outp_infoframe_v0, args, data, 17);
-	const u8 data_len = __member_size(args->data);
+	struct {
+		struct nvif_outp_infoframe_v0 infoframe;
+		u8 data[17];
+	} args = { 0 };
 	int ret, size;
 
 	max_ac_packet  = mode->htotal - mode->hdisplay;
@@ -823,29 +815,29 @@ nv50_hdmi_enable(struct drm_encoder *encoder, struct nouveau_crtc *nv_crtc,
 		return;
 
 	/* AVI InfoFrame. */
-	args->version = 0;
-	args->head = nv_crtc->index;
+	args.infoframe.version = 0;
+	args.infoframe.head = nv_crtc->index;
 
 	if (!drm_hdmi_avi_infoframe_from_display_mode(&infoframe.avi, &nv_connector->base, mode)) {
 		drm_hdmi_avi_infoframe_quant_range(&infoframe.avi, &nv_connector->base, mode,
 						   HDMI_QUANTIZATION_RANGE_FULL);
 
-		size = hdmi_infoframe_pack(&infoframe, args->data, data_len);
+		size = hdmi_infoframe_pack(&infoframe, args.data, ARRAY_SIZE(args.data));
 	} else {
 		size = 0;
 	}
 
-	nvif_outp_infoframe(&nv_encoder->outp, NVIF_OUTP_INFOFRAME_V0_AVI, args, size);
+	nvif_outp_infoframe(&nv_encoder->outp, NVIF_OUTP_INFOFRAME_V0_AVI, &args.infoframe, size);
 
 	/* Vendor InfoFrame. */
-	memset(args->data, 0, data_len);
+	memset(&args.data, 0, sizeof(args.data));
 	if (!drm_hdmi_vendor_infoframe_from_display_mode(&infoframe.vendor.hdmi,
 							 &nv_connector->base, mode))
-		size = hdmi_infoframe_pack(&infoframe, args->data, data_len);
+		size = hdmi_infoframe_pack(&infoframe, args.data, ARRAY_SIZE(args.data));
 	else
 		size = 0;
 
-	nvif_outp_infoframe(&nv_encoder->outp, NVIF_OUTP_INFOFRAME_V0_VSI, args, size);
+	nvif_outp_infoframe(&nv_encoder->outp, NVIF_OUTP_INFOFRAME_V0_VSI, &args.infoframe, size);
 
 	nv_encoder->hdmi.enabled = true;
 }
@@ -2818,7 +2810,10 @@ nv50_display_destroy(struct drm_device *dev)
 	nvif_object_dtor(&disp->caps);
 	nv50_core_del(&disp->core);
 
-	nouveau_bo_unpin_del(&disp->sync);
+	nouveau_bo_unmap(disp->sync);
+	if (disp->sync)
+		nouveau_bo_unpin(disp->sync);
+	nouveau_bo_fini(disp->sync);
 
 	nouveau_display(dev)->priv = NULL;
 	kfree(disp);
@@ -2850,7 +2845,20 @@ nv50_display_create(struct drm_device *dev)
 	dev->mode_config.normalize_zpos = true;
 
 	/* small shared memory area we use for notifiers and semaphores */
-	ret = nouveau_bo_new_map(&drm->client, NOUVEAU_GEM_DOMAIN_VRAM, PAGE_SIZE, &disp->sync);
+	ret = nouveau_bo_new(&drm->client, 4096, 0x1000,
+			     NOUVEAU_GEM_DOMAIN_VRAM,
+			     0, 0x0000, NULL, NULL, &disp->sync);
+	if (!ret) {
+		ret = nouveau_bo_pin(disp->sync, NOUVEAU_GEM_DOMAIN_VRAM, true);
+		if (!ret) {
+			ret = nouveau_bo_map(disp->sync);
+			if (ret)
+				nouveau_bo_unpin(disp->sync);
+		}
+		if (ret)
+			nouveau_bo_fini(disp->sync);
+	}
+
 	if (ret)
 		goto out;
 

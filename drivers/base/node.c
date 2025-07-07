@@ -7,7 +7,6 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/memory.h>
-#include <linux/mempolicy.h>
 #include <linux/vmstat.h>
 #include <linux/notifier.h>
 #include <linux/node.h>
@@ -213,14 +212,6 @@ void node_set_perf_attrs(unsigned int nid, struct access_coordinate *coord,
 			pr_info("failed to add performance attribute to node %d\n",
 				nid);
 			break;
-		}
-	}
-
-	/* When setting CPU access coordinates, update mempolicy */
-	if (access == ACCESS_COORDINATE_CPU) {
-		if (mempolicy_set_node_perf(nid, coord)) {
-			pr_info("failed to set mempolicy attrs for node %d\n",
-				nid);
 		}
 	}
 }
@@ -477,7 +468,7 @@ static ssize_t node_read_meminfo(struct device *dev,
 			     nid, K(node_page_state(pgdat, NR_PAGETABLE)),
 			     nid, K(node_page_state(pgdat, NR_SECONDARY_PAGETABLE)),
 			     nid, 0UL,
-			     nid, 0UL,
+			     nid, K(sum_zone_node_page_state(nid, NR_BOUNCE)),
 			     nid, K(node_page_state(pgdat, NR_WRITEBACK_TEMP)),
 			     nid, K(sreclaimable +
 				    node_page_state(pgdat, NR_KERNEL_MISC_RECLAIMABLE)),

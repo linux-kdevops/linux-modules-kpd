@@ -4,16 +4,11 @@
  * Copyright (C) 2025 Thomas Weißschuh <linux@weissschuh.net>
  */
 
-/* make sure to include all global symbols */
-#include "nolibc.h"
-
 #ifndef _NOLIBC_DIRENT_H
 #define _NOLIBC_DIRENT_H
 
-#include "compiler.h"
 #include "stdint.h"
 #include "types.h"
-#include "fcntl.h"
 
 #include <linux/limits.h>
 
@@ -63,7 +58,7 @@ int closedir(DIR *dirp)
 static __attribute__((unused))
 int readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
 {
-	char buf[sizeof(struct linux_dirent64) + NAME_MAX + 1] __nolibc_aligned_as(struct linux_dirent64);
+	char buf[sizeof(struct linux_dirent64) + NAME_MAX + 1];
 	struct linux_dirent64 *ldir = (void *)buf;
 	intptr_t i = (intptr_t)dirp;
 	int fd, ret;
@@ -96,5 +91,8 @@ int readdir_r(DIR *dirp, struct dirent *entry, struct dirent **result)
 	*result = entry;
 	return 0;
 }
+
+/* make sure to include all global symbols */
+#include "nolibc.h"
 
 #endif /* _NOLIBC_DIRENT_H */

@@ -49,7 +49,7 @@
 #include <xen/hvc-console.h>
 #include <xen/acpi.h>
 
-#include <asm/cpuid/api.h>
+#include <asm/cpuid.h>
 #include <asm/paravirt.h>
 #include <asm/apic.h>
 #include <asm/page.h>
@@ -61,7 +61,6 @@
 #include <asm/processor.h>
 #include <asm/proto.h>
 #include <asm/msr-index.h>
-#include <asm/msr.h>
 #include <asm/traps.h>
 #include <asm/setup.h>
 #include <asm/desc.h>
@@ -1087,15 +1086,15 @@ static void xen_write_cr4(unsigned long cr4)
 	native_write_cr4(cr4);
 }
 
-static u64 xen_do_read_msr(u32 msr, int *err)
+static u64 xen_do_read_msr(unsigned int msr, int *err)
 {
 	u64 val = 0;	/* Avoid uninitialized value for safe variant. */
 
-	if (pmu_msr_chk_emulated(msr, &val, true))
+	if (pmu_msr_read(msr, &val, err))
 		return val;
 
 	if (err)
-		*err = native_read_msr_safe(msr, &val);
+		val = native_read_msr_safe(msr, err);
 	else
 		val = native_read_msr(msr);
 
@@ -1111,9 +1110,17 @@ static u64 xen_do_read_msr(u32 msr, int *err)
 	return val;
 }
 
-static void set_seg(u32 which, u64 base)
+static void set_seg(unsigned int which, unsigned int low, unsigned int high,
+		    int *err)
 {
-	if (HYPERVISOR_set_segment_base(which, base))
+	u64 base = ((u64)high << 32) | low;
+
+	if (HYPERVISOR_set_segment_base(which, base) == 0)
+		return;
+
+	if (err)
+		*err = -EIO;
+	else
 		WARN(1, "Xen set_segment_base(%u, %llx) failed\n", which, base);
 }
 
@@ -1122,19 +1129,20 @@ static void set_seg(u32 which, u64 base)
  * With err == NULL write_msr() semantics are selected.
  * Supplying an err pointer requires err to be pre-initialized with 0.
  */
-static void xen_do_write_msr(u32 msr, u64 val, int *err)
+static void xen_do_write_msr(unsigned int msr, unsigned int low,
+			     unsigned int high, int *err)
 {
 	switch (msr) {
 	case MSR_FS_BASE:
-		set_seg(SEGBASE_FS, val);
+		set_seg(SEGBASE_FS, low, high, err);
 		break;
 
 	case MSR_KERNEL_GS_BASE:
-		set_seg(SEGBASE_GS_USER, val);
+		set_seg(SEGBASE_GS_USER, low, high, err);
 		break;
 
 	case MSR_GS_BASE:
-		set_seg(SEGBASE_GS_KERNEL, val);
+		set_seg(SEGBASE_GS_KERNEL, low, high, err);
 		break;
 
 	case MSR_STAR:
@@ -1150,45 +1158,42 @@ static void xen_do_write_msr(u32 msr, u64 val, int *err)
 		break;
 
 	default:
-		if (pmu_msr_chk_emulated(msr, &val, false))
-			return;
-
-		if (err)
-			*err = native_write_msr_safe(msr, val);
-		else
-			native_write_msr(msr, val);
+		if (!pmu_msr_write(msr, low, high, err)) {
+			if (err)
+				*err = native_write_msr_safe(msr, low, high);
+			else
+				native_write_msr(msr, low, high);
+		}
 	}
 }
 
-static int xen_read_msr_safe(u32 msr, u64 *val)
+static u64 xen_read_msr_safe(unsigned int msr, int *err)
+{
+	return xen_do_read_msr(msr, err);
+}
+
+static int xen_write_msr_safe(unsigned int msr, unsigned int low,
+			      unsigned int high)
 {
 	int err = 0;
 
-	*val = xen_do_read_msr(msr, &err);
+	xen_do_write_msr(msr, low, high, &err);
+
 	return err;
 }
 
-static int xen_write_msr_safe(u32 msr, u64 val)
+static u64 xen_read_msr(unsigned int msr)
 {
-	int err = 0;
-
-	xen_do_write_msr(msr, val, &err);
-
-	return err;
-}
-
-static u64 xen_read_msr(u32 msr)
-{
-	int err = 0;
+	int err;
 
 	return xen_do_read_msr(msr, xen_msr_safe ? &err : NULL);
 }
 
-static void xen_write_msr(u32 msr, u64 val)
+static void xen_write_msr(unsigned int msr, unsigned low, unsigned high)
 {
 	int err;
 
-	xen_do_write_msr(msr, val, xen_msr_safe ? &err : NULL);
+	xen_do_write_msr(msr, low, high, xen_msr_safe ? &err : NULL);
 }
 
 /* This is called once we have the cpu_possible_mask */

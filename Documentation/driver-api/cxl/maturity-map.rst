@@ -51,9 +51,9 @@ in place, but there are several corner cases that are pending closure.
 
 * [2] CXL Window Enumeration
 
-  * [2] :ref:`Extended-linear memory-side cache <extended-linear>`
+  * [0] :ref:`Extended-linear memory-side cache <extended-linear>`
   * [0] Low Memory-hole
-  * [X] Hetero-interleave
+  * [0] Hetero-interleave
 
 * [2] Switch Enumeration
 
@@ -173,7 +173,7 @@ Accelerator
 User Flow Support
 -----------------
 
-* [0] Inject & clear poison by HPA
+* [0] HPA->DPA Address translation (need xormaps export solution)
 
 Details
 =======

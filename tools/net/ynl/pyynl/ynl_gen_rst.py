@@ -392,7 +392,7 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def parse_yaml_file(filename: str) -> str:
-    """Transform the YAML specified by filename into an RST-formatted string"""
+    """Transform the YAML specified by filename into a rst-formmated string"""
     with open(filename, "r", encoding="utf-8") as spec_file:
         yaml_data = yaml.safe_load(spec_file)
         content = parse_yaml(yaml_data)

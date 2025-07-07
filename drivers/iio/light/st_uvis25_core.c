@@ -117,8 +117,9 @@ static int st_uvis25_read_raw(struct iio_dev *iio_dev,
 {
 	int ret;
 
-	if (!iio_device_claim_direct(iio_dev))
-		return -EBUSY;
+	ret = iio_device_claim_direct_mode(iio_dev);
+	if (ret)
+		return ret;
 
 	switch (mask) {
 	case IIO_CHAN_INFO_PROCESSED: {
@@ -143,7 +144,7 @@ static int st_uvis25_read_raw(struct iio_dev *iio_dev,
 		break;
 	}
 
-	iio_device_release_direct(iio_dev);
+	iio_device_release_direct_mode(iio_dev);
 
 	return ret;
 }

@@ -1204,6 +1204,7 @@ static int ieee80211_put_preq_ies_band(struct sk_buff *skb,
 	struct ieee80211_supported_band *sband;
 	int i, err;
 	size_t noffset;
+	u32 rate_flags;
 	bool have_80mhz = false;
 
 	*offset = 0;
@@ -1212,11 +1213,13 @@ static int ieee80211_put_preq_ies_band(struct sk_buff *skb,
 	if (WARN_ON_ONCE(!sband))
 		return 0;
 
+	rate_flags = ieee80211_chandef_rate_flags(chandef);
+
 	/* For direct scan add S1G IE and consider its override bits */
 	if (band == NL80211_BAND_S1GHZ)
 		return ieee80211_put_s1g_cap(skb, &sband->s1g_cap);
 
-	err = ieee80211_put_srates_elem(skb, sband, 0,
+	err = ieee80211_put_srates_elem(skb, sband, 0, rate_flags,
 					~rate_mask, WLAN_EID_SUPP_RATES);
 	if (err)
 		return err;
@@ -1238,7 +1241,7 @@ static int ieee80211_put_preq_ies_band(struct sk_buff *skb,
 		*offset = noffset;
 	}
 
-	err = ieee80211_put_srates_elem(skb, sband, 0,
+	err = ieee80211_put_srates_elem(skb, sband, 0, rate_flags,
 					~rate_mask, WLAN_EID_EXT_SUPP_RATES);
 	if (err)
 		return err;
@@ -1519,12 +1522,15 @@ u32 ieee80211_sta_get_rates(struct ieee80211_sub_if_data *sdata,
 {
 	struct ieee80211_supported_band *sband;
 	size_t num_rates;
-	u32 supp_rates;
+	u32 supp_rates, rate_flags;
 	int i, j;
 
 	sband = sdata->local->hw.wiphy->bands[band];
 	if (WARN_ON(!sband))
 		return 1;
+
+	rate_flags =
+		ieee80211_chandef_rate_flags(&sdata->vif.bss_conf.chanreq.oper);
 
 	num_rates = sband->n_bitrates;
 	supp_rates = 0;
@@ -1545,7 +1551,12 @@ u32 ieee80211_sta_get_rates(struct ieee80211_sub_if_data *sdata,
 			continue;
 
 		for (j = 0; j < num_rates; j++) {
-			int brate = sband->bitrates[j].bitrate;
+			int brate;
+			if ((rate_flags & sband->bitrates[j].flags)
+			    != rate_flags)
+				continue;
+
+			brate = sband->bitrates[j].bitrate;
 
 			if (brate == own_rate) {
 				supp_rates |= BIT(j);
@@ -3212,13 +3223,15 @@ bool ieee80211_chandef_s1g_oper(const struct ieee80211_s1g_oper_ie *oper,
 
 int ieee80211_put_srates_elem(struct sk_buff *skb,
 			      const struct ieee80211_supported_band *sband,
-			      u32 basic_rates, u32 masked_rates,
+			      u32 basic_rates, u32 rate_flags, u32 masked_rates,
 			      u8 element_id)
 {
 	u8 i, rates, skip;
 
 	rates = 0;
 	for (i = 0; i < sband->n_bitrates; i++) {
+		if ((rate_flags & sband->bitrates[i].flags) != rate_flags)
+			continue;
 		if (masked_rates & BIT(i))
 			continue;
 		rates++;
@@ -3244,6 +3257,8 @@ int ieee80211_put_srates_elem(struct sk_buff *skb,
 		int rate;
 		u8 basic;
 
+		if ((rate_flags & sband->bitrates[i].flags) != rate_flags)
+			continue;
 		if (masked_rates & BIT(i))
 			continue;
 
@@ -3884,7 +3899,7 @@ void ieee80211_recalc_dtim(struct ieee80211_local *local,
 {
 	u64 tsf = drv_get_tsf(local, sdata);
 	u64 dtim_count = 0;
-	u32 beacon_int = sdata->vif.bss_conf.beacon_int * 1024;
+	u16 beacon_int = sdata->vif.bss_conf.beacon_int * 1024;
 	u8 dtim_period = sdata->vif.bss_conf.dtim_period;
 	struct ps_data *ps;
 	u8 bcns_from_dtim;

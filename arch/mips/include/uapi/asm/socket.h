@@ -161,8 +161,6 @@
 
 #define SO_RCVPRIORITY		82
 
-#define SO_PASSRIGHTS		83
-
 #if !defined(__KERNEL__)
 
 #if __BITS_PER_LONG == 64

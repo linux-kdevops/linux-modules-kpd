@@ -299,6 +299,8 @@ static inline pte_t __mk_pte(void *page, pgprot_t pgprot)
 	return pte;
 }
 
+#define mk_pte(page, pgprot) __mk_pte(page_address(page), (pgprot))
+
 #define mk_pte_phys(physpage, pgprot) \
 ({                                                                      \
 	pte_t __pte;                                                    \
@@ -411,7 +413,7 @@ static inline void update_mmu_cache_range(struct vm_fault *vmf,
 #define __pte_to_swp_entry(pte)		((swp_entry_t) { pte_val(pte) })
 #define __swp_entry_to_pte(x)		((pte_t) { (x).val })
 
-static inline bool pte_swp_exclusive(pte_t pte)
+static inline int pte_swp_exclusive(pte_t pte)
 {
 	return pte_val(pte) & _PAGE_SWP_EXCLUSIVE;
 }

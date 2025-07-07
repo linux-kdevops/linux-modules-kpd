@@ -22,7 +22,6 @@
 #include <linux/sched/signal.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/sysctl.h>
-#include <linux/hung_task.h>
 
 #include <trace/events/sched.h>
 
@@ -99,62 +98,30 @@ static struct notifier_block panic_block = {
 static void debug_show_blocker(struct task_struct *task)
 {
 	struct task_struct *g, *t;
-	unsigned long owner, blocker, blocker_type;
+	unsigned long owner;
+	struct mutex *lock;
 
 	RCU_LOCKDEP_WARN(!rcu_read_lock_held(), "No rcu lock held");
 
-	blocker = READ_ONCE(task->blocker);
-	if (!blocker)
+	lock = READ_ONCE(task->blocker_mutex);
+	if (!lock)
 		return;
 
-	blocker_type = hung_task_get_blocker_type(blocker);
-
-	switch (blocker_type) {
-	case BLOCKER_TYPE_MUTEX:
-		owner = mutex_get_owner(
-			(struct mutex *)hung_task_blocker_to_lock(blocker));
-		break;
-	case BLOCKER_TYPE_SEM:
-		owner = sem_last_holder(
-			(struct semaphore *)hung_task_blocker_to_lock(blocker));
-		break;
-	default:
-		WARN_ON_ONCE(1);
-		return;
-	}
-
-
+	owner = mutex_get_owner(lock);
 	if (unlikely(!owner)) {
-		switch (blocker_type) {
-		case BLOCKER_TYPE_MUTEX:
-			pr_err("INFO: task %s:%d is blocked on a mutex, but the owner is not found.\n",
-			       task->comm, task->pid);
-			break;
-		case BLOCKER_TYPE_SEM:
-			pr_err("INFO: task %s:%d is blocked on a semaphore, but the last holder is not found.\n",
-			       task->comm, task->pid);
-			break;
-		}
+		pr_err("INFO: task %s:%d is blocked on a mutex, but the owner is not found.\n",
+			task->comm, task->pid);
 		return;
 	}
 
 	/* Ensure the owner information is correct. */
 	for_each_process_thread(g, t) {
-		if ((unsigned long)t != owner)
-			continue;
-
-		switch (blocker_type) {
-		case BLOCKER_TYPE_MUTEX:
+		if ((unsigned long)t == owner) {
 			pr_err("INFO: task %s:%d is blocked on a mutex likely owned by task %s:%d.\n",
-			       task->comm, task->pid, t->comm, t->pid);
-			break;
-		case BLOCKER_TYPE_SEM:
-			pr_err("INFO: task %s:%d blocked on a semaphore likely last held by task %s:%d\n",
-			       task->comm, task->pid, t->comm, t->pid);
-			break;
+				task->comm, task->pid, t->comm, t->pid);
+			sched_show_task(t);
+			return;
 		}
-		sched_show_task(t);
-		return;
 	}
 }
 #else

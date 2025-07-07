@@ -22,10 +22,8 @@
 
 #define DRV_NAME "cros-ec-typec"
 
-#define DP_PORT_VDO	(DP_CAP_DFP_D | DP_CAP_RECEPTACLE | \
-			 DP_CONF_SET_PIN_ASSIGN(BIT(DP_PIN_ASSIGN_C) | \
-						BIT(DP_PIN_ASSIGN_D) | \
-						BIT(DP_PIN_ASSIGN_E)))
+#define DP_PORT_VDO	(DP_CONF_SET_PIN_ASSIGN(BIT(DP_PIN_ASSIGN_C) | BIT(DP_PIN_ASSIGN_D)) | \
+				DP_CAP_DFP_D | DP_CAP_RECEPTACLE)
 
 static void cros_typec_role_switch_quirk(struct fwnode_handle *fwnode)
 {

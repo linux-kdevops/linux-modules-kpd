@@ -25,7 +25,6 @@
 #include <linux/hrtimer.h>
 #include <linux/slab.h>
 #include <linux/hashtable.h>
-#include <linux/bpf.h>
 
 #include <net/netdev_lock.h>
 #include <net/net_namespace.h>
@@ -208,7 +207,7 @@ static struct Qdisc_ops *qdisc_lookup_default(const char *name)
 
 	for (q = qdisc_base; q; q = q->next) {
 		if (!strcmp(name, q->id)) {
-			if (!bpf_try_module_get(q, q->owner))
+			if (!try_module_get(q->owner))
 				q = NULL;
 			break;
 		}
@@ -238,7 +237,7 @@ int qdisc_set_default(const char *name)
 
 	if (ops) {
 		/* Set new default */
-		bpf_module_put(default_qdisc_ops, default_qdisc_ops->owner);
+		module_put(default_qdisc_ops->owner);
 		default_qdisc_ops = ops;
 	}
 	write_unlock(&qdisc_mod_lock);
@@ -360,7 +359,7 @@ static struct Qdisc_ops *qdisc_lookup_ops(struct nlattr *kind)
 		read_lock(&qdisc_mod_lock);
 		for (q = qdisc_base; q; q = q->next) {
 			if (nla_strcmp(kind, q->id) == 0) {
-				if (!bpf_try_module_get(q, q->owner))
+				if (!try_module_get(q->owner))
 					q = NULL;
 				break;
 			}
@@ -1371,7 +1370,7 @@ err_out3:
 	netdev_put(dev, &sch->dev_tracker);
 	qdisc_free(sch);
 err_out2:
-	bpf_module_put(ops, ops->owner);
+	module_put(ops->owner);
 err_out:
 	*errp = err;
 	return NULL;
@@ -1783,7 +1782,7 @@ static void request_qdisc_module(struct nlattr *kind)
 
 	ops = qdisc_lookup_ops(kind);
 	if (ops) {
-		bpf_module_put(ops, ops->owner);
+		module_put(ops->owner);
 		return;
 	}
 

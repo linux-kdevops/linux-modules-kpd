@@ -16,7 +16,7 @@ description:
   binding.
 
 allOf:
-  - $ref: /schemas/net/wireless/wireless-controller.yaml#
+  - $ref: ieee80211.yaml#
 
 properties:
   compatible:

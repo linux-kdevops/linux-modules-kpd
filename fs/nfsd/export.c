@@ -1124,8 +1124,7 @@ __be32 check_nfsd_access(struct svc_export *exp, struct svc_rqst *rqstp,
 		    test_bit(XPT_PEER_AUTH, &xprt->xpt_flags))
 			goto ok;
 	}
-	if (!may_bypass_gss)
-		goto denied;
+	goto denied;
 
 ok:
 	/* legacy gss-only clients are always OK: */

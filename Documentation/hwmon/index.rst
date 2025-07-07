@@ -106,8 +106,6 @@ Hardware Monitoring Kernel Drivers
    jc42
    k10temp
    k8temp
-   kbatt
-   kfan
    lan966x
    lineage-pem
    lm25066
@@ -127,7 +125,6 @@ Hardware Monitoring Kernel Drivers
    lm95234
    lm95245
    lochnagar
-   lt3074
    lt7182s
    ltc2992
    ltc2945
@@ -164,7 +161,6 @@ Hardware Monitoring Kernel Drivers
    max6639
    max6650
    max6697
-   max77705
    max8688
    mc13783-adc
    mc34vr500
@@ -193,6 +189,7 @@ Hardware Monitoring Kernel Drivers
    nzxt-kraken3
    nzxt-smart2
    occ
+   oxp-sensors
    pc87360
    pc87427
    pcf8591

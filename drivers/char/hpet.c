@@ -1023,7 +1023,8 @@ static int __init hpet_init(void)
 
 	result = acpi_bus_register_driver(&hpet_acpi_driver);
 	if (result < 0) {
-		unregister_sysctl_table(sysctl_header);
+		if (sysctl_header)
+			unregister_sysctl_table(sysctl_header);
 		misc_deregister(&hpet_misc);
 		return result;
 	}

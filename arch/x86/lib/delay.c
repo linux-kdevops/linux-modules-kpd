@@ -75,7 +75,7 @@ static void delay_tsc(u64 cycles)
 
 		/* Allow RT tasks to run */
 		preempt_enable();
-		native_pause();
+		rep_nop();
 		preempt_disable();
 
 		/*

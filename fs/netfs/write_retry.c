@@ -39,10 +39,9 @@ static void netfs_retry_write_stream(struct netfs_io_request *wreq,
 			if (test_bit(NETFS_SREQ_FAILED, &subreq->flags))
 				break;
 			if (__test_and_clear_bit(NETFS_SREQ_NEED_RETRY, &subreq->flags)) {
-				struct iov_iter source;
+				struct iov_iter source = subreq->io_iter;
 
-				netfs_reset_iter(subreq);
-				source = subreq->io_iter;
+				iov_iter_revert(&source, subreq->len - source.count);
 				netfs_get_subrequest(subreq, netfs_sreq_trace_get_resubmit);
 				netfs_reissue_write(stream, subreq, &source);
 			}
@@ -132,7 +131,7 @@ static void netfs_retry_write_stream(struct netfs_io_request *wreq,
 						      &stream->subrequests, rreq_link) {
 				trace_netfs_sreq(subreq, netfs_sreq_trace_discard);
 				list_del(&subreq->rreq_link);
-				netfs_put_subrequest(subreq, netfs_sreq_trace_put_done);
+				netfs_put_subrequest(subreq, false, netfs_sreq_trace_put_done);
 				if (subreq == to)
 					break;
 			}
@@ -200,6 +199,7 @@ static void netfs_retry_write_stream(struct netfs_io_request *wreq,
  */
 void netfs_retry_writes(struct netfs_io_request *wreq)
 {
+	struct netfs_io_subrequest *subreq;
 	struct netfs_io_stream *stream;
 	int s;
 
@@ -208,13 +208,16 @@ void netfs_retry_writes(struct netfs_io_request *wreq)
 	/* Wait for all outstanding I/O to quiesce before performing retries as
 	 * we may need to renegotiate the I/O sizes.
 	 */
-	set_bit(NETFS_RREQ_RETRYING, &wreq->flags);
 	for (s = 0; s < NR_IO_STREAMS; s++) {
 		stream = &wreq->io_streams[s];
-		if (stream->active)
-			netfs_wait_for_in_progress_stream(wreq, stream);
+		if (!stream->active)
+			continue;
+
+		list_for_each_entry(subreq, &stream->subrequests, rreq_link) {
+			wait_on_bit(&subreq->flags, NETFS_SREQ_IN_PROGRESS,
+				    TASK_UNINTERRUPTIBLE);
+		}
 	}
-	clear_bit(NETFS_RREQ_RETRYING, &wreq->flags);
 
 	// TODO: Enc: Fetch changed partial pages
 	// TODO: Enc: Reencrypt content if needed.
