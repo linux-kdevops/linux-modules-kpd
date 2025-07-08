@@ -588,8 +588,8 @@ static int tca6507_blink_set(struct led_classdev *led_cdev,
 }
 
 #ifdef CONFIG_GPIOLIB
-static int tca6507_gpio_set_value(struct gpio_chip *gc, unsigned int offset,
-				  int val)
+static void tca6507_gpio_set_value(struct gpio_chip *gc,
+				   unsigned offset, int val)
 {
 	struct tca6507_chip *tca = gpiochip_get_data(gc);
 	unsigned long flags;
@@ -604,14 +604,13 @@ static int tca6507_gpio_set_value(struct gpio_chip *gc, unsigned int offset,
 	spin_unlock_irqrestore(&tca->lock, flags);
 	if (tca->reg_set)
 		schedule_work(&tca->work);
-
-	return 0;
 }
 
 static int tca6507_gpio_direction_output(struct gpio_chip *gc,
 					  unsigned offset, int val)
 {
-	return tca6507_gpio_set_value(gc, offset, val);
+	tca6507_gpio_set_value(gc, offset, val);
+	return 0;
 }
 
 static int tca6507_probe_gpios(struct device *dev,
@@ -637,7 +636,7 @@ static int tca6507_probe_gpios(struct device *dev,
 	tca->gpio.base = -1;
 	tca->gpio.owner = THIS_MODULE;
 	tca->gpio.direction_output = tca6507_gpio_direction_output;
-	tca->gpio.set_rv = tca6507_gpio_set_value;
+	tca->gpio.set = tca6507_gpio_set_value;
 	tca->gpio.parent = dev;
 	err = devm_gpiochip_add_data(dev, &tca->gpio, tca);
 	if (err) {

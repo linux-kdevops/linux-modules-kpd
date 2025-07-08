@@ -229,7 +229,7 @@ done:
 	if (ret < 0)
 		req_set_fail(req);
 	io_req_set_res(req, ret, 0);
-	return IOU_COMPLETE;
+	return IOU_OK;
 }
 
 static int __io_sync_cancel(struct io_uring_task *tctx,

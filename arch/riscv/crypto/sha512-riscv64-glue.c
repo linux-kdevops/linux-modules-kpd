@@ -14,7 +14,7 @@
 #include <crypto/internal/hash.h>
 #include <crypto/internal/simd.h>
 #include <crypto/sha512_base.h>
-#include <linux/kernel.h>
+#include <linux/linkage.h>
 #include <linux/module.h>
 
 /*
@@ -24,8 +24,8 @@
 asmlinkage void sha512_transform_zvknhb_zvkb(
 	struct sha512_state *state, const u8 *data, int num_blocks);
 
-static void sha512_block(struct sha512_state *state, const u8 *data,
-			 int num_blocks)
+static int riscv64_sha512_update(struct shash_desc *desc, const u8 *data,
+				 unsigned int len)
 {
 	/*
 	 * Ensure struct sha512_state begins directly with the SHA-512
@@ -35,24 +35,35 @@ static void sha512_block(struct sha512_state *state, const u8 *data,
 
 	if (crypto_simd_usable()) {
 		kernel_vector_begin();
-		sha512_transform_zvknhb_zvkb(state, data, num_blocks);
+		sha512_base_do_update(desc, data, len,
+				      sha512_transform_zvknhb_zvkb);
 		kernel_vector_end();
 	} else {
-		sha512_generic_block_fn(state, data, num_blocks);
+		crypto_sha512_update(desc, data, len);
 	}
-}
-
-static int riscv64_sha512_update(struct shash_desc *desc, const u8 *data,
-				 unsigned int len)
-{
-	return sha512_base_do_update_blocks(desc, data, len, sha512_block);
+	return 0;
 }
 
 static int riscv64_sha512_finup(struct shash_desc *desc, const u8 *data,
 				unsigned int len, u8 *out)
 {
-	sha512_base_do_finup(desc, data, len, sha512_block);
-	return sha512_base_finish(desc, out);
+	if (crypto_simd_usable()) {
+		kernel_vector_begin();
+		if (len)
+			sha512_base_do_update(desc, data, len,
+					      sha512_transform_zvknhb_zvkb);
+		sha512_base_do_finalize(desc, sha512_transform_zvknhb_zvkb);
+		kernel_vector_end();
+
+		return sha512_base_finish(desc, out);
+	}
+
+	return crypto_sha512_finup(desc, data, len, out);
+}
+
+static int riscv64_sha512_final(struct shash_desc *desc, u8 *out)
+{
+	return riscv64_sha512_finup(desc, NULL, 0, out);
 }
 
 static int riscv64_sha512_digest(struct shash_desc *desc, const u8 *data,
@@ -66,15 +77,14 @@ static struct shash_alg riscv64_sha512_algs[] = {
 	{
 		.init = sha512_base_init,
 		.update = riscv64_sha512_update,
+		.final = riscv64_sha512_final,
 		.finup = riscv64_sha512_finup,
 		.digest = riscv64_sha512_digest,
-		.descsize = SHA512_STATE_SIZE,
+		.descsize = sizeof(struct sha512_state),
 		.digestsize = SHA512_DIGEST_SIZE,
 		.base = {
 			.cra_blocksize = SHA512_BLOCK_SIZE,
 			.cra_priority = 300,
-			.cra_flags = CRYPTO_AHASH_ALG_BLOCK_ONLY |
-				     CRYPTO_AHASH_ALG_FINUP_MAX,
 			.cra_name = "sha512",
 			.cra_driver_name = "sha512-riscv64-zvknhb-zvkb",
 			.cra_module = THIS_MODULE,
@@ -82,14 +92,13 @@ static struct shash_alg riscv64_sha512_algs[] = {
 	}, {
 		.init = sha384_base_init,
 		.update = riscv64_sha512_update,
+		.final = riscv64_sha512_final,
 		.finup = riscv64_sha512_finup,
-		.descsize = SHA512_STATE_SIZE,
+		.descsize = sizeof(struct sha512_state),
 		.digestsize = SHA384_DIGEST_SIZE,
 		.base = {
 			.cra_blocksize = SHA384_BLOCK_SIZE,
 			.cra_priority = 300,
-			.cra_flags = CRYPTO_AHASH_ALG_BLOCK_ONLY |
-				     CRYPTO_AHASH_ALG_FINUP_MAX,
 			.cra_name = "sha384",
 			.cra_driver_name = "sha384-riscv64-zvknhb-zvkb",
 			.cra_module = THIS_MODULE,

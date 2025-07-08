@@ -67,8 +67,7 @@ static int teranetics_read_status(struct phy_device *phydev)
 	return 0;
 }
 
-static int teranetics_match_phy_device(struct phy_device *phydev,
-				       const struct phy_driver *phydrv)
+static int teranetics_match_phy_device(struct phy_device *phydev)
 {
 	return phydev->c45_ids.device_ids[3] == PHY_ID_TN2020;
 }

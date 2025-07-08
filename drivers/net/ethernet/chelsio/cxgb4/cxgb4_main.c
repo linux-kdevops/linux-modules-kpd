@@ -6480,11 +6480,10 @@ static const struct tlsdev_ops cxgb4_ktls_ops = {
 
 #if IS_ENABLED(CONFIG_CHELSIO_IPSEC_INLINE)
 
-static int cxgb4_xfrm_add_state(struct net_device *dev,
-				struct xfrm_state *x,
+static int cxgb4_xfrm_add_state(struct xfrm_state *x,
 				struct netlink_ext_ack *extack)
 {
-	struct adapter *adap = netdev2adap(dev);
+	struct adapter *adap = netdev2adap(x->xso.dev);
 	int ret;
 
 	if (!mutex_trylock(&uld_mutex)) {
@@ -6495,8 +6494,7 @@ static int cxgb4_xfrm_add_state(struct net_device *dev,
 	if (ret)
 		goto out_unlock;
 
-	ret = adap->uld[CXGB4_ULD_IPSEC].xfrmdev_ops->xdo_dev_state_add(dev, x,
-									extack);
+	ret = adap->uld[CXGB4_ULD_IPSEC].xfrmdev_ops->xdo_dev_state_add(x, extack);
 
 out_unlock:
 	mutex_unlock(&uld_mutex);
@@ -6504,9 +6502,9 @@ out_unlock:
 	return ret;
 }
 
-static void cxgb4_xfrm_del_state(struct net_device *dev, struct xfrm_state *x)
+static void cxgb4_xfrm_del_state(struct xfrm_state *x)
 {
-	struct adapter *adap = netdev2adap(dev);
+	struct adapter *adap = netdev2adap(x->xso.dev);
 
 	if (!mutex_trylock(&uld_mutex)) {
 		dev_dbg(adap->pdev_dev,
@@ -6516,15 +6514,15 @@ static void cxgb4_xfrm_del_state(struct net_device *dev, struct xfrm_state *x)
 	if (chcr_offload_state(adap, CXGB4_XFRMDEV_OPS))
 		goto out_unlock;
 
-	adap->uld[CXGB4_ULD_IPSEC].xfrmdev_ops->xdo_dev_state_delete(dev, x);
+	adap->uld[CXGB4_ULD_IPSEC].xfrmdev_ops->xdo_dev_state_delete(x);
 
 out_unlock:
 	mutex_unlock(&uld_mutex);
 }
 
-static void cxgb4_xfrm_free_state(struct net_device *dev, struct xfrm_state *x)
+static void cxgb4_xfrm_free_state(struct xfrm_state *x)
 {
-	struct adapter *adap = netdev2adap(dev);
+	struct adapter *adap = netdev2adap(x->xso.dev);
 
 	if (!mutex_trylock(&uld_mutex)) {
 		dev_dbg(adap->pdev_dev,
@@ -6534,7 +6532,7 @@ static void cxgb4_xfrm_free_state(struct net_device *dev, struct xfrm_state *x)
 	if (chcr_offload_state(adap, CXGB4_XFRMDEV_OPS))
 		goto out_unlock;
 
-	adap->uld[CXGB4_ULD_IPSEC].xfrmdev_ops->xdo_dev_state_free(dev, x);
+	adap->uld[CXGB4_ULD_IPSEC].xfrmdev_ops->xdo_dev_state_free(x);
 
 out_unlock:
 	mutex_unlock(&uld_mutex);

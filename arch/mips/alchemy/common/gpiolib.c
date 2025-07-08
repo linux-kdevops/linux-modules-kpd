@@ -119,11 +119,9 @@ static int alchemy_gpic_get(struct gpio_chip *chip, unsigned int off)
 	return !!au1300_gpio_get_value(off + AU1300_GPIO_BASE);
 }
 
-static int alchemy_gpic_set(struct gpio_chip *chip, unsigned int off, int v)
+static void alchemy_gpic_set(struct gpio_chip *chip, unsigned int off, int v)
 {
 	au1300_gpio_set_value(off + AU1300_GPIO_BASE, v);
-
-	return 0;
 }
 
 static int alchemy_gpic_dir_input(struct gpio_chip *chip, unsigned int off)
@@ -147,7 +145,7 @@ static struct gpio_chip au1300_gpiochip = {
 	.direction_input	= alchemy_gpic_dir_input,
 	.direction_output	= alchemy_gpic_dir_output,
 	.get			= alchemy_gpic_get,
-	.set_rv			= alchemy_gpic_set,
+	.set			= alchemy_gpic_set,
 	.to_irq			= alchemy_gpic_gpio_to_irq,
 	.base			= AU1300_GPIO_BASE,
 	.ngpio			= AU1300_GPIO_NUM,

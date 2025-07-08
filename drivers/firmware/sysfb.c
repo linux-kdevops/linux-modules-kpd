@@ -143,7 +143,6 @@ static __init int sysfb_init(void)
 {
 	struct screen_info *si = &screen_info;
 	struct device *parent;
-	unsigned int type;
 	struct simplefb_platform_data mode;
 	const char *name;
 	bool compatible;
@@ -171,26 +170,17 @@ static __init int sysfb_init(void)
 			goto put_device;
 	}
 
-	type = screen_info_video_type(si);
-
 	/* if the FB is incompatible, create a legacy framebuffer device */
-	switch (type) {
-	case VIDEO_TYPE_EGAC:
-		name = "ega-framebuffer";
-		break;
-	case VIDEO_TYPE_VGAC:
-		name = "vga-framebuffer";
-		break;
-	case VIDEO_TYPE_VLFB:
-		name = "vesa-framebuffer";
-		break;
-	case VIDEO_TYPE_EFI:
+	if (si->orig_video_isVGA == VIDEO_TYPE_EFI)
 		name = "efi-framebuffer";
-		break;
-	default:
+	else if (si->orig_video_isVGA == VIDEO_TYPE_VLFB)
+		name = "vesa-framebuffer";
+	else if (si->orig_video_isVGA == VIDEO_TYPE_VGAC)
+		name = "vga-framebuffer";
+	else if (si->orig_video_isVGA == VIDEO_TYPE_EGAC)
+		name = "ega-framebuffer";
+	else
 		name = "platform-framebuffer";
-		break;
-	}
 
 	pd = platform_device_alloc(name, 0);
 	if (!pd) {

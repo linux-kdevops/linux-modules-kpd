@@ -462,9 +462,7 @@ EXPORT_PER_CPU_SYMBOL(softnet_data);
  * PP consumers must pay attention to run APIs in the appropriate context
  * (e.g. NAPI context).
  */
-DEFINE_PER_CPU(struct page_pool_bh, system_page_pool) = {
-	.bh_lock = INIT_LOCAL_LOCK(bh_lock),
-};
+DEFINE_PER_CPU(struct page_pool *, system_page_pool);
 
 #ifdef CONFIG_LOCKDEP
 /*
@@ -830,7 +828,7 @@ netdev_napi_by_id_lock(struct net *net, unsigned int napi_id)
 	dev_hold(dev);
 	rcu_read_unlock();
 
-	dev = __netdev_put_lock(dev, net);
+	dev = __netdev_put_lock(dev);
 	if (!dev)
 		return NULL;
 
@@ -1041,26 +1039,11 @@ struct net_device *dev_get_by_napi_id(unsigned int napi_id)
  * This helper is intended for locking net_device after it has been looked up
  * using a lockless lookup helper. Lock prevents the instance from going away.
  */
-struct net_device *__netdev_put_lock(struct net_device *dev, struct net *net)
+struct net_device *__netdev_put_lock(struct net_device *dev)
 {
 	netdev_lock(dev);
-	if (dev->reg_state > NETREG_REGISTERED ||
-	    dev->moving_ns || !net_eq(dev_net(dev), net)) {
+	if (dev->reg_state > NETREG_REGISTERED) {
 		netdev_unlock(dev);
-		dev_put(dev);
-		return NULL;
-	}
-	dev_put(dev);
-	return dev;
-}
-
-static struct net_device *
-__netdev_put_lock_ops_compat(struct net_device *dev, struct net *net)
-{
-	netdev_lock_ops_compat(dev);
-	if (dev->reg_state > NETREG_REGISTERED ||
-	    dev->moving_ns || !net_eq(dev_net(dev), net)) {
-		netdev_unlock_ops_compat(dev);
 		dev_put(dev);
 		return NULL;
 	}
@@ -1087,19 +1070,7 @@ struct net_device *netdev_get_by_index_lock(struct net *net, int ifindex)
 	if (!dev)
 		return NULL;
 
-	return __netdev_put_lock(dev, net);
-}
-
-struct net_device *
-netdev_get_by_index_lock_ops_compat(struct net *net, int ifindex)
-{
-	struct net_device *dev;
-
-	dev = dev_get_by_index(net, ifindex);
-	if (!dev)
-		return NULL;
-
-	return __netdev_put_lock_ops_compat(dev, net);
+	return __netdev_put_lock(dev);
 }
 
 struct net_device *
@@ -1119,32 +1090,7 @@ netdev_xa_find_lock(struct net *net, struct net_device *dev,
 		dev_hold(dev);
 		rcu_read_unlock();
 
-		dev = __netdev_put_lock(dev, net);
-		if (dev)
-			return dev;
-
-		(*index)++;
-	} while (true);
-}
-
-struct net_device *
-netdev_xa_find_lock_ops_compat(struct net *net, struct net_device *dev,
-			       unsigned long *index)
-{
-	if (dev)
-		netdev_unlock_ops_compat(dev);
-
-	do {
-		rcu_read_lock();
-		dev = xa_find(&net->dev_by_index, index, ULONG_MAX, XA_PRESENT);
-		if (!dev) {
-			rcu_read_unlock();
-			return NULL;
-		}
-		dev_hold(dev);
-		rcu_read_unlock();
-
-		dev = __netdev_put_lock_ops_compat(dev, net);
+		dev = __netdev_put_lock(dev);
 		if (dev)
 			return dev;
 
@@ -3596,10 +3542,9 @@ out:
 }
 EXPORT_SYMBOL(skb_checksum_help);
 
-#ifdef CONFIG_NET_CRC32C
 int skb_crc32c_csum_help(struct sk_buff *skb)
 {
-	u32 crc;
+	__le32 crc32c_csum;
 	int ret = 0, offset, start;
 
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
@@ -3627,14 +3572,15 @@ int skb_crc32c_csum_help(struct sk_buff *skb)
 	if (ret)
 		goto out;
 
-	crc = ~skb_crc32c(skb, start, skb->len - start, ~0);
-	*(__le32 *)(skb->data + offset) = cpu_to_le32(crc);
+	crc32c_csum = cpu_to_le32(~__skb_checksum(skb, start,
+						  skb->len - start, ~(__u32)0,
+						  crc32c_csum_stub));
+	*(__le32 *)(skb->data + offset) = crc32c_csum;
 	skb_reset_csum_not_inet(skb);
 out:
 	return ret;
 }
 EXPORT_SYMBOL(skb_crc32c_csum_help);
-#endif /* CONFIG_NET_CRC32C */
 
 __be16 skb_network_protocol(struct sk_buff *skb, int *depth)
 {
@@ -3898,42 +3844,12 @@ sw_checksum:
 }
 EXPORT_SYMBOL(skb_csum_hwoffload_help);
 
-static struct sk_buff *validate_xmit_unreadable_skb(struct sk_buff *skb,
-						    struct net_device *dev)
-{
-	struct skb_shared_info *shinfo;
-	struct net_iov *niov;
-
-	if (likely(skb_frags_readable(skb)))
-		goto out;
-
-	if (!dev->netmem_tx)
-		goto out_free;
-
-	shinfo = skb_shinfo(skb);
-
-	if (shinfo->nr_frags > 0) {
-		niov = netmem_to_net_iov(skb_frag_netmem(&shinfo->frags[0]));
-		if (net_is_devmem_iov(niov) &&
-		    net_devmem_iov_binding(niov)->dev != dev)
-			goto out_free;
-	}
-
-out:
-	return skb;
-
-out_free:
-	kfree_skb(skb);
-	return NULL;
-}
-
 static struct sk_buff *validate_xmit_skb(struct sk_buff *skb, struct net_device *dev, bool *again)
 {
 	netdev_features_t features;
 
-	skb = validate_xmit_unreadable_skb(skb, dev);
-	if (unlikely(!skb))
-		goto out_null;
+	if (!skb_frags_readable(skb))
+		goto out_kfree_skb;
 
 	features = netif_skb_features(skb);
 	skb = validate_xmit_vlan(skb, features);
@@ -4815,7 +4731,6 @@ static inline void ____napi_schedule(struct softnet_data *sd,
 	}
 
 use_local_napi:
-	DEBUG_NET_WARN_ON_ONCE(!list_empty(&napi->poll_list));
 	list_add_tail(&napi->poll_list, &sd->poll_list);
 	WRITE_ONCE(napi->list_owner, smp_processor_id());
 	/* If not called from net_rx_action()
@@ -5031,8 +4946,7 @@ static void rps_trigger_softirq(void *data)
 	struct softnet_data *sd = data;
 
 	____napi_schedule(sd, &sd->backlog);
-	/* Pairs with READ_ONCE() in softnet_seq_show() */
-	WRITE_ONCE(sd->received_rps, sd->received_rps + 1);
+	sd->received_rps++;
 }
 
 #endif /* CONFIG_RPS */
@@ -5117,7 +5031,7 @@ static bool skb_flow_limit(struct sk_buff *skb, unsigned int qlen)
 	rcu_read_lock();
 	fl = rcu_dereference(sd->flow_limit);
 	if (fl) {
-		new_flow = hash_32(skb_get_hash(skb), fl->log_buckets);
+		new_flow = skb_get_hash(skb) & (fl->num_buckets - 1);
 		old_flow = fl->history[fl->history_head];
 		fl->history[fl->history_head] = new_flow;
 
@@ -5128,8 +5042,7 @@ static bool skb_flow_limit(struct sk_buff *skb, unsigned int qlen)
 			fl->buckets[old_flow]--;
 
 		if (++fl->buckets[new_flow] > (FLOW_LIMIT_HISTORY >> 1)) {
-			/* Pairs with READ_ONCE() in softnet_seq_show() */
-			WRITE_ONCE(fl->count, fl->count + 1);
+			fl->count++;
 			rcu_read_unlock();
 			return true;
 		}
@@ -5325,10 +5238,7 @@ netif_skb_check_for_xdp(struct sk_buff **pskb, const struct bpf_prog *prog)
 	struct sk_buff *skb = *pskb;
 	int err, hroom, troom;
 
-	local_lock_nested_bh(&system_page_pool.bh_lock);
-	err = skb_cow_data_for_xdp(this_cpu_read(system_page_pool.pool), pskb, prog);
-	local_unlock_nested_bh(&system_page_pool.bh_lock);
-	if (!err)
+	if (!skb_cow_data_for_xdp(this_cpu_read(system_page_pool), pskb, prog))
 		return 0;
 
 	/* In case we have to go down the path and also linearize,
@@ -7477,14 +7387,9 @@ static int napi_poll(struct napi_struct *n, struct list_head *repoll)
 
 	work = __napi_poll(n, &do_repoll);
 
-	if (do_repoll) {
-#if defined(CONFIG_DEBUG_NET)
-		if (unlikely(!napi_is_scheduled(n)))
-			pr_crit("repoll requested for device %s %ps but napi is not scheduled.\n",
-				n->dev->name, n->poll);
-#endif
+	if (do_repoll)
 		list_add_tail(&n->poll_list, repoll);
-	}
+
 	netpoll_poll_unlock(have);
 
 	return work;
@@ -7610,8 +7515,7 @@ start:
 		 */
 		if (unlikely(budget <= 0 ||
 			     time_after_eq(jiffies, time_limit))) {
-			/* Pairs with READ_ONCE() in softnet_seq_show() */
-			WRITE_ONCE(sd->time_squeeze, sd->time_squeeze + 1);
+			sd->time_squeeze++;
 			break;
 		}
 	}
@@ -9284,16 +9188,8 @@ static int __dev_set_promiscuity(struct net_device *dev, int inc, bool notify)
 
 		dev_change_rx_flags(dev, IFF_PROMISC);
 	}
-	if (notify) {
-		/* The ops lock is only required to ensure consistent locking
-		 * for `NETDEV_CHANGE` notifiers. This function is sometimes
-		 * called without the lock, even for devices that are ops
-		 * locked, such as in `dev_uc_sync_multiple` when using
-		 * bonding or teaming.
-		 */
-		netdev_ops_assert_locked(dev);
+	if (notify)
 		__dev_notify_flags(dev, old_flags, IFF_PROMISC, 0, NULL);
-	}
 	return 0;
 }
 
@@ -9669,7 +9565,7 @@ int dev_pre_changeaddr_notify(struct net_device *dev, const char *addr,
 }
 EXPORT_SYMBOL(dev_pre_changeaddr_notify);
 
-int netif_set_mac_address(struct net_device *dev, struct sockaddr_storage *ss,
+int netif_set_mac_address(struct net_device *dev, struct sockaddr *sa,
 			  struct netlink_ext_ack *extack)
 {
 	const struct net_device_ops *ops = dev->netdev_ops;
@@ -9677,15 +9573,15 @@ int netif_set_mac_address(struct net_device *dev, struct sockaddr_storage *ss,
 
 	if (!ops->ndo_set_mac_address)
 		return -EOPNOTSUPP;
-	if (ss->ss_family != dev->type)
+	if (sa->sa_family != dev->type)
 		return -EINVAL;
 	if (!netif_device_present(dev))
 		return -ENODEV;
-	err = dev_pre_changeaddr_notify(dev, ss->__data, extack);
+	err = dev_pre_changeaddr_notify(dev, sa->sa_data, extack);
 	if (err)
 		return err;
-	if (memcmp(dev->dev_addr, ss->__data, dev->addr_len)) {
-		err = ops->ndo_set_mac_address(dev, ss);
+	if (memcmp(dev->dev_addr, sa->sa_data, dev->addr_len)) {
+		err = ops->ndo_set_mac_address(dev, sa);
 		if (err)
 			return err;
 	}
@@ -9697,7 +9593,6 @@ int netif_set_mac_address(struct net_device *dev, struct sockaddr_storage *ss,
 
 DECLARE_RWSEM(dev_addr_sem);
 
-/* "sa" is a true struct sockaddr with limited "sa_data" member. */
 int dev_get_mac_address(struct sockaddr *sa, struct net *net, char *dev_name)
 {
 	size_t size = sizeof(sa->sa_data_min);
@@ -9968,7 +9863,6 @@ int netif_xdp_propagate(struct net_device *dev, struct netdev_bpf *bpf)
 
 	return dev->netdev_ops->ndo_bpf(dev, bpf);
 }
-EXPORT_SYMBOL_GPL(netif_xdp_propagate);
 
 u32 dev_xdp_prog_id(struct net_device *dev, enum bpf_xdp_mode mode)
 {
@@ -10499,7 +10393,7 @@ static void dev_index_release(struct net *net, int ifindex)
 static bool from_cleanup_net(void)
 {
 #ifdef CONFIG_NET_NS
-	return current == READ_ONCE(cleanup_net_task);
+	return current == cleanup_net_task;
 #else
 	return false;
 #endif
@@ -10547,7 +10441,6 @@ static void netdev_sync_lower_features(struct net_device *upper,
 		if (!(features & feature) && (lower->features & feature)) {
 			netdev_dbg(upper, "Disabling feature %pNF on lower dev %s.\n",
 				   &feature, lower->name);
-			netdev_lock_ops(lower);
 			lower->wanted_features &= ~feature;
 			__netdev_update_features(lower);
 
@@ -10556,7 +10449,6 @@ static void netdev_sync_lower_features(struct net_device *upper,
 					    &feature, lower->name);
 			else
 				netdev_features_change(lower);
-			netdev_unlock_ops(lower);
 		}
 	}
 }
@@ -11153,7 +11045,8 @@ int register_netdevice(struct net_device *dev)
 	 *	Prevent userspace races by waiting until the network
 	 *	device is fully setup before sending notifications.
 	 */
-	if (!(dev->rtnl_link_ops && dev->rtnl_link_initializing))
+	if (!dev->rtnl_link_ops ||
+	    dev->rtnl_link_state == RTNL_LINK_INITIALIZED)
 		rtmsg_ifinfo(RTM_NEWLINK, dev, ~0U, GFP_KERNEL, 0, NULL);
 
 out:
@@ -12076,7 +11969,8 @@ void unregister_netdevice_many_notify(struct list_head *head,
 		 */
 		call_netdevice_notifiers(NETDEV_UNREGISTER, dev);
 
-		if (!(dev->rtnl_link_ops && dev->rtnl_link_initializing))
+		if (!dev->rtnl_link_ops ||
+		    dev->rtnl_link_state == RTNL_LINK_INITIALIZED)
 			skb = rtmsg_ifinfo_build_skb(RTM_DELLINK, dev, ~0U, 0,
 						     GFP_KERNEL, NULL, 0,
 						     portid, nlh);
@@ -12250,11 +12144,7 @@ int __dev_change_net_namespace(struct net_device *dev, struct net *net,
 	netif_close(dev);
 	/* And unlink it from device chain */
 	unlist_netdevice(dev);
-
-	if (!netdev_need_ops_lock(dev))
-		netdev_lock(dev);
-	dev->moving_ns = true;
-	netdev_unlock(dev);
+	netdev_unlock_ops(dev);
 
 	synchronize_net();
 
@@ -12292,9 +12182,7 @@ int __dev_change_net_namespace(struct net_device *dev, struct net *net,
 	move_netdevice_notifiers_dev_net(dev, net);
 
 	/* Actually switch the network namespace */
-	netdev_lock(dev);
 	dev_net_set(dev, net);
-	netdev_unlock(dev);
 	dev->ifindex = new_ifindex;
 
 	if (new_name[0]) {
@@ -12320,11 +12208,7 @@ int __dev_change_net_namespace(struct net_device *dev, struct net *net,
 	err = netdev_change_owner(dev, net_old, net);
 	WARN_ON(err);
 
-	netdev_lock(dev);
-	dev->moving_ns = false;
-	if (!netdev_need_ops_lock(dev))
-		netdev_unlock(dev);
-
+	netdev_lock_ops(dev);
 	/* Add the device back in the hashes */
 	list_netdevice(dev);
 	/* Notify protocols, that a new device appeared. */
@@ -12735,7 +12619,7 @@ static int net_page_pool_create(int cpuid)
 		return err;
 	}
 
-	per_cpu(system_page_pool.pool, cpuid) = pp_ptr;
+	per_cpu(system_page_pool, cpuid) = pp_ptr;
 #endif
 	return 0;
 }
@@ -12865,13 +12749,13 @@ out:
 		for_each_possible_cpu(i) {
 			struct page_pool *pp_ptr;
 
-			pp_ptr = per_cpu(system_page_pool.pool, i);
+			pp_ptr = per_cpu(system_page_pool, i);
 			if (!pp_ptr)
 				continue;
 
 			xdp_unreg_page_pool(pp_ptr);
 			page_pool_destroy(pp_ptr);
-			per_cpu(system_page_pool.pool, i) = NULL;
+			per_cpu(system_page_pool, i) = NULL;
 		}
 	}
 

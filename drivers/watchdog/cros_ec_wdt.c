@@ -25,22 +25,26 @@ static int cros_ec_wdt_send_cmd(struct cros_ec_device *cros_ec,
 				union cros_ec_wdt_data *arg)
 {
 	int ret;
-	DEFINE_RAW_FLEX(struct cros_ec_command, msg, data,
-			sizeof(union cros_ec_wdt_data));
+	struct {
+		struct cros_ec_command msg;
+		union cros_ec_wdt_data data;
+	} __packed buf = {
+		.msg = {
+			.version = 0,
+			.command = EC_CMD_HANG_DETECT,
+			.insize  = (arg->req.command == EC_HANG_DETECT_CMD_GET_STATUS) ?
+				   sizeof(struct ec_response_hang_detect) :
+				   0,
+			.outsize = sizeof(struct ec_params_hang_detect),
+		},
+		.data.req = arg->req
+	};
 
-	msg->version = 0;
-	msg->command = EC_CMD_HANG_DETECT;
-	msg->insize  = (arg->req.command == EC_HANG_DETECT_CMD_GET_STATUS) ?
-		   sizeof(struct ec_response_hang_detect) :
-		   0;
-	msg->outsize = sizeof(struct ec_params_hang_detect);
-	*(struct ec_params_hang_detect *)msg->data = arg->req;
-
-	ret = cros_ec_cmd_xfer_status(cros_ec, msg);
+	ret = cros_ec_cmd_xfer_status(cros_ec, &buf.msg);
 	if (ret < 0)
 		return ret;
 
-	arg->resp = *(struct ec_response_hang_detect *)msg->data;
+	arg->resp = buf.data.resp;
 
 	return 0;
 }

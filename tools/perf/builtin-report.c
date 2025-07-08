@@ -413,7 +413,7 @@ static int report__setup_sample_type(struct report *rep)
 		/* Silently ignore if callchain is missing */
 		if (!(sample_type & PERF_SAMPLE_CALLCHAIN)) {
 			symbol_conf.cumulate_callchain = false;
-			perf_hpp__cancel_cumulate(session->evlist);
+			perf_hpp__cancel_cumulate();
 		}
 	}
 
@@ -529,10 +529,7 @@ static size_t hists__fprintf_nr_sample_events(struct hists *hists, struct report
 
 	if (rep->mem_mode) {
 		ret += fprintf(fp, "\n# Total weight : %" PRIu64, nr_events);
-		if (sort_order || !field_order) {
-			ret += fprintf(fp, "\n# Sort order   : %s",
-				       sort_order ? : default_mem_sort_order);
-		}
+		ret += fprintf(fp, "\n# Sort order   : %s", sort_order ? : default_mem_sort_order);
 	} else
 		ret += fprintf(fp, "\n# Event count (approx.): %" PRIu64, nr_events);
 
@@ -1091,7 +1088,7 @@ static int __cmd_report(struct report *rep)
 	/* Don't show Latency column for non-parallel profiles by default. */
 	if (!symbol_conf.prefer_latency && rep->total_samples &&
 		rep->singlethreaded_samples * 100 / rep->total_samples >= 99)
-		perf_hpp__cancel_latency(session->evlist);
+		perf_hpp__cancel_latency();
 
 	evlist__check_mem_load_aux(session->evlist);
 
@@ -1675,10 +1672,14 @@ repeat:
 	}
 
 	if (symbol_conf.report_hierarchy) {
-		/*
-		 * The hist entries in hierarchy are added during the collpase
-		 * phase.  Let's enable it even if no sort keys require it.
-		 */
+		/* disable incompatible options */
+		if (field_order) {
+			pr_err("Error: --hierarchy and --fields options cannot be used together\n");
+			parse_options_usage(report_usage, options, "F", 1);
+			parse_options_usage(NULL, options, "hierarchy", 0);
+			goto error;
+		}
+
 		perf_hpp_list.need_collapse = true;
 	}
 

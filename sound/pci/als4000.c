@@ -836,7 +836,7 @@ static int __snd_card_als4000_probe(struct pci_dev *pci,
 		return -ENXIO;
 	}
 
-	err = pcim_request_all_regions(pci, "ALS4000");
+	err = pci_request_regions(pci, "ALS4000");
 	if (err < 0)
 		return err;
 	iobase = pci_resource_start(pci, 0);

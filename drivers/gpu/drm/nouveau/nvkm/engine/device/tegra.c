@@ -186,31 +186,21 @@ nvkm_device_tegra(struct nvkm_device *device)
 }
 
 static struct resource *
-nvkm_device_tegra_resource(struct nvkm_device *device, enum nvkm_bar_id bar)
+nvkm_device_tegra_resource(struct nvkm_device *device, unsigned bar)
 {
 	struct nvkm_device_tegra *tdev = nvkm_device_tegra(device);
-	int idx;
-
-	switch (bar) {
-	case NVKM_BAR0_PRI: idx = 0; break;
-	case NVKM_BAR1_FB : idx = 1; break;
-	default:
-		WARN_ON(1);
-		return NULL;
-	}
-
-	return platform_get_resource(tdev->pdev, IORESOURCE_MEM, idx);
+	return platform_get_resource(tdev->pdev, IORESOURCE_MEM, bar);
 }
 
 static resource_size_t
-nvkm_device_tegra_resource_addr(struct nvkm_device *device, enum nvkm_bar_id bar)
+nvkm_device_tegra_resource_addr(struct nvkm_device *device, unsigned bar)
 {
 	struct resource *res = nvkm_device_tegra_resource(device, bar);
 	return res ? res->start : 0;
 }
 
 static resource_size_t
-nvkm_device_tegra_resource_size(struct nvkm_device *device, enum nvkm_bar_id bar)
+nvkm_device_tegra_resource_size(struct nvkm_device *device, unsigned bar)
 {
 	struct resource *res = nvkm_device_tegra_resource(device, bar);
 	return res ? resource_size(res) : 0;

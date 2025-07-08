@@ -6,10 +6,11 @@
  */
 
 #include <crypto/internal/hash.h>
+#include <linux/types.h>
+#include <linux/string.h>
 #include <crypto/sha2.h>
 #include <crypto/sha512_base.h>
-#include <linux/kernel.h>
-#include <linux/module.h>
+#include <asm/neon.h>
 
 MODULE_DESCRIPTION("SHA-384/SHA-512 secure hash for arm64");
 MODULE_AUTHOR("Andy Polyakov <appro@openssl.org>");
@@ -18,53 +19,59 @@ MODULE_LICENSE("GPL v2");
 MODULE_ALIAS_CRYPTO("sha384");
 MODULE_ALIAS_CRYPTO("sha512");
 
-asmlinkage void sha512_blocks_arch(u64 *digest, const void *data,
-				   unsigned int num_blks);
+asmlinkage void sha512_block_data_order(u64 *digest, const void *data,
+					unsigned int num_blks);
+EXPORT_SYMBOL(sha512_block_data_order);
 
 static void sha512_arm64_transform(struct sha512_state *sst, u8 const *src,
 				   int blocks)
 {
-	sha512_blocks_arch(sst->state, src, blocks);
+	sha512_block_data_order(sst->state, src, blocks);
 }
 
 static int sha512_update(struct shash_desc *desc, const u8 *data,
 			 unsigned int len)
 {
-	return sha512_base_do_update_blocks(desc, data, len,
-					    sha512_arm64_transform);
+	return sha512_base_do_update(desc, data, len, sha512_arm64_transform);
 }
 
 static int sha512_finup(struct shash_desc *desc, const u8 *data,
 			unsigned int len, u8 *out)
 {
-	sha512_base_do_finup(desc, data, len, sha512_arm64_transform);
+	if (len)
+		sha512_base_do_update(desc, data, len, sha512_arm64_transform);
+	sha512_base_do_finalize(desc, sha512_arm64_transform);
+
 	return sha512_base_finish(desc, out);
+}
+
+static int sha512_final(struct shash_desc *desc, u8 *out)
+{
+	return sha512_finup(desc, NULL, 0, out);
 }
 
 static struct shash_alg algs[] = { {
 	.digestsize		= SHA512_DIGEST_SIZE,
 	.init			= sha512_base_init,
 	.update			= sha512_update,
+	.final			= sha512_final,
 	.finup			= sha512_finup,
-	.descsize		= SHA512_STATE_SIZE,
+	.descsize		= sizeof(struct sha512_state),
 	.base.cra_name		= "sha512",
 	.base.cra_driver_name	= "sha512-arm64",
 	.base.cra_priority	= 150,
-	.base.cra_flags		= CRYPTO_AHASH_ALG_BLOCK_ONLY |
-				  CRYPTO_AHASH_ALG_FINUP_MAX,
 	.base.cra_blocksize	= SHA512_BLOCK_SIZE,
 	.base.cra_module	= THIS_MODULE,
 }, {
 	.digestsize		= SHA384_DIGEST_SIZE,
 	.init			= sha384_base_init,
 	.update			= sha512_update,
+	.final			= sha512_final,
 	.finup			= sha512_finup,
-	.descsize		= SHA512_STATE_SIZE,
+	.descsize		= sizeof(struct sha512_state),
 	.base.cra_name		= "sha384",
 	.base.cra_driver_name	= "sha384-arm64",
 	.base.cra_priority	= 150,
-	.base.cra_flags		= CRYPTO_AHASH_ALG_BLOCK_ONLY |
-				  CRYPTO_AHASH_ALG_FINUP_MAX,
 	.base.cra_blocksize	= SHA384_BLOCK_SIZE,
 	.base.cra_module	= THIS_MODULE,
 } };

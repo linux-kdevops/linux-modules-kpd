@@ -293,6 +293,8 @@ int pci_epc_get_msi(struct pci_epc *epc, u8 func_no, u8 vfunc_no)
 	if (interrupt < 0)
 		return 0;
 
+	interrupt = 1 << interrupt;
+
 	return interrupt;
 }
 EXPORT_SYMBOL_GPL(pci_epc_get_msi);
@@ -302,25 +304,28 @@ EXPORT_SYMBOL_GPL(pci_epc_get_msi);
  * @epc: the EPC device on which MSI has to be configured
  * @func_no: the physical endpoint function number in the EPC device
  * @vfunc_no: the virtual endpoint function number in the physical function
- * @nr_irqs: number of MSI interrupts required by the EPF
+ * @interrupts: number of MSI interrupts required by the EPF
  *
  * Invoke to set the required number of MSI interrupts.
  */
-int pci_epc_set_msi(struct pci_epc *epc, u8 func_no, u8 vfunc_no, u8 nr_irqs)
+int pci_epc_set_msi(struct pci_epc *epc, u8 func_no, u8 vfunc_no, u8 interrupts)
 {
 	int ret;
+	u8 encode_int;
 
 	if (!pci_epc_function_is_valid(epc, func_no, vfunc_no))
 		return -EINVAL;
 
-	if (nr_irqs < 1 || nr_irqs > 32)
+	if (interrupts < 1 || interrupts > 32)
 		return -EINVAL;
 
 	if (!epc->ops->set_msi)
 		return 0;
 
+	encode_int = order_base_2(interrupts);
+
 	mutex_lock(&epc->lock);
-	ret = epc->ops->set_msi(epc, func_no, vfunc_no, nr_irqs);
+	ret = epc->ops->set_msi(epc, func_no, vfunc_no, encode_int);
 	mutex_unlock(&epc->lock);
 
 	return ret;
@@ -352,7 +357,7 @@ int pci_epc_get_msix(struct pci_epc *epc, u8 func_no, u8 vfunc_no)
 	if (interrupt < 0)
 		return 0;
 
-	return interrupt;
+	return interrupt + 1;
 }
 EXPORT_SYMBOL_GPL(pci_epc_get_msix);
 
@@ -361,28 +366,29 @@ EXPORT_SYMBOL_GPL(pci_epc_get_msix);
  * @epc: the EPC device on which MSI-X has to be configured
  * @func_no: the physical endpoint function number in the EPC device
  * @vfunc_no: the virtual endpoint function number in the physical function
- * @nr_irqs: number of MSI-X interrupts required by the EPF
+ * @interrupts: number of MSI-X interrupts required by the EPF
  * @bir: BAR where the MSI-X table resides
  * @offset: Offset pointing to the start of MSI-X table
  *
  * Invoke to set the required number of MSI-X interrupts.
  */
-int pci_epc_set_msix(struct pci_epc *epc, u8 func_no, u8 vfunc_no, u16 nr_irqs,
-		     enum pci_barno bir, u32 offset)
+int pci_epc_set_msix(struct pci_epc *epc, u8 func_no, u8 vfunc_no,
+		     u16 interrupts, enum pci_barno bir, u32 offset)
 {
 	int ret;
 
 	if (!pci_epc_function_is_valid(epc, func_no, vfunc_no))
 		return -EINVAL;
 
-	if (nr_irqs < 1 || nr_irqs > 2048)
+	if (interrupts < 1 || interrupts > 2048)
 		return -EINVAL;
 
 	if (!epc->ops->set_msix)
 		return 0;
 
 	mutex_lock(&epc->lock);
-	ret = epc->ops->set_msix(epc, func_no, vfunc_no, nr_irqs, bir, offset);
+	ret = epc->ops->set_msix(epc, func_no, vfunc_no, interrupts - 1, bir,
+				 offset);
 	mutex_unlock(&epc->lock);
 
 	return ret;

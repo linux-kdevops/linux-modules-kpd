@@ -462,8 +462,8 @@ static u32 cci_func(struct i2c_adapter *adap)
 }
 
 static const struct i2c_algorithm cci_algo = {
-	.xfer = cci_xfer,
-	.functionality = cci_func,
+	.master_xfer	= cci_xfer,
+	.functionality	= cci_func,
 };
 
 static int cci_enable_clocks(struct cci *cci)

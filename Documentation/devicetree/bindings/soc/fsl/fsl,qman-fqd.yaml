@@ -50,7 +50,7 @@ required:
   - compatible
 
 allOf:
-  - $ref: /schemas/reserved-memory/reserved-memory.yaml
+  - $ref: reserved-memory.yaml
 
 unevaluatedProperties: false
 
@@ -61,7 +61,7 @@ examples:
         #size-cells = <2>;
 
         qman-fqd {
-            compatible = "fsl,qman-fqd";
+            compatible = "shared-dma-pool";
             size = <0 0x400000>;
             alignment = <0 0x400000>;
             no-map;

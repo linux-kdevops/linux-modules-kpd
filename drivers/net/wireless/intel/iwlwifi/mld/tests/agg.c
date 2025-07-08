@@ -2,7 +2,7 @@
 /*
  * KUnit tests for channel helper functions
  *
- * Copyright (C) 2024-2025 Intel Corporation
+ * Copyright (C) 2024 Intel Corporation
  */
 #include <kunit/test.h>
 #include <kunit/static_stub.h>
@@ -474,14 +474,14 @@ static struct iwl_rx_mpdu_desc *setup_mpdu_desc(void)
 	KUNIT_ALLOC_AND_ASSERT(test, mpdu_desc);
 
 	mpdu_desc->reorder_data |=
-		le32_encode_bits(param->rx_pkt.baid,
-				 IWL_RX_MPDU_REORDER_BAID_MASK);
+		cpu_to_le32(FIELD_PREP(IWL_RX_MPDU_REORDER_BAID_MASK,
+				       param->rx_pkt.baid));
 	mpdu_desc->reorder_data |=
-		le32_encode_bits(param->rx_pkt.sn,
-				 IWL_RX_MPDU_REORDER_SN_MASK);
+		cpu_to_le32(FIELD_PREP(IWL_RX_MPDU_REORDER_SN_MASK,
+				       param->rx_pkt.sn));
 	mpdu_desc->reorder_data |=
-		le32_encode_bits(param->rx_pkt.nssn,
-				 IWL_RX_MPDU_REORDER_NSSN_MASK);
+		cpu_to_le32(FIELD_PREP(IWL_RX_MPDU_REORDER_NSSN_MASK,
+				       param->rx_pkt.nssn));
 	if (param->rx_pkt.old_sn)
 		mpdu_desc->reorder_data |=
 			cpu_to_le32(IWL_RX_MPDU_REORDER_BA_OLD_SN);

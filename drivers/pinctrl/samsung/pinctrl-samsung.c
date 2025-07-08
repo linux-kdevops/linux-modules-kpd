@@ -570,18 +570,15 @@ static void samsung_gpio_set_value(struct gpio_chip *gc,
 }
 
 /* gpiolib gpio_set callback function */
-static int samsung_gpio_set(struct gpio_chip *gc, unsigned int offset,
-			    int value)
+static void samsung_gpio_set(struct gpio_chip *gc, unsigned offset, int value)
 {
 	struct samsung_pin_bank *bank = gpiochip_get_data(gc);
 	struct samsung_pinctrl_drv_data *drvdata = bank->drvdata;
 	unsigned long flags;
-	int ret;
 
-	ret = clk_enable(drvdata->pclk);
-	if (ret) {
+	if (clk_enable(drvdata->pclk)) {
 		dev_err(drvdata->dev, "failed to enable clock\n");
-		return ret;
+		return;
 	}
 
 	raw_spin_lock_irqsave(&bank->slock, flags);
@@ -589,8 +586,6 @@ static int samsung_gpio_set(struct gpio_chip *gc, unsigned int offset,
 	raw_spin_unlock_irqrestore(&bank->slock, flags);
 
 	clk_disable(drvdata->pclk);
-
-	return 0;
 }
 
 /* gpiolib gpio_get callback function */
@@ -1067,7 +1062,7 @@ static int samsung_gpio_set_config(struct gpio_chip *gc, unsigned int offset,
 static const struct gpio_chip samsung_gpiolib_chip = {
 	.request = gpiochip_generic_request,
 	.free = gpiochip_generic_free,
-	.set_rv = samsung_gpio_set,
+	.set = samsung_gpio_set,
 	.get = samsung_gpio_get,
 	.direction_input = samsung_gpio_direction_input,
 	.direction_output = samsung_gpio_direction_output,
@@ -1338,7 +1333,6 @@ err_put_banks:
 static int __maybe_unused samsung_pinctrl_suspend(struct device *dev)
 {
 	struct samsung_pinctrl_drv_data *drvdata = dev_get_drvdata(dev);
-	struct samsung_pin_bank *bank;
 	int i;
 
 	i = clk_enable(drvdata->pclk);
@@ -1349,7 +1343,7 @@ static int __maybe_unused samsung_pinctrl_suspend(struct device *dev)
 	}
 
 	for (i = 0; i < drvdata->nr_banks; i++) {
-		bank = &drvdata->pin_banks[i];
+		struct samsung_pin_bank *bank = &drvdata->pin_banks[i];
 		const void __iomem *reg = bank->pctl_base + bank->pctl_offset;
 		const u8 *offs = bank->type->reg_offset;
 		const u8 *widths = bank->type->fld_width;
@@ -1377,14 +1371,10 @@ static int __maybe_unused samsung_pinctrl_suspend(struct device *dev)
 		}
 	}
 
-	for (i = 0; i < drvdata->nr_banks; i++) {
-		bank = &drvdata->pin_banks[i];
-		if (drvdata->suspend)
-			drvdata->suspend(bank);
-	}
-
 	clk_disable(drvdata->pclk);
 
+	if (drvdata->suspend)
+		drvdata->suspend(drvdata);
 	if (drvdata->retention_ctrl && drvdata->retention_ctrl->enable)
 		drvdata->retention_ctrl->enable(drvdata);
 
@@ -1402,7 +1392,6 @@ static int __maybe_unused samsung_pinctrl_suspend(struct device *dev)
 static int __maybe_unused samsung_pinctrl_resume(struct device *dev)
 {
 	struct samsung_pinctrl_drv_data *drvdata = dev_get_drvdata(dev);
-	struct samsung_pin_bank *bank;
 	int ret;
 	int i;
 
@@ -1417,14 +1406,11 @@ static int __maybe_unused samsung_pinctrl_resume(struct device *dev)
 		return ret;
 	}
 
-	for (i = 0; i < drvdata->nr_banks; i++) {
-		bank = &drvdata->pin_banks[i];
-		if (drvdata->resume)
-			drvdata->resume(bank);
-	}
+	if (drvdata->resume)
+		drvdata->resume(drvdata);
 
 	for (i = 0; i < drvdata->nr_banks; i++) {
-		bank = &drvdata->pin_banks[i];
+		struct samsung_pin_bank *bank = &drvdata->pin_banks[i];
 		void __iomem *reg = bank->pctl_base + bank->pctl_offset;
 		const u8 *offs = bank->type->reg_offset;
 		const u8 *widths = bank->type->fld_width;

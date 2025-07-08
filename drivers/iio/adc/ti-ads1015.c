@@ -12,7 +12,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/cleanup.h>
 #include <linux/init.h>
 #include <linux/irq.h>
 #include <linux/i2c.h>
@@ -467,8 +466,8 @@ static irqreturn_t ads1015_trigger_handler(int irq, void *p)
 	scan.chan = res;
 	mutex_unlock(&data->lock);
 
-	iio_push_to_buffers_with_ts(indio_dev, &scan, sizeof(scan),
-				    iio_get_time_ns(indio_dev));
+	iio_push_to_buffers_with_timestamp(indio_dev, &scan,
+					   iio_get_time_ns(indio_dev));
 
 err:
 	iio_trigger_notify_done(indio_dev->trig);
@@ -534,31 +533,6 @@ static int ads1015_read_avail(struct iio_dev *indio_dev,
 	}
 }
 
-static int __ads1015_read_info_raw(struct ads1015_data *data,
-				   struct iio_chan_spec const *chan, int *val)
-{
-	int ret;
-
-	if (ads1015_event_channel_enabled(data) &&
-	    data->event_channel != chan->address)
-		return -EBUSY;
-
-	ret = ads1015_set_power_state(data, true);
-	if (ret < 0)
-		return ret;
-
-	ret = ads1015_get_adc_result(data, chan->address, val);
-	if (ret < 0) {
-		ads1015_set_power_state(data, false);
-		return ret;
-	}
-
-	*val = sign_extend32(*val >> chan->scan_type.shift,
-			     chan->scan_type.realbits - 1);
-
-	return ads1015_set_power_state(data, false);
-}
-
 static int ads1015_read_raw(struct iio_dev *indio_dev,
 			    struct iio_chan_spec const *chan, int *val,
 			    int *val2, long mask)
@@ -566,29 +540,58 @@ static int ads1015_read_raw(struct iio_dev *indio_dev,
 	int ret, idx;
 	struct ads1015_data *data = iio_priv(indio_dev);
 
-	guard(mutex)(&data->lock);
+	mutex_lock(&data->lock);
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		if (!iio_device_claim_direct(indio_dev))
-			return -EBUSY;
-		ret = __ads1015_read_info_raw(data, chan, val);
-		iio_device_release_direct(indio_dev);
+		ret = iio_device_claim_direct_mode(indio_dev);
 		if (ret)
-			return ret;
+			break;
 
-		return IIO_VAL_INT;
+		if (ads1015_event_channel_enabled(data) &&
+				data->event_channel != chan->address) {
+			ret = -EBUSY;
+			goto release_direct;
+		}
+
+		ret = ads1015_set_power_state(data, true);
+		if (ret < 0)
+			goto release_direct;
+
+		ret = ads1015_get_adc_result(data, chan->address, val);
+		if (ret < 0) {
+			ads1015_set_power_state(data, false);
+			goto release_direct;
+		}
+
+		*val = sign_extend32(*val >> chan->scan_type.shift,
+				     chan->scan_type.realbits - 1);
+
+		ret = ads1015_set_power_state(data, false);
+		if (ret < 0)
+			goto release_direct;
+
+		ret = IIO_VAL_INT;
+release_direct:
+		iio_device_release_direct_mode(indio_dev);
+		break;
 	case IIO_CHAN_INFO_SCALE:
 		idx = data->channel_data[chan->address].pga;
 		*val = ads1015_fullscale_range[idx];
 		*val2 = chan->scan_type.realbits - 1;
-		return IIO_VAL_FRACTIONAL_LOG2;
+		ret = IIO_VAL_FRACTIONAL_LOG2;
+		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
 		idx = data->channel_data[chan->address].data_rate;
 		*val = data->chip->data_rate[idx];
-		return IIO_VAL_INT;
+		ret = IIO_VAL_INT;
+		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
+	mutex_unlock(&data->lock);
+
+	return ret;
 }
 
 static int ads1015_write_raw(struct iio_dev *indio_dev,
@@ -596,16 +599,23 @@ static int ads1015_write_raw(struct iio_dev *indio_dev,
 			     int val2, long mask)
 {
 	struct ads1015_data *data = iio_priv(indio_dev);
+	int ret;
 
-	guard(mutex)(&data->lock);
+	mutex_lock(&data->lock);
 	switch (mask) {
 	case IIO_CHAN_INFO_SCALE:
-		return ads1015_set_scale(data, chan, val, val2);
+		ret = ads1015_set_scale(data, chan, val, val2);
+		break;
 	case IIO_CHAN_INFO_SAMP_FREQ:
-		return ads1015_set_data_rate(data, chan->address, val);
+		ret = ads1015_set_data_rate(data, chan->address, val);
+		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
+	mutex_unlock(&data->lock);
+
+	return ret;
 }
 
 static int ads1015_read_event(struct iio_dev *indio_dev,
@@ -614,18 +624,20 @@ static int ads1015_read_event(struct iio_dev *indio_dev,
 	int *val2)
 {
 	struct ads1015_data *data = iio_priv(indio_dev);
+	int ret;
 	unsigned int comp_queue;
 	int period;
 	int dr;
 
-	guard(mutex)(&data->lock);
+	mutex_lock(&data->lock);
 
 	switch (info) {
 	case IIO_EV_INFO_VALUE:
 		*val = (dir == IIO_EV_DIR_RISING) ?
 			data->thresh_data[chan->address].high_thresh :
 			data->thresh_data[chan->address].low_thresh;
-		return IIO_VAL_INT;
+		ret = IIO_VAL_INT;
+		break;
 	case IIO_EV_INFO_PERIOD:
 		dr = data->channel_data[chan->address].data_rate;
 		comp_queue = data->thresh_data[chan->address].comp_queue;
@@ -634,10 +646,16 @@ static int ads1015_read_event(struct iio_dev *indio_dev,
 
 		*val = period / USEC_PER_SEC;
 		*val2 = period % USEC_PER_SEC;
-		return IIO_VAL_INT_PLUS_MICRO;
+		ret = IIO_VAL_INT_PLUS_MICRO;
+		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
+
+	mutex_unlock(&data->lock);
+
+	return ret;
 }
 
 static int ads1015_write_event(struct iio_dev *indio_dev,
@@ -648,22 +666,24 @@ static int ads1015_write_event(struct iio_dev *indio_dev,
 	struct ads1015_data *data = iio_priv(indio_dev);
 	const int *data_rate = data->chip->data_rate;
 	int realbits = chan->scan_type.realbits;
+	int ret = 0;
 	long long period;
 	int i;
 	int dr;
 
-	guard(mutex)(&data->lock);
+	mutex_lock(&data->lock);
 
 	switch (info) {
 	case IIO_EV_INFO_VALUE:
-		if (val >= 1 << (realbits - 1) || val < -1 << (realbits - 1))
-			return -EINVAL;
-
+		if (val >= 1 << (realbits - 1) || val < -1 << (realbits - 1)) {
+			ret = -EINVAL;
+			break;
+		}
 		if (dir == IIO_EV_DIR_RISING)
 			data->thresh_data[chan->address].high_thresh = val;
 		else
 			data->thresh_data[chan->address].low_thresh = val;
-		return 0;
+		break;
 	case IIO_EV_INFO_PERIOD:
 		dr = data->channel_data[chan->address].data_rate;
 		period = val * USEC_PER_SEC + val2;
@@ -674,10 +694,15 @@ static int ads1015_write_event(struct iio_dev *indio_dev,
 				break;
 		}
 		data->thresh_data[chan->address].comp_queue = i;
-		return 0;
+		break;
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
+
+	mutex_unlock(&data->lock);
+
+	return ret;
 }
 
 static int ads1015_read_event_config(struct iio_dev *indio_dev,
@@ -685,19 +710,25 @@ static int ads1015_read_event_config(struct iio_dev *indio_dev,
 	enum iio_event_direction dir)
 {
 	struct ads1015_data *data = iio_priv(indio_dev);
+	int ret = 0;
 
-	guard(mutex)(&data->lock);
-	if (data->event_channel != chan->address)
-		return 0;
-
-	switch (dir) {
-	case IIO_EV_DIR_RISING:
-		return 1;
-	case IIO_EV_DIR_EITHER:
-		return (data->comp_mode == ADS1015_CFG_COMP_MODE_WINDOW);
-	default:
-		return -EINVAL;
+	mutex_lock(&data->lock);
+	if (data->event_channel == chan->address) {
+		switch (dir) {
+		case IIO_EV_DIR_RISING:
+			ret = 1;
+			break;
+		case IIO_EV_DIR_EITHER:
+			ret = (data->comp_mode == ADS1015_CFG_COMP_MODE_WINDOW);
+			break;
+		default:
+			ret = -EINVAL;
+			break;
+		}
 	}
+	mutex_unlock(&data->lock);
+
+	return ret;
 }
 
 static int ads1015_enable_event_config(struct ads1015_data *data,
@@ -782,18 +813,23 @@ static int ads1015_write_event_config(struct iio_dev *indio_dev,
 	int comp_mode = (dir == IIO_EV_DIR_EITHER) ?
 		ADS1015_CFG_COMP_MODE_WINDOW : ADS1015_CFG_COMP_MODE_TRAD;
 
-	guard(mutex)(&data->lock);
+	mutex_lock(&data->lock);
 
 	/* Prevent from enabling both buffer and event at a time */
-	if (!iio_device_claim_direct(indio_dev))
-		return -EBUSY;
+	ret = iio_device_claim_direct_mode(indio_dev);
+	if (ret) {
+		mutex_unlock(&data->lock);
+		return ret;
+	}
 
 	if (state)
 		ret = ads1015_enable_event_config(data, chan, comp_mode);
 	else
 		ret = ads1015_disable_event_config(data, chan, comp_mode);
 
-	iio_device_release_direct(indio_dev);
+	iio_device_release_direct_mode(indio_dev);
+	mutex_unlock(&data->lock);
+
 	return ret;
 }
 

@@ -3,7 +3,6 @@
 import builtins
 import functools
 import inspect
-import signal
 import sys
 import time
 import traceback
@@ -24,10 +23,6 @@ class KsftSkipEx(Exception):
 
 
 class KsftXfailEx(Exception):
-    pass
-
-
-class KsftTerminate(KeyboardInterrupt):
     pass
 
 
@@ -198,17 +193,6 @@ def ksft_setup(env):
     return env
 
 
-def _ksft_intr(signum, frame):
-    # ksft runner.sh sends 2 SIGTERMs in a row on a timeout
-    # if we don't ignore the second one it will stop us from handling cleanup
-    global term_cnt
-    term_cnt += 1
-    if term_cnt == 1:
-        raise KsftTerminate()
-    else:
-        ksft_pr(f"Ignoring SIGTERM (cnt: {term_cnt}), already exiting...")
-
-
 def ksft_run(cases=None, globs=None, case_pfx=None, args=()):
     cases = cases or []
 
@@ -220,10 +204,6 @@ def ksft_run(cases=None, globs=None, case_pfx=None, args=()):
                 if key.startswith(prefix):
                     cases.append(value)
                     break
-
-    global term_cnt
-    term_cnt = 0
-    prev_sigterm = signal.signal(signal.SIGTERM, _ksft_intr)
 
     totals = {"pass": 0, "fail": 0, "skip": 0, "xfail": 0}
 
@@ -253,7 +233,7 @@ def ksft_run(cases=None, globs=None, case_pfx=None, args=()):
             for line in tb.strip().split('\n'):
                 ksft_pr("Exception|", line)
             if stop:
-                ksft_pr(f"Stopping tests due to {type(e).__name__}.")
+                ksft_pr("Stopping tests due to KeyboardInterrupt.")
             KSFT_RESULT = False
             cnt_key = 'fail'
 
@@ -267,8 +247,6 @@ def ksft_run(cases=None, globs=None, case_pfx=None, args=()):
 
         if stop:
             break
-
-    signal.signal(signal.SIGTERM, prev_sigterm)
 
     print(
         f"# Totals: pass:{totals['pass']} fail:{totals['fail']} xfail:{totals['xfail']} xpass:0 skip:{totals['skip']} error:0"

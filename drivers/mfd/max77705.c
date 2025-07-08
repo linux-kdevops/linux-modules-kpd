@@ -131,9 +131,7 @@ static int max77705_i2c_probe(struct i2c_client *i2c)
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to register child devices\n");
 
-	ret = devm_device_init_wakeup(dev);
-	if (ret)
-		return dev_err_probe(dev, ret, "Failed to init wakeup\n");
+	device_init_wakeup(dev, true);
 
 	return 0;
 }

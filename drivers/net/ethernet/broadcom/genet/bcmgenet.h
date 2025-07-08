@@ -155,30 +155,6 @@ struct bcmgenet_mib_counters {
 	u32	tx_realloc_tsb_failed;
 };
 
-struct bcmgenet_tx_stats64 {
-	struct u64_stats_sync syncp;
-	u64_stats_t	packets;
-	u64_stats_t	bytes;
-	u64_stats_t	errors;
-	u64_stats_t	dropped;
-};
-
-struct bcmgenet_rx_stats64 {
-	struct u64_stats_sync syncp;
-	u64_stats_t	bytes;
-	u64_stats_t	packets;
-	u64_stats_t	errors;
-	u64_stats_t	dropped;
-	u64_stats_t	multicast;
-	u64_stats_t	broadcast;
-	u64_stats_t	missed;
-	u64_stats_t	length_errors;
-	u64_stats_t	over_errors;
-	u64_stats_t	crc_errors;
-	u64_stats_t	frame_errors;
-	u64_stats_t	fragmented_errors;
-};
-
 #define UMAC_MIB_START			0x400
 
 #define UMAC_MDIO_CMD			0x614
@@ -539,7 +515,8 @@ struct bcmgenet_skb_cb {
 struct bcmgenet_tx_ring {
 	spinlock_t	lock;		/* ring lock */
 	struct napi_struct napi;	/* NAPI per tx queue */
-	struct bcmgenet_tx_stats64 stats64;
+	unsigned long	packets;
+	unsigned long	bytes;
 	unsigned int	index;		/* ring index */
 	struct enet_cb	*cbs;		/* tx ring buffer control block*/
 	unsigned int	size;		/* size of each tx ring */
@@ -563,7 +540,10 @@ struct bcmgenet_net_dim {
 
 struct bcmgenet_rx_ring {
 	struct napi_struct napi;	/* Rx NAPI struct */
-	struct bcmgenet_rx_stats64 stats64;
+	unsigned long	bytes;
+	unsigned long	packets;
+	unsigned long	errors;
+	unsigned long	dropped;
 	unsigned int	index;		/* Rx ring index */
 	struct enet_cb	*cbs;		/* Rx ring buffer control block */
 	unsigned int	size;		/* Rx ring size */

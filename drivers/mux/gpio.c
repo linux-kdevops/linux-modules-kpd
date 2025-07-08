@@ -15,7 +15,6 @@
 #include <linux/mux/driver.h>
 #include <linux/platform_device.h>
 #include <linux/property.h>
-#include <linux/regulator/consumer.h>
 
 struct mux_gpio {
 	struct gpio_descs *gpios;
@@ -80,10 +79,6 @@ static int mux_gpio_probe(struct platform_device *pdev)
 
 		mux_chip->mux->idle_state = idle_state;
 	}
-
-	ret = devm_regulator_get_enable_optional(dev, "mux");
-	if (ret && ret != -ENODEV)
-		return dev_err_probe(dev, ret, "failed to get/enable mux supply\n");
 
 	ret = devm_mux_chip_register(dev, mux_chip);
 	if (ret < 0)

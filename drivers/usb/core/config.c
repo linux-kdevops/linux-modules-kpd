@@ -307,7 +307,7 @@ static int usb_parse_endpoint(struct device *ddev, int cfgno,
 		goto skip_to_next_endpoint_or_interface_descriptor;
 	}
 
-	i = usb_endpoint_num(d);
+	i = d->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
 	if (i == 0) {
 		dev_notice(ddev, "config %d interface %d altsetting %d has an "
 		    "invalid descriptor for endpoint zero, skipping\n",

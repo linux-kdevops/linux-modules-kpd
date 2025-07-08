@@ -2029,16 +2029,15 @@ static int __init unittest_data_add(void)
 	rc = of_resolve_phandles(unittest_data_node);
 	if (rc) {
 		pr_err("%s: Failed to resolve phandles (rc=%i)\n", __func__, rc);
-		rc = -EINVAL;
-		goto unlock;
+		of_overlay_mutex_unlock();
+		return -EINVAL;
 	}
 
 	/* attach the sub-tree to live tree */
 	if (!of_root) {
 		pr_warn("%s: no live tree to attach sub-tree\n", __func__);
 		kfree(unittest_data);
-		rc = -ENODEV;
-		goto unlock;
+		return -ENODEV;
 	}
 
 	EXPECT_BEGIN(KERN_INFO,
@@ -2057,10 +2056,9 @@ static int __init unittest_data_add(void)
 	EXPECT_END(KERN_INFO,
 		   "Duplicate name in testcase-data, renamed to \"duplicate-name#1\"");
 
-unlock:
 	of_overlay_mutex_unlock();
 
-	return rc;
+	return 0;
 }
 
 #ifdef CONFIG_OF_OVERLAY

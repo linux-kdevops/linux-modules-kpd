@@ -687,9 +687,12 @@ static int fbnic_mac_get_sensor_asic(struct fbnic_dev *fbd, int id,
 	int err = 0, retries = 5;
 	s32 *sensor;
 
-	fw_cmpl = fbnic_fw_alloc_cmpl(FBNIC_TLV_MSG_ID_TSENE_READ_RESP);
+	fw_cmpl = kzalloc(sizeof(*fw_cmpl), GFP_KERNEL);
 	if (!fw_cmpl)
 		return -ENOMEM;
+
+	/* Initialize completion and queue it for FW to process */
+	fbnic_fw_init_cmpl(fw_cmpl, FBNIC_TLV_MSG_ID_TSENE_READ_RESP);
 
 	switch (id) {
 	case FBNIC_SENSOR_TEMP:
@@ -741,7 +744,7 @@ static int fbnic_mac_get_sensor_asic(struct fbnic_dev *fbd, int id,
 
 	*val = *sensor;
 exit_cleanup:
-	fbnic_fw_clear_cmpl(fbd, fw_cmpl);
+	fbnic_fw_clear_compl(fbd);
 exit_free:
 	fbnic_fw_put_cmpl(fw_cmpl);
 

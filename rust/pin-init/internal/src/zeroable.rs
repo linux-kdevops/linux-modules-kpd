@@ -6,14 +6,7 @@ use proc_macro2 as proc_macro;
 use crate::helpers::{parse_generics, Generics};
 use proc_macro::{TokenStream, TokenTree};
 
-pub(crate) fn parse_zeroable_derive_input(
-    input: TokenStream,
-) -> (
-    Vec<TokenTree>,
-    Vec<TokenTree>,
-    Vec<TokenTree>,
-    Option<TokenTree>,
-) {
+pub(crate) fn derive(input: TokenStream) -> TokenStream {
     let (
         Generics {
             impl_generics,
@@ -71,26 +64,8 @@ pub(crate) fn parse_zeroable_derive_input(
     if in_generic && !inserted {
         new_impl_generics.extend(quote! { : ::pin_init::Zeroable });
     }
-    (rest, new_impl_generics, ty_generics, last)
-}
-
-pub(crate) fn derive(input: TokenStream) -> TokenStream {
-    let (rest, new_impl_generics, ty_generics, last) = parse_zeroable_derive_input(input);
     quote! {
         ::pin_init::__derive_zeroable!(
-            parse_input:
-                @sig(#(#rest)*),
-                @impl_generics(#(#new_impl_generics)*),
-                @ty_generics(#(#ty_generics)*),
-                @body(#last),
-        );
-    }
-}
-
-pub(crate) fn maybe_derive(input: TokenStream) -> TokenStream {
-    let (rest, new_impl_generics, ty_generics, last) = parse_zeroable_derive_input(input);
-    quote! {
-        ::pin_init::__maybe_derive_zeroable!(
             parse_input:
                 @sig(#(#rest)*),
                 @impl_generics(#(#new_impl_generics)*),

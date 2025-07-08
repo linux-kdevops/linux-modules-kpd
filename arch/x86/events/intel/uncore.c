@@ -3,7 +3,6 @@
 
 #include <asm/cpu_device_id.h>
 #include <asm/intel-family.h>
-#include <asm/msr.h>
 #include "uncore.h"
 #include "uncore_discovery.h"
 
@@ -151,7 +150,7 @@ u64 uncore_msr_read_counter(struct intel_uncore_box *box, struct perf_event *eve
 {
 	u64 count;
 
-	rdmsrq(event->hw.event_base, count);
+	rdmsrl(event->hw.event_base, count);
 
 	return count;
 }
@@ -306,11 +305,17 @@ static enum hrtimer_restart uncore_pmu_hrtimer(struct hrtimer *hrtimer)
 {
 	struct intel_uncore_box *box;
 	struct perf_event *event;
+	unsigned long flags;
 	int bit;
 
 	box = container_of(hrtimer, struct intel_uncore_box, hrtimer);
 	if (!box->n_active || box->cpu != smp_processor_id())
 		return HRTIMER_NORESTART;
+	/*
+	 * disable local interrupt to prevent uncore_pmu_event_start/stop
+	 * to interrupt the update process
+	 */
+	local_irq_save(flags);
 
 	/*
 	 * handle boxes with an active event list as opposed to active
@@ -323,6 +328,8 @@ static enum hrtimer_restart uncore_pmu_hrtimer(struct hrtimer *hrtimer)
 	for_each_set_bit(bit, box->active_mask, UNCORE_PMC_IDX_MAX)
 		uncore_perf_event_update(box, box->events[bit]);
 
+	local_irq_restore(flags);
+
 	hrtimer_forward_now(hrtimer, ns_to_ktime(box->hrtimer_duration));
 	return HRTIMER_RESTART;
 }
@@ -330,7 +337,7 @@ static enum hrtimer_restart uncore_pmu_hrtimer(struct hrtimer *hrtimer)
 void uncore_pmu_start_hrtimer(struct intel_uncore_box *box)
 {
 	hrtimer_start(&box->hrtimer, ns_to_ktime(box->hrtimer_duration),
-		      HRTIMER_MODE_REL_PINNED_HARD);
+		      HRTIMER_MODE_REL_PINNED);
 }
 
 void uncore_pmu_cancel_hrtimer(struct intel_uncore_box *box)
@@ -340,7 +347,7 @@ void uncore_pmu_cancel_hrtimer(struct intel_uncore_box *box)
 
 static void uncore_pmu_init_hrtimer(struct intel_uncore_box *box)
 {
-	hrtimer_setup(&box->hrtimer, uncore_pmu_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL_HARD);
+	hrtimer_setup(&box->hrtimer, uncore_pmu_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 }
 
 static struct intel_uncore_box *uncore_alloc_box(struct intel_uncore_type *type,

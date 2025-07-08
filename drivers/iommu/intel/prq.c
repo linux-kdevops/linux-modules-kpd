@@ -290,8 +290,7 @@ int intel_iommu_enable_prq(struct intel_iommu *iommu)
 	struct iopf_queue *iopfq;
 	int irq, ret;
 
-	iommu->prq =
-		iommu_alloc_pages_node_sz(iommu->node, GFP_KERNEL, PRQ_SIZE);
+	iommu->prq = iommu_alloc_pages_node(iommu->node, GFP_KERNEL, PRQ_ORDER);
 	if (!iommu->prq) {
 		pr_warn("IOMMU: %s: Failed to allocate page request queue\n",
 			iommu->name);
@@ -341,7 +340,7 @@ free_hwirq:
 	dmar_free_hwirq(irq);
 	iommu->pr_irq = 0;
 free_prq:
-	iommu_free_pages(iommu->prq);
+	iommu_free_pages(iommu->prq, PRQ_ORDER);
 	iommu->prq = NULL;
 
 	return ret;
@@ -364,7 +363,7 @@ int intel_iommu_finish_prq(struct intel_iommu *iommu)
 		iommu->iopf_queue = NULL;
 	}
 
-	iommu_free_pages(iommu->prq);
+	iommu_free_pages(iommu->prq, PRQ_ORDER);
 	iommu->prq = NULL;
 
 	return 0;

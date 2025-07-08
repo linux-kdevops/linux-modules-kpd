@@ -55,7 +55,6 @@
 #include "intel_cdclk.h"
 #include "intel_de.h"
 #include "intel_display_device.h"
-#include "intel_display_rpm.h"
 #include "intel_display_trace.h"
 #include "intel_display_types.h"
 #include "intel_display_wa.h"
@@ -252,12 +251,9 @@ static u16 intel_fbc_override_cfb_stride(const struct intel_plane_state *plane_s
 	 * Gen9 hw miscalculates cfb stride for linear as
 	 * PLANE_STRIDE*512 instead of PLANE_STRIDE*64, so
 	 * we always need to use the override there.
-	 *
-	 * wa_14022269668 For bmg, always program the FBC_STRIDE before fbc enable
 	 */
 	if (stride != stride_aligned ||
-	    (DISPLAY_VER(display) == 9 && fb->modifier == DRM_FORMAT_MOD_LINEAR) ||
-	    display->platform.battlemage)
+	    (DISPLAY_VER(display) == 9 && fb->modifier == DRM_FORMAT_MOD_LINEAR))
 		return stride_aligned * 4 / 64;
 
 	return 0;
@@ -523,20 +519,6 @@ static void ilk_fbc_activate(struct intel_fbc *fbc)
 		       DPFC_CTL_EN | g4x_dpfc_ctl(fbc));
 }
 
-static void fbc_compressor_clkgate_disable_wa(struct intel_fbc *fbc,
-					      bool disable)
-{
-	struct intel_display *display = fbc->display;
-
-	if (display->platform.dg2)
-		intel_de_rmw(display, GEN9_CLKGATE_DIS_4, DG2_DPFC_GATING_DIS,
-			     disable ? DG2_DPFC_GATING_DIS : 0);
-	else if (DISPLAY_VER(display) >= 14)
-		intel_de_rmw(display, MTL_PIPE_CLKGATE_DIS2(fbc->id),
-			     MTL_DPFC_GATING_DIS,
-			     disable ? MTL_DPFC_GATING_DIS : 0);
-}
-
 static void ilk_fbc_deactivate(struct intel_fbc *fbc)
 {
 	struct intel_display *display = fbc->display;
@@ -550,10 +532,6 @@ static void ilk_fbc_deactivate(struct intel_fbc *fbc)
 	if (dpfc_ctl & DPFC_CTL_EN) {
 		dpfc_ctl &= ~DPFC_CTL_EN;
 		intel_de_write(display, ILK_DPFC_CONTROL(fbc->id), dpfc_ctl);
-
-		/* wa_18038517565 Enable DPFC clock gating after FBC disable */
-		if (display->platform.dg2 || DISPLAY_VER(display) >= 14)
-			fbc_compressor_clkgate_disable_wa(fbc, false);
 	}
 }
 
@@ -943,10 +921,6 @@ static void intel_fbc_program_workarounds(struct intel_fbc *fbc)
 	if (DISPLAY_VER(display) >= 11 && !display->platform.dg2)
 		intel_de_rmw(display, ILK_DPFC_CHICKEN(fbc->id),
 			     0, DPFC_CHICKEN_FORCE_SLB_INVALIDATION);
-
-	/* wa_18038517565 Disable DPFC clock gating before FBC enable */
-	if (display->platform.dg2 || DISPLAY_VER(display) >= 14)
-		fbc_compressor_clkgate_disable_wa(fbc, true);
 }
 
 static void __intel_fbc_cleanup_cfb(struct intel_fbc *fbc)
@@ -1462,7 +1436,7 @@ static int intel_fbc_check_plane(struct intel_atomic_state *state,
 		return 0;
 	}
 
-	if (intel_display_needs_wa_16023588340(display)) {
+	if (intel_display_needs_wa_16023588340(i915)) {
 		plane_state->no_fbc_reason = "Wa_16023588340";
 		return 0;
 	}
@@ -1490,15 +1464,14 @@ static int intel_fbc_check_plane(struct intel_atomic_state *state,
 	 * Recommendation is to keep this combination disabled
 	 * Bspec: 50422 HSD: 14010260002
 	 *
-	 * TODO: Implement a logic to select between PSR2 selective fetch and
-	 * FBC based on Bspec: 68881 in xe2lpd onwards.
-	 *
-	 * As we still see some strange underruns in those platforms while
-	 * disabling PSR2, keep FBC disabled in case of selective update is on
-	 * until the selection logic is implemented.
+	 * In Xe3, PSR2 selective fetch and FBC dirty rect feature cannot
+	 * coexist. So if PSR2 selective fetch is supported then mark that
+	 * FBC is not supported.
+	 * TODO: Need a logic to decide between PSR2 and FBC Dirty rect
 	 */
-	if (DISPLAY_VER(display) >= 12 && crtc_state->has_sel_update) {
-		plane_state->no_fbc_reason = "Selective update enabled";
+	if ((IS_DISPLAY_VER(display, 12, 14) || HAS_FBC_DIRTY_RECT(display)) &&
+	    crtc_state->has_sel_update && !crtc_state->has_panel_replay) {
+		plane_state->no_fbc_reason = "PSR2 enabled";
 		return 0;
 	}
 
@@ -2147,12 +2120,13 @@ static int intel_fbc_debugfs_status_show(struct seq_file *m, void *unused)
 {
 	struct intel_fbc *fbc = m->private;
 	struct intel_display *display = fbc->display;
+	struct drm_i915_private *i915 = to_i915(display->drm);
 	struct intel_plane *plane;
-	struct ref_tracker *wakeref;
+	intel_wakeref_t wakeref;
 
 	drm_modeset_lock_all(display->drm);
 
-	wakeref = intel_display_rpm_get(display);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 	mutex_lock(&fbc->lock);
 
 	if (fbc->active) {
@@ -2177,7 +2151,7 @@ static int intel_fbc_debugfs_status_show(struct seq_file *m, void *unused)
 	}
 
 	mutex_unlock(&fbc->lock);
-	intel_display_rpm_put(display, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 
 	drm_modeset_unlock_all(display->drm);
 

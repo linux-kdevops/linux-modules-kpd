@@ -173,8 +173,6 @@ struct test_spec {
 	u16 nb_sockets;
 	bool fail;
 	bool set_ring;
-	bool adjust_tail;
-	bool adjust_tail_support;
 	enum test_mode mode;
 	char name[MAX_TEST_NAME_SIZE];
 };

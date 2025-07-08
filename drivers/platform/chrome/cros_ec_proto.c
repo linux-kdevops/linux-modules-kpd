@@ -139,10 +139,12 @@ static int cros_ec_xfer_command(struct cros_ec_device *ec_dev, struct cros_ec_co
 
 static int cros_ec_wait_until_complete(struct cros_ec_device *ec_dev, uint32_t *result)
 {
-	DEFINE_RAW_FLEX(struct cros_ec_command, msg, data,
-			sizeof(struct ec_response_get_comms_status));
-	struct ec_response_get_comms_status *status =
-			(struct ec_response_get_comms_status *)msg->data;
+	struct {
+		struct cros_ec_command msg;
+		struct ec_response_get_comms_status status;
+	} __packed buf;
+	struct cros_ec_command *msg = &buf.msg;
+	struct ec_response_get_comms_status *status = &buf.status;
 	int ret = 0, i;
 
 	msg->version = 0;
@@ -755,13 +757,16 @@ static int get_next_event_xfer(struct cros_ec_device *ec_dev,
 
 static int get_next_event(struct cros_ec_device *ec_dev)
 {
-	DEFINE_RAW_FLEX(struct cros_ec_command, msg, data,
-			sizeof(struct ec_response_get_next_event_v3));
-	struct ec_response_get_next_event_v3 *event =
-			(struct ec_response_get_next_event_v3 *)msg->data;
+	struct {
+		struct cros_ec_command msg;
+		struct ec_response_get_next_event_v3 event;
+	} __packed buf;
+	struct cros_ec_command *msg = &buf.msg;
+	struct ec_response_get_next_event_v3 *event = &buf.event;
 	int cmd_version = ec_dev->mkbp_event_supported - 1;
 	u32 size;
 
+	memset(msg, 0, sizeof(*msg));
 	if (ec_dev->suspended) {
 		dev_dbg(ec_dev->dev, "Device suspended.\n");
 		return -EHOSTDOWN;
@@ -1152,6 +1157,3 @@ int cros_ec_get_cmd_versions(struct cros_ec_device *ec_dev, u16 cmd)
 		return resp.version_mask;
 }
 EXPORT_SYMBOL_GPL(cros_ec_get_cmd_versions);
-
-MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("ChromeOS EC communication protocol helpers");

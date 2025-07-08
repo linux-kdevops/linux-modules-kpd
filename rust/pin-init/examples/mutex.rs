@@ -2,7 +2,6 @@
 
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![cfg_attr(feature = "alloc", feature(allocator_api))]
-#![cfg_attr(not(RUSTC_LINT_REASONS_IS_STABLE), feature(lint_reasons))]
 #![allow(clippy::missing_safety_doc)]
 
 use core::{

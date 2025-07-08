@@ -6,6 +6,7 @@
  * Copyright (C) 2024 Heiko Stuebner <heiko@sntech.de>
  */
 
+#include <linux/fwnode.h>
 #include <linux/hwmon.h>
 #include <linux/mfd/qnap-mcu.h>
 #include <linux/module.h>

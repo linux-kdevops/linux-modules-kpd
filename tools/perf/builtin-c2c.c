@@ -1969,11 +1969,10 @@ static struct c2c_fmt *get_format(const char *name)
 static int c2c_hists__init_output(struct perf_hpp_list *hpp_list, char *name)
 {
 	struct c2c_fmt *c2c_fmt = get_format(name);
-	int level = 0;
 
 	if (!c2c_fmt) {
 		reset_dimensions();
-		return output_field_add(hpp_list, name, &level);
+		return output_field_add(hpp_list, name);
 	}
 
 	perf_hpp_list__column_register(hpp_list, &c2c_fmt->fmt);

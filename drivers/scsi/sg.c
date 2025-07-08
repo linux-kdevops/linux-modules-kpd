@@ -1658,7 +1658,8 @@ static void register_sg_sysctls(void)
 
 static void unregister_sg_sysctls(void)
 {
-	unregister_sysctl_table(hdr);
+	if (hdr)
+		unregister_sysctl_table(hdr);
 }
 #else
 #define register_sg_sysctls() do { } while (0)

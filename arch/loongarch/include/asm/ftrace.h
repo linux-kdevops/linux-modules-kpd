@@ -14,7 +14,7 @@
 
 #define MCOUNT_INSN_SIZE 4		/* sizeof mcount call */
 
-#ifndef __ASSEMBLER__
+#ifndef __ASSEMBLY__
 
 #ifndef CONFIG_DYNAMIC_FTRACE
 
@@ -84,7 +84,7 @@ __arch_ftrace_set_direct_caller(struct pt_regs *regs, unsigned long addr)
 
 #endif
 
-#endif /* __ASSEMBLER__ */
+#endif /* __ASSEMBLY__ */
 
 #endif /* CONFIG_FUNCTION_TRACER */
 

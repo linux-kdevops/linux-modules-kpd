@@ -86,7 +86,7 @@ static int mtk_pmx_gpio_set_direction(struct pinctrl_dev *pctldev,
 	return 0;
 }
 
-static int mtk_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
+static void mtk_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 {
 	unsigned int reg_addr;
 	unsigned int bit;
@@ -100,7 +100,7 @@ static int mtk_gpio_set(struct gpio_chip *chip, unsigned int offset, int value)
 	else
 		reg_addr = CLR_ADDR(reg_addr, pctl);
 
-	return regmap_write(mtk_get_regmap(pctl, offset), reg_addr, bit);
+	regmap_write(mtk_get_regmap(pctl, offset), reg_addr, bit);
 }
 
 static int mtk_pconf_set_ies_smt(struct mtk_pinctrl *pctl, unsigned pin,
@@ -809,12 +809,7 @@ static const struct pinmux_ops mtk_pmx_ops = {
 static int mtk_gpio_direction_output(struct gpio_chip *chip,
 					unsigned offset, int value)
 {
-	int ret;
-
-	ret = mtk_gpio_set(chip, offset, value);
-	if (ret)
-		return ret;
-
+	mtk_gpio_set(chip, offset, value);
 	return pinctrl_gpio_direction_output(chip, offset);
 }
 
@@ -898,7 +893,7 @@ static const struct gpio_chip mtk_gpio_chip = {
 	.direction_input	= pinctrl_gpio_direction_input,
 	.direction_output	= mtk_gpio_direction_output,
 	.get			= mtk_gpio_get,
-	.set_rv			= mtk_gpio_set,
+	.set			= mtk_gpio_set,
 	.to_irq			= mtk_gpio_to_irq,
 	.set_config		= mtk_gpio_set_config,
 };
@@ -1044,7 +1039,7 @@ static int mtk_eint_init(struct mtk_pinctrl *pctl, struct platform_device *pdev)
 	pctl->eint->pctl = pctl;
 	pctl->eint->gpio_xlate = &mtk_eint_xt;
 
-	return mtk_eint_do_init(pctl->eint, NULL);
+	return mtk_eint_do_init(pctl->eint);
 }
 
 /* This is used as a common probe function */

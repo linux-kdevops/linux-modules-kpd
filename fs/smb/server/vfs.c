@@ -4,7 +4,6 @@
  *   Copyright (C) 2018 Samsung Electronics Co., Ltd.
  */
 
-#include <crypto/sha2.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
 #include <linux/filelock.h>
@@ -293,7 +292,6 @@ static int ksmbd_vfs_stream_read(struct ksmbd_file *fp, char *buf, loff_t *pos,
 
 	if (v_len - *pos < count)
 		count = v_len - *pos;
-	fp->stream.pos = v_len;
 
 	memcpy(buf, &stream_buf[*pos], count);
 
@@ -411,15 +409,10 @@ static int ksmbd_vfs_stream_write(struct ksmbd_file *fp, char *buf, loff_t *pos,
 	ksmbd_debug(VFS, "write stream data pos : %llu, count : %zd\n",
 		    *pos, count);
 
-	if (*pos >= XATTR_SIZE_MAX) {
-		pr_err("stream write position %lld is out of bounds\n",	*pos);
-		return -EINVAL;
-	}
-
 	size = *pos + count;
 	if (size > XATTR_SIZE_MAX) {
 		size = XATTR_SIZE_MAX;
-		count = XATTR_SIZE_MAX - *pos;
+		count = (*pos + count) - XATTR_SIZE_MAX;
 	}
 
 	v_len = ksmbd_vfs_getcasexattr(idmap,
@@ -430,6 +423,13 @@ static int ksmbd_vfs_stream_write(struct ksmbd_file *fp, char *buf, loff_t *pos,
 	if (v_len < 0) {
 		pr_err("not found stream in xattr : %zd\n", v_len);
 		err = v_len;
+		goto out;
+	}
+
+	if (v_len <= *pos) {
+		pr_err("stream write position %lld is out of bounds (stream length: %zd)\n",
+				*pos, v_len);
+		err = -EINVAL;
 		goto out;
 	}
 
@@ -457,8 +457,8 @@ static int ksmbd_vfs_stream_write(struct ksmbd_file *fp, char *buf, loff_t *pos,
 				 true);
 	if (err < 0)
 		goto out;
-	else
-		fp->stream.pos = size;
+
+	fp->filp->f_pos = *pos;
 	err = 0;
 out:
 	kvfree(stream_buf);
@@ -684,7 +684,7 @@ int ksmbd_vfs_rename(struct ksmbd_work *work, const struct path *old_path,
 	struct ksmbd_file *parent_fp;
 	int new_type;
 	int err, lookup_flags = LOOKUP_NO_SYMLINKS;
-	int target_lookup_flags = LOOKUP_RENAME_TARGET | LOOKUP_CREATE;
+	int target_lookup_flags = LOOKUP_RENAME_TARGET;
 
 	if (ksmbd_override_fsids(work))
 		return -ENOMEM;
@@ -1478,7 +1478,11 @@ int ksmbd_vfs_set_sd_xattr(struct ksmbd_conn *conn,
 	acl.sd_buf = (char *)pntsd;
 	acl.sd_size = len;
 
-	sha256(acl.sd_buf, acl.sd_size, acl.hash);
+	rc = ksmbd_gen_sd_hash(conn, acl.sd_buf, acl.sd_size, acl.hash);
+	if (rc) {
+		pr_err("failed to generate hash for ndr acl\n");
+		return rc;
+	}
 
 	smb_acl = ksmbd_vfs_make_xattr_posix_acl(idmap, inode,
 						 ACL_TYPE_ACCESS);
@@ -1493,7 +1497,12 @@ int ksmbd_vfs_set_sd_xattr(struct ksmbd_conn *conn,
 		goto out;
 	}
 
-	sha256(acl_ndr.data, acl_ndr.offset, acl.posix_acl_hash);
+	rc = ksmbd_gen_sd_hash(conn, acl_ndr.data, acl_ndr.offset,
+			       acl.posix_acl_hash);
+	if (rc) {
+		pr_err("failed to generate hash for ndr acl\n");
+		goto out;
+	}
 
 	rc = ndr_encode_v4_ntacl(&sd_ndr, &acl);
 	if (rc) {
@@ -1550,7 +1559,11 @@ int ksmbd_vfs_get_sd_xattr(struct ksmbd_conn *conn,
 		goto out_free;
 	}
 
-	sha256(acl_ndr.data, acl_ndr.offset, cmp_hash);
+	rc = ksmbd_gen_sd_hash(conn, acl_ndr.data, acl_ndr.offset, cmp_hash);
+	if (rc) {
+		pr_err("failed to generate hash for ndr acl\n");
+		goto out_free;
+	}
 
 	if (memcmp(cmp_hash, acl.posix_acl_hash, XATTR_SD_HASH_SIZE)) {
 		pr_err("hash value diff\n");

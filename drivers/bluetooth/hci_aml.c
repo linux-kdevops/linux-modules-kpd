@@ -313,7 +313,8 @@ static int aml_download_firmware(struct hci_dev *hdev, const char *fw_name)
 		goto exit;
 
 exit:
-	release_firmware(firmware);
+	if (firmware)
+		release_firmware(firmware);
 	return ret;
 }
 

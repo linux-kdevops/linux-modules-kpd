@@ -8,7 +8,6 @@
 
 #include "bcachefs.h"
 #include "alloc_foreground.h"
-#include "async_objs.h"
 #include "bkey_methods.h"
 #include "btree_cache.h"
 #include "btree_io.h"
@@ -17,7 +16,6 @@
 #include "btree_update.h"
 #include "btree_update_interior.h"
 #include "buckets.h"
-#include "data_update.h"
 #include "debug.h"
 #include "error.h"
 #include "extents.h"
@@ -42,10 +40,9 @@ static bool bch2_btree_verify_replica(struct bch_fs *c, struct btree *b,
 	struct btree_node *n_sorted = c->verify_data->data;
 	struct bset *sorted, *inmemory = &b->data->keys;
 	struct bio *bio;
-	bool failed = false;
+	bool failed = false, saw_error = false;
 
-	struct bch_dev *ca = bch2_dev_get_ioref(c, pick.ptr.dev, READ,
-				BCH_DEV_READ_REF_btree_verify_replicas);
+	struct bch_dev *ca = bch2_dev_get_ioref(c, pick.ptr.dev, READ);
 	if (!ca)
 		return false;
 
@@ -60,13 +57,12 @@ static bool bch2_btree_verify_replica(struct bch_fs *c, struct btree *b,
 	submit_bio_wait(bio);
 
 	bio_put(bio);
-	enumerated_ref_put(&ca->io_ref[READ],
-			   BCH_DEV_READ_REF_btree_verify_replicas);
+	percpu_ref_put(&ca->io_ref[READ]);
 
 	memcpy(n_ondisk, n_sorted, btree_buf_bytes(b));
 
 	v->written = 0;
-	if (bch2_btree_node_read_done(c, ca, v, NULL, NULL))
+	if (bch2_btree_node_read_done(c, ca, v, false, &saw_error) || saw_error)
 		return false;
 
 	n_sorted = c->verify_data->data;
@@ -200,8 +196,7 @@ void bch2_btree_node_ondisk_to_text(struct printbuf *out, struct bch_fs *c,
 		return;
 	}
 
-	ca = bch2_dev_get_ioref(c, pick.ptr.dev, READ,
-			BCH_DEV_READ_REF_btree_node_ondisk_to_text);
+	ca = bch2_dev_get_ioref(c, pick.ptr.dev, READ);
 	if (!ca) {
 		prt_printf(out, "error getting device to read from: not online\n");
 		return;
@@ -302,13 +297,28 @@ out:
 	if (bio)
 		bio_put(bio);
 	kvfree(n_ondisk);
-	enumerated_ref_put(&ca->io_ref[READ],
-			   BCH_DEV_READ_REF_btree_node_ondisk_to_text);
+	percpu_ref_put(&ca->io_ref[READ]);
 }
 
 #ifdef CONFIG_DEBUG_FS
 
-ssize_t bch2_debugfs_flush_buf(struct dump_iter *i)
+/* XXX: bch_fs refcounting */
+
+struct dump_iter {
+	struct bch_fs		*c;
+	enum btree_id		id;
+	struct bpos		from;
+	struct bpos		prev_node;
+	u64			iter;
+
+	struct printbuf		buf;
+
+	char __user		*ubuf;	/* destination user buffer */
+	size_t			size;	/* size of requested read */
+	ssize_t			ret;	/* bytes read so far */
+};
+
+static ssize_t flush_buf(struct dump_iter *i)
 {
 	if (i->buf.pos) {
 		size_t bytes = min_t(size_t, i->buf.pos, i->size);
@@ -319,11 +329,6 @@ ssize_t bch2_debugfs_flush_buf(struct dump_iter *i)
 		i->size	 -= copied;
 		i->buf.pos -= copied;
 		memmove(i->buf.buf, i->buf.buf + copied, i->buf.pos);
-
-		if (i->buf.last_newline >= copied)
-			i->buf.last_newline -= copied;
-		if (i->buf.last_field >= copied)
-			i->buf.last_field -= copied;
 
 		if (copied != bytes)
 			return -EFAULT;
@@ -351,7 +356,7 @@ static int bch2_dump_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-int bch2_dump_release(struct inode *inode, struct file *file)
+static int bch2_dump_release(struct inode *inode, struct file *file)
 {
 	struct dump_iter *i = file->private_data;
 
@@ -369,7 +374,7 @@ static ssize_t bch2_read_btree(struct file *file, char __user *buf,
 	i->size	= size;
 	i->ret	= 0;
 
-	return bch2_debugfs_flush_buf(i) ?:
+	return flush_buf(i) ?:
 		bch2_trans_run(i->c,
 			for_each_btree_key(trans, iter, i->id, i->from,
 					   BTREE_ITER_prefetch|
@@ -378,7 +383,7 @@ static ssize_t bch2_read_btree(struct file *file, char __user *buf,
 				prt_newline(&i->buf);
 				bch2_trans_unlock(trans);
 				i->from = bpos_successor(iter.pos);
-				bch2_debugfs_flush_buf(i);
+				flush_buf(i);
 			}))) ?:
 		i->ret;
 }
@@ -399,7 +404,7 @@ static ssize_t bch2_read_btree_formats(struct file *file, char __user *buf,
 	i->size	= size;
 	i->ret	= 0;
 
-	ssize_t ret = bch2_debugfs_flush_buf(i);
+	ssize_t ret = flush_buf(i);
 	if (ret)
 		return ret;
 
@@ -413,7 +418,7 @@ static ssize_t bch2_read_btree_formats(struct file *file, char __user *buf,
 				? bpos_successor(b->key.k.p)
 				: b->key.k.p;
 
-			drop_locks_do(trans, bch2_debugfs_flush_buf(i));
+			drop_locks_do(trans, flush_buf(i));
 		}))) ?: i->ret;
 }
 
@@ -433,7 +438,7 @@ static ssize_t bch2_read_bfloat_failed(struct file *file, char __user *buf,
 	i->size	= size;
 	i->ret	= 0;
 
-	return bch2_debugfs_flush_buf(i) ?:
+	return flush_buf(i) ?:
 		bch2_trans_run(i->c,
 			for_each_btree_key(trans, iter, i->id, i->from,
 					   BTREE_ITER_prefetch|
@@ -451,7 +456,7 @@ static ssize_t bch2_read_bfloat_failed(struct file *file, char __user *buf,
 				bch2_bfloat_to_text(&i->buf, l->b, _k);
 				bch2_trans_unlock(trans);
 				i->from = bpos_successor(iter.pos);
-				bch2_debugfs_flush_buf(i);
+				flush_buf(i);
 			}))) ?:
 		i->ret;
 }
@@ -492,8 +497,6 @@ static void bch2_cached_btree_node_to_text(struct printbuf *out, struct bch_fs *
 	prt_printf(out, "journal pin %px:\t%llu\n",
 		   &b->writes[1].journal, b->writes[1].journal.seq);
 
-	prt_printf(out, "ob:\t%u\n", b->ob.nr);
-
 	printbuf_indent_sub(out, 2);
 }
 
@@ -510,34 +513,34 @@ static ssize_t bch2_cached_btree_nodes_read(struct file *file, char __user *buf,
 	i->ret	= 0;
 
 	do {
-		ret = bch2_debugfs_flush_buf(i);
+		struct bucket_table *tbl;
+		struct rhash_head *pos;
+		struct btree *b;
+
+		ret = flush_buf(i);
 		if (ret)
 			return ret;
 
+		rcu_read_lock();
 		i->buf.atomic++;
-		scoped_guard(rcu) {
-			struct bucket_table *tbl =
-				rht_dereference_rcu(c->btree_cache.table.tbl,
-						    &c->btree_cache.table);
-			if (i->iter < tbl->size) {
-				struct rhash_head *pos;
-				struct btree *b;
-
-				rht_for_each_entry_rcu(b, pos, tbl, i->iter, hash)
-					bch2_cached_btree_node_to_text(&i->buf, c, b);
-				i->iter++;
-			} else {
-				done = true;
-			}
+		tbl = rht_dereference_rcu(c->btree_cache.table.tbl,
+					  &c->btree_cache.table);
+		if (i->iter < tbl->size) {
+			rht_for_each_entry_rcu(b, pos, tbl, i->iter, hash)
+				bch2_cached_btree_node_to_text(&i->buf, c, b);
+			i->iter++;
+		} else {
+			done = true;
 		}
 		--i->buf.atomic;
+		rcu_read_unlock();
 	} while (!done);
 
 	if (i->buf.allocation_failure)
 		ret = -ENOMEM;
 
 	if (!ret)
-		ret = bch2_debugfs_flush_buf(i);
+		ret = flush_buf(i);
 
 	return ret ?: i->ret;
 }
@@ -611,7 +614,7 @@ restart:
 
 		closure_put(&trans->ref);
 
-		ret = bch2_debugfs_flush_buf(i);
+		ret = flush_buf(i);
 		if (ret)
 			goto unlocked;
 
@@ -624,7 +627,7 @@ unlocked:
 		ret = -ENOMEM;
 
 	if (!ret)
-		ret = bch2_debugfs_flush_buf(i);
+		ret = flush_buf(i);
 
 	return ret ?: i->ret;
 }
@@ -649,7 +652,7 @@ static ssize_t bch2_journal_pins_read(struct file *file, char __user *buf,
 	i->ret	= 0;
 
 	while (1) {
-		err = bch2_debugfs_flush_buf(i);
+		err = flush_buf(i);
 		if (err)
 			return err;
 
@@ -692,7 +695,7 @@ static ssize_t bch2_btree_updates_read(struct file *file, char __user *buf,
 		i->iter++;
 	}
 
-	err = bch2_debugfs_flush_buf(i);
+	err = flush_buf(i);
 	if (err)
 		return err;
 
@@ -750,7 +753,7 @@ static ssize_t btree_transaction_stats_read(struct file *file, char __user *buf,
 	while (1) {
 		struct btree_transaction_stats *s = &c->btree_transaction_stats[i->iter];
 
-		err = bch2_debugfs_flush_buf(i);
+		err = flush_buf(i);
 		if (err)
 			return err;
 
@@ -767,12 +770,6 @@ static ssize_t btree_transaction_stats_read(struct file *file, char __user *buf,
 		mutex_lock(&s->lock);
 
 		prt_printf(&i->buf, "Max mem used: %u\n", s->max_mem);
-#ifdef CONFIG_BCACHEFS_TRANS_KMALLOC_TRACE
-		printbuf_indent_add(&i->buf, 2);
-		bch2_trans_kmalloc_trace_to_text(&i->buf, &s->trans_kmalloc_trace);
-		printbuf_indent_sub(&i->buf, 2);
-#endif
-
 		prt_printf(&i->buf, "Transaction duration:\n");
 
 		printbuf_indent_add(&i->buf, 2);
@@ -871,7 +868,7 @@ static ssize_t bch2_simple_print(struct file *file, char __user *buf,
 		ret = -ENOMEM;
 
 	if (!ret)
-		ret = bch2_debugfs_flush_buf(i);
+		ret = flush_buf(i);
 
 	return ret ?: i->ret;
 }
@@ -930,11 +927,7 @@ void bch2_fs_debug_init(struct bch_fs *c)
 	if (IS_ERR_OR_NULL(bch_debug))
 		return;
 
-	if (c->sb.multi_device)
-		snprintf(name, sizeof(name), "%pU", c->sb.user_uuid.b);
-	else
-		strscpy(name, c->name, sizeof(name));
-
+	snprintf(name, sizeof(name), "%pU", c->sb.user_uuid.b);
 	c->fs_debug_dir = debugfs_create_dir(name, bch_debug);
 	if (IS_ERR_OR_NULL(c->fs_debug_dir))
 		return;
@@ -959,8 +952,6 @@ void bch2_fs_debug_init(struct bch_fs *c)
 
 	debugfs_create_file("write_points", 0400, c->fs_debug_dir,
 			    c->btree_debug, &write_points_ops);
-
-	bch2_fs_async_obj_debugfs_init(c);
 
 	c->btree_debug_dir = debugfs_create_dir("btrees", c->fs_debug_dir);
 	if (IS_ERR_OR_NULL(c->btree_debug_dir))

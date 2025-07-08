@@ -16,7 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/device/faux.h>
+#include <linux/platform_device.h>
 #include <linux/psci.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_runtime.h>
@@ -36,30 +36,19 @@ struct psci_cpuidle_data {
 	struct device *dev;
 };
 
-struct psci_cpuidle_domain_state {
-	struct generic_pm_domain *pd;
-	unsigned int state_idx;
-	u32 state;
-};
-
 static DEFINE_PER_CPU_READ_MOSTLY(struct psci_cpuidle_data, psci_cpuidle_data);
-static DEFINE_PER_CPU(struct psci_cpuidle_domain_state, psci_domain_state);
+static DEFINE_PER_CPU(u32, domain_state);
 static bool psci_cpuidle_use_syscore;
 static bool psci_cpuidle_use_cpuhp;
 
-void psci_set_domain_state(struct generic_pm_domain *pd, unsigned int state_idx,
-			   u32 state)
+void psci_set_domain_state(u32 state)
 {
-	struct psci_cpuidle_domain_state *ds = this_cpu_ptr(&psci_domain_state);
-
-	ds->pd = pd;
-	ds->state_idx = state_idx;
-	ds->state = state;
+	__this_cpu_write(domain_state, state);
 }
 
-static inline void psci_clear_domain_state(void)
+static inline u32 psci_get_domain_state(void)
 {
-	__this_cpu_write(psci_domain_state.state, 0);
+	return __this_cpu_read(domain_state);
 }
 
 static __cpuidle int __psci_enter_domain_idle_state(struct cpuidle_device *dev,
@@ -69,8 +58,7 @@ static __cpuidle int __psci_enter_domain_idle_state(struct cpuidle_device *dev,
 	struct psci_cpuidle_data *data = this_cpu_ptr(&psci_cpuidle_data);
 	u32 *states = data->psci_states;
 	struct device *pd_dev = data->dev;
-	struct psci_cpuidle_domain_state *ds;
-	u32 state = states[idx];
+	u32 state;
 	int ret;
 
 	ret = cpu_pm_enter();
@@ -83,9 +71,9 @@ static __cpuidle int __psci_enter_domain_idle_state(struct cpuidle_device *dev,
 	else
 		pm_runtime_put_sync_suspend(pd_dev);
 
-	ds = this_cpu_ptr(&psci_domain_state);
-	if (ds->state)
-		state = ds->state;
+	state = psci_get_domain_state();
+	if (!state)
+		state = states[idx];
 
 	trace_psci_domain_idle_enter(dev->cpu, state, s2idle);
 	ret = psci_cpu_suspend_enter(state) ? -1 : idx;
@@ -98,12 +86,8 @@ static __cpuidle int __psci_enter_domain_idle_state(struct cpuidle_device *dev,
 
 	cpu_pm_exit();
 
-	/* Correct domain-idlestate statistics if we failed to enter. */
-	if (ret == -1 && ds->state)
-		pm_genpd_inc_rejected(ds->pd, ds->state_idx);
-
 	/* Clear the domain state to start fresh when back from idle. */
-	psci_clear_domain_state();
+	psci_set_domain_state(0);
 	return ret;
 }
 
@@ -137,7 +121,7 @@ static int psci_idle_cpuhp_down(unsigned int cpu)
 	if (pd_dev) {
 		pm_runtime_put_sync(pd_dev);
 		/* Clear domain state to start fresh at next online. */
-		psci_clear_domain_state();
+		psci_set_domain_state(0);
 	}
 
 	return 0;
@@ -163,7 +147,7 @@ static void psci_idle_syscore_switch(bool suspend)
 
 			/* Clear domain state to re-start fresh. */
 			if (!cleared) {
-				psci_clear_domain_state();
+				psci_set_domain_state(0);
 				cleared = true;
 			}
 		}
@@ -423,14 +407,14 @@ deinit:
  * to register cpuidle driver then rollback to cancel all CPUs
  * registration.
  */
-static int psci_cpuidle_probe(struct faux_device *fdev)
+static int psci_cpuidle_probe(struct platform_device *pdev)
 {
 	int cpu, ret;
 	struct cpuidle_driver *drv;
 	struct cpuidle_device *dev;
 
 	for_each_present_cpu(cpu) {
-		ret = psci_idle_init_cpu(&fdev->dev, cpu);
+		ret = psci_idle_init_cpu(&pdev->dev, cpu);
 		if (ret)
 			goto out_fail;
 	}
@@ -450,36 +434,26 @@ out_fail:
 	return ret;
 }
 
-static struct faux_device_ops psci_cpuidle_ops = {
+static struct platform_driver psci_cpuidle_driver = {
 	.probe = psci_cpuidle_probe,
+	.driver = {
+		.name = "psci-cpuidle",
+	},
 };
-
-static bool __init dt_idle_state_present(void)
-{
-	struct device_node *cpu_node __free(device_node) =
-			of_cpu_device_node_get(cpumask_first(cpu_possible_mask));
-	if (!cpu_node)
-		return false;
-
-	struct device_node *state_node __free(device_node) =
-			of_get_cpu_state_node(cpu_node, 0);
-	if (!state_node)
-		return false;
-
-	return !!of_match_node(psci_idle_state_match, state_node);
-}
 
 static int __init psci_idle_init(void)
 {
-	struct faux_device *fdev;
+	struct platform_device *pdev;
+	int ret;
 
-	if (!dt_idle_state_present())
-		return 0;
+	ret = platform_driver_register(&psci_cpuidle_driver);
+	if (ret)
+		return ret;
 
-	fdev = faux_device_create("psci-cpuidle", NULL, &psci_cpuidle_ops);
-	if (!fdev) {
-		pr_err("Failed to create psci-cpuidle device\n");
-		return -ENODEV;
+	pdev = platform_device_register_simple("psci-cpuidle", -1, NULL, 0);
+	if (IS_ERR(pdev)) {
+		platform_driver_unregister(&psci_cpuidle_driver);
+		return PTR_ERR(pdev);
 	}
 
 	return 0;

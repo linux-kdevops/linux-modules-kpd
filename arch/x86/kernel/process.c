@@ -30,7 +30,7 @@
 #include <linux/hw_breakpoint.h>
 #include <linux/entry-common.h>
 #include <asm/cpu.h>
-#include <asm/cpuid/api.h>
+#include <asm/cpuid.h>
 #include <asm/apic.h>
 #include <linux/uaccess.h>
 #include <asm/mwait.h>
@@ -52,7 +52,6 @@
 #include <asm/unwind.h>
 #include <asm/tdx.h>
 #include <asm/mmu_context.h>
-#include <asm/msr.h>
 #include <asm/shstk.h>
 
 #include "process.h"
@@ -94,12 +93,17 @@ EXPORT_PER_CPU_SYMBOL_GPL(__tss_limit_invalid);
  */
 int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 {
-	/* fpu_clone() will initialize the "dst_fpu" memory */
-	memcpy_and_pad(dst, arch_task_struct_size, src, sizeof(*dst), 0);
+	/* init_task is not dynamically sized (incomplete FPU state) */
+	if (unlikely(src == &init_task))
+		memcpy_and_pad(dst, arch_task_struct_size, src, sizeof(init_task), 0);
+	else
+		memcpy(dst, src, arch_task_struct_size);
 
 #ifdef CONFIG_VM86
 	dst->thread.vm86 = NULL;
 #endif
+	/* Drop the copied pointer to current's fpstate */
+	dst->thread.fpu.fpstate = NULL;
 
 	return 0;
 }
@@ -107,8 +111,8 @@ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 #ifdef CONFIG_X86_64
 void arch_release_task_struct(struct task_struct *tsk)
 {
-	if (fpu_state_size_dynamic() && !(tsk->flags & (PF_KTHREAD | PF_USER_WORKER)))
-		fpstate_free(x86_task_fpu(tsk));
+	if (fpu_state_size_dynamic())
+		fpstate_free(&tsk->thread.fpu);
 }
 #endif
 
@@ -118,6 +122,7 @@ void arch_release_task_struct(struct task_struct *tsk)
 void exit_thread(struct task_struct *tsk)
 {
 	struct thread_struct *t = &tsk->thread;
+	struct fpu *fpu = &t->fpu;
 
 	if (test_thread_flag(TIF_IO_BITMAP))
 		io_bitmap_exit(tsk);
@@ -125,7 +130,7 @@ void exit_thread(struct task_struct *tsk)
 	free_vm86(t);
 
 	shstk_free(tsk);
-	fpu__drop(tsk);
+	fpu__drop(fpu);
 }
 
 static int set_new_tls(struct task_struct *p, unsigned long tls)
@@ -176,7 +181,6 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
 	frame->ret_addr = (unsigned long) ret_from_fork_asm;
 	p->thread.sp = (unsigned long) fork_frame;
 	p->thread.io_bitmap = NULL;
-	clear_tsk_thread_flag(p, TIF_IO_BITMAP);
 	p->thread.iopl_warn = 0;
 	memset(p->thread.ptrace_bps, 0, sizeof(p->thread.ptrace_bps));
 
@@ -340,7 +344,7 @@ static void set_cpuid_faulting(bool on)
 	msrval &= ~MSR_MISC_FEATURES_ENABLES_CPUID_FAULT;
 	msrval |= (on << MSR_MISC_FEATURES_ENABLES_CPUID_FAULT_BIT);
 	this_cpu_write(msr_misc_features_shadow, msrval);
-	wrmsrq(MSR_MISC_FEATURES_ENABLES, msrval);
+	wrmsrl(MSR_MISC_FEATURES_ENABLES, msrval);
 }
 
 static void disable_cpuid(void)
@@ -465,11 +469,6 @@ void native_tss_update_io_bitmap(void)
 	} else {
 		struct io_bitmap *iobm = t->io_bitmap;
 
-		if (WARN_ON_ONCE(!iobm)) {
-			clear_thread_flag(TIF_IO_BITMAP);
-			native_tss_invalidate_io_bitmap();
-		}
-
 		/*
 		 * Only copy bitmap data when the sequence number differs. The
 		 * update time is accounted to the incoming task.
@@ -562,7 +561,7 @@ static __always_inline void amd_set_core_ssb_state(unsigned long tifn)
 
 	if (!static_cpu_has(X86_FEATURE_ZEN)) {
 		msr |= ssbd_tif_to_amd_ls_cfg(tifn);
-		wrmsrq(MSR_AMD64_LS_CFG, msr);
+		wrmsrl(MSR_AMD64_LS_CFG, msr);
 		return;
 	}
 
@@ -579,7 +578,7 @@ static __always_inline void amd_set_core_ssb_state(unsigned long tifn)
 		raw_spin_lock(&st->shared_state->lock);
 		/* First sibling enables SSBD: */
 		if (!st->shared_state->disable_state)
-			wrmsrq(MSR_AMD64_LS_CFG, msr);
+			wrmsrl(MSR_AMD64_LS_CFG, msr);
 		st->shared_state->disable_state++;
 		raw_spin_unlock(&st->shared_state->lock);
 	} else {
@@ -589,7 +588,7 @@ static __always_inline void amd_set_core_ssb_state(unsigned long tifn)
 		raw_spin_lock(&st->shared_state->lock);
 		st->shared_state->disable_state--;
 		if (!st->shared_state->disable_state)
-			wrmsrq(MSR_AMD64_LS_CFG, msr);
+			wrmsrl(MSR_AMD64_LS_CFG, msr);
 		raw_spin_unlock(&st->shared_state->lock);
 	}
 }
@@ -598,7 +597,7 @@ static __always_inline void amd_set_core_ssb_state(unsigned long tifn)
 {
 	u64 msr = x86_amd_ls_cfg_base | ssbd_tif_to_amd_ls_cfg(tifn);
 
-	wrmsrq(MSR_AMD64_LS_CFG, msr);
+	wrmsrl(MSR_AMD64_LS_CFG, msr);
 }
 #endif
 
@@ -608,7 +607,7 @@ static __always_inline void amd_set_ssb_virt_state(unsigned long tifn)
 	 * SSBD has the same definition in SPEC_CTRL and VIRT_SPEC_CTRL,
 	 * so ssbd_tif_to_spec_ctrl() just works.
 	 */
-	wrmsrq(MSR_AMD64_VIRT_SPEC_CTRL, ssbd_tif_to_spec_ctrl(tifn));
+	wrmsrl(MSR_AMD64_VIRT_SPEC_CTRL, ssbd_tif_to_spec_ctrl(tifn));
 }
 
 /*
@@ -711,11 +710,11 @@ void __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p)
 	    arch_has_block_step()) {
 		unsigned long debugctl, msk;
 
-		rdmsrq(MSR_IA32_DEBUGCTLMSR, debugctl);
+		rdmsrl(MSR_IA32_DEBUGCTLMSR, debugctl);
 		debugctl &= ~DEBUGCTLMSR_BTF;
 		msk = tifn & _TIF_BLOCKSTEP;
 		debugctl |= (msk >> TIF_BLOCKSTEP) << DEBUGCTLMSR_BTF_SHIFT;
-		wrmsrq(MSR_IA32_DEBUGCTLMSR, debugctl);
+		wrmsrl(MSR_IA32_DEBUGCTLMSR, debugctl);
 	}
 
 	if ((tifp ^ tifn) & _TIF_NOTSC)
@@ -908,10 +907,13 @@ static __init bool prefer_mwait_c1_over_halt(void)
 static __cpuidle void mwait_idle(void)
 {
 	if (!current_set_polling_and_test()) {
-		const void *addr = &current_thread_info()->flags;
+		if (this_cpu_has(X86_BUG_CLFLUSH_MONITOR)) {
+			mb(); /* quirk */
+			clflush((void *)&current_thread_info()->flags);
+			mb(); /* quirk */
+		}
 
-		alternative_input("", "clflush (%[addr])", X86_BUG_CLFLUSH_MONITOR, [addr] "a" (addr));
-		__monitor(addr, 0, 0);
+		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		if (!need_resched()) {
 			__sti_mwait(0, 0);
 			raw_local_irq_disable();

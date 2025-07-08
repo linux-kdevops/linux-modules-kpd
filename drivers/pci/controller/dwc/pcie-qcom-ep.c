@@ -60,7 +60,6 @@
 #define PARF_DEVICE_TYPE			0x1000
 #define PARF_BDF_TO_SID_CFG			0x2c00
 #define PARF_INT_ALL_5_MASK			0x2dcc
-#define PARF_INT_ALL_3_MASK			0x2e18
 
 /* PARF_INT_ALL_{STATUS/CLEAR/MASK} register fields */
 #define PARF_INT_ALL_LINK_DOWN			BIT(1)
@@ -132,9 +131,6 @@
 
 /* PARF_INT_ALL_5_MASK fields */
 #define PARF_INT_ALL_5_MHI_RAM_DATA_PARITY_ERR	BIT(0)
-
-/* PARF_INT_ALL_3_MASK fields */
-#define PARF_INT_ALL_3_PTM_UPDATING		BIT(4)
 
 /* ELBI registers */
 #define ELBI_SYS_STTS				0x08
@@ -265,7 +261,7 @@ static void qcom_pcie_ep_configure_tcsr(struct qcom_pcie_ep *pcie_ep)
 	}
 }
 
-static bool qcom_pcie_dw_link_up(struct dw_pcie *pci)
+static int qcom_pcie_dw_link_up(struct dw_pcie *pci)
 {
 	struct qcom_pcie_ep *pcie_ep = to_pcie_ep(pci);
 	u32 reg;
@@ -500,10 +496,6 @@ static int qcom_pcie_perst_deassert(struct dw_pcie *pci)
 		val &= ~PARF_INT_ALL_5_MHI_RAM_DATA_PARITY_ERR;
 		writel_relaxed(val, pcie_ep->parf + PARF_INT_ALL_5_MASK);
 	}
-
-	val = readl_relaxed(pcie_ep->parf + PARF_INT_ALL_3_MASK);
-	val &= ~PARF_INT_ALL_3_PTM_UPDATING;
-	writel_relaxed(val, pcie_ep->parf + PARF_INT_ALL_3_MASK);
 
 	ret = dw_pcie_ep_init_registers(&pcie_ep->pci.ep);
 	if (ret) {

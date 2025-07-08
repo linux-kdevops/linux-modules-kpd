@@ -446,7 +446,7 @@ static irqreturn_t tps65010_irq(int irq, void *_tps)
  * offsets 4..5 == LED1/nPG, LED2 (we set one of the non-BLINK modes)
  * offset 6 == vibrator motor driver
  */
-static int
+static void
 tps65010_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 {
 	if (offset < 4)
@@ -455,8 +455,6 @@ tps65010_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 		tps65010_set_led(offset - 3, value ? ON : OFF);
 	else
 		tps65010_set_vib(value);
-
-	return 0;
 }
 
 static int
@@ -514,6 +512,7 @@ static void tps65010_remove(struct i2c_client *client)
 	if (client->irq > 0)
 		free_irq(client->irq, tps);
 	cancel_delayed_work_sync(&tps->work);
+	debugfs_remove(tps->file);
 	the_tps = NULL;
 }
 
@@ -609,7 +608,7 @@ static int tps65010_probe(struct i2c_client *client)
 
 	tps65010_work(&tps->work.work);
 
-	tps->file = debugfs_create_file(DRIVER_NAME, S_IRUGO, client->debugfs,
+	tps->file = debugfs_create_file(DRIVER_NAME, S_IRUGO, NULL,
 				tps, DEBUG_FOPS);
 
 	/* optionally register GPIOs */
@@ -620,7 +619,7 @@ static int tps65010_probe(struct i2c_client *client)
 		tps->chip.parent = &client->dev;
 		tps->chip.owner = THIS_MODULE;
 
-		tps->chip.set_rv = tps65010_gpio_set;
+		tps->chip.set = tps65010_gpio_set;
 		tps->chip.direction_output = tps65010_output;
 
 		/* NOTE:  only partial support for inputs; nyet IRQs */

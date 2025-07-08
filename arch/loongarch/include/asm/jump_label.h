@@ -7,7 +7,7 @@
 #ifndef __ASM_JUMP_LABEL_H
 #define __ASM_JUMP_LABEL_H
 
-#ifndef __ASSEMBLER__
+#ifndef __ASSEMBLY__
 
 #include <linux/types.h>
 
@@ -50,5 +50,5 @@ l_yes:
 	return true;
 }
 
-#endif  /* __ASSEMBLER__ */
+#endif  /* __ASSEMBLY__ */
 #endif	/* __ASM_JUMP_LABEL_H */

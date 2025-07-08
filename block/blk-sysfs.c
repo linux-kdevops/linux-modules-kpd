@@ -134,8 +134,6 @@ QUEUE_SYSFS_LIMIT_SHOW(max_segments)
 QUEUE_SYSFS_LIMIT_SHOW(max_discard_segments)
 QUEUE_SYSFS_LIMIT_SHOW(max_integrity_segments)
 QUEUE_SYSFS_LIMIT_SHOW(max_segment_size)
-QUEUE_SYSFS_LIMIT_SHOW(max_write_streams)
-QUEUE_SYSFS_LIMIT_SHOW(write_stream_granularity)
 QUEUE_SYSFS_LIMIT_SHOW(logical_block_size)
 QUEUE_SYSFS_LIMIT_SHOW(physical_block_size)
 QUEUE_SYSFS_LIMIT_SHOW(chunk_sectors)
@@ -490,8 +488,6 @@ QUEUE_LIM_RO_ENTRY(queue_max_hw_sectors, "max_hw_sectors_kb");
 QUEUE_LIM_RO_ENTRY(queue_max_segments, "max_segments");
 QUEUE_LIM_RO_ENTRY(queue_max_integrity_segments, "max_integrity_segments");
 QUEUE_LIM_RO_ENTRY(queue_max_segment_size, "max_segment_size");
-QUEUE_LIM_RO_ENTRY(queue_max_write_streams, "max_write_streams");
-QUEUE_LIM_RO_ENTRY(queue_write_stream_granularity, "write_stream_granularity");
 QUEUE_RW_ENTRY(elv_iosched, "scheduler");
 
 QUEUE_LIM_RO_ENTRY(queue_logical_block_size, "logical_block_size");
@@ -564,7 +560,7 @@ static ssize_t queue_wb_lat_show(struct gendisk *disk, char *page)
 	ssize_t ret;
 	struct request_queue *q = disk->queue;
 
-	mutex_lock(&disk->rqos_state_mutex);
+	mutex_lock(&q->elevator_lock);
 	if (!wbt_rq_qos(q)) {
 		ret = -EINVAL;
 		goto out;
@@ -577,7 +573,7 @@ static ssize_t queue_wb_lat_show(struct gendisk *disk, char *page)
 
 	ret = sysfs_emit(page, "%llu\n", div_u64(wbt_get_min_lat(q), 1000));
 out:
-	mutex_unlock(&disk->rqos_state_mutex);
+	mutex_unlock(&q->elevator_lock);
 	return ret;
 }
 
@@ -597,6 +593,7 @@ static ssize_t queue_wb_lat_store(struct gendisk *disk, const char *page,
 		return -EINVAL;
 
 	memflags = blk_mq_freeze_queue(q);
+	mutex_lock(&q->elevator_lock);
 
 	rqos = wbt_rq_qos(q);
 	if (!rqos) {
@@ -621,12 +618,11 @@ static ssize_t queue_wb_lat_store(struct gendisk *disk, const char *page,
 	 */
 	blk_mq_quiesce_queue(q);
 
-	mutex_lock(&disk->rqos_state_mutex);
 	wbt_set_min_lat(q, val);
-	mutex_unlock(&disk->rqos_state_mutex);
 
 	blk_mq_unquiesce_queue(q);
 out:
+	mutex_unlock(&q->elevator_lock);
 	blk_mq_unfreeze_queue(q, memflags);
 
 	return ret;
@@ -646,8 +642,6 @@ static struct attribute *queue_attrs[] = {
 	&queue_max_discard_segments_entry.attr,
 	&queue_max_integrity_segments_entry.attr,
 	&queue_max_segment_size_entry.attr,
-	&queue_max_write_streams_entry.attr,
-	&queue_write_stream_granularity_entry.attr,
 	&queue_hw_sector_size_entry.attr,
 	&queue_logical_block_size_entry.attr,
 	&queue_physical_block_size_entry.attr,
@@ -875,9 +869,16 @@ int blk_register_queue(struct gendisk *disk)
 	if (ret)
 		goto out_unregister_ia_ranges;
 
-	if (queue_is_mq(q))
-		elevator_set_default(q);
+	mutex_lock(&q->elevator_lock);
+	if (q->elevator) {
+		ret = elv_register_queue(q, false);
+		if (ret) {
+			mutex_unlock(&q->elevator_lock);
+			goto out_crypto_sysfs_unregister;
+		}
+	}
 	wbt_enable_default(disk);
+	mutex_unlock(&q->elevator_lock);
 
 	blk_queue_flag_set(QUEUE_FLAG_REGISTERED, q);
 
@@ -901,6 +902,8 @@ int blk_register_queue(struct gendisk *disk)
 
 	return ret;
 
+out_crypto_sysfs_unregister:
+	blk_crypto_sysfs_unregister(disk);
 out_unregister_ia_ranges:
 	disk_unregister_independent_access_ranges(disk);
 out_debugfs_remove:
@@ -948,6 +951,10 @@ void blk_unregister_queue(struct gendisk *disk)
 		blk_mq_sysfs_unregister(disk);
 	blk_crypto_sysfs_unregister(disk);
 
+	mutex_lock(&q->elevator_lock);
+	elv_unregister_queue(q);
+	mutex_unlock(&q->elevator_lock);
+
 	mutex_lock(&q->sysfs_lock);
 	disk_unregister_independent_access_ranges(disk);
 	mutex_unlock(&q->sysfs_lock);
@@ -955,9 +962,6 @@ void blk_unregister_queue(struct gendisk *disk)
 	/* Now that we've deleted all child objects, we can delete the queue. */
 	kobject_uevent(&disk->queue_kobj, KOBJ_REMOVE);
 	kobject_del(&disk->queue_kobj);
-
-	if (queue_is_mq(q))
-		elevator_set_none(q);
 
 	blk_debugfs_remove(disk);
 }

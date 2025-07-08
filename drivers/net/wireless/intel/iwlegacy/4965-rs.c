@@ -203,8 +203,7 @@ il4965_rs_extract_rate(u32 rate_n_flags)
 	return (u8) (rate_n_flags & 0xFF);
 }
 
-/* noinline works around https://github.com/llvm/llvm-project/issues/143908 */
-static noinline_for_stack void
+static void
 il4965_rs_rate_scale_clear_win(struct il_rate_scale_data *win)
 {
 	win->data = 0;

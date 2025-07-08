@@ -170,30 +170,6 @@ static inline void add_taint_module(struct module *mod, unsigned flag,
 }
 
 /*
- * Like strncmp(), except s/-/_/g as per scripts/Makefile.lib:name-fix-token rule.
- */
-static int mod_strncmp(const char *str_a, const char *str_b, size_t n)
-{
-	for (int i = 0; i < n; i++) {
-		char a = str_a[i];
-		char b = str_b[i];
-		int d;
-
-		if (a == '-') a = '_';
-		if (b == '-') b = '_';
-
-		d = a - b;
-		if (d)
-			return d;
-
-		if (!a)
-			break;
-	}
-
-	return 0;
-}
-
-/*
  * A thread that wants to hold a reference to a module only while it
  * is running can call this to safely exit.
  */
@@ -1107,46 +1083,6 @@ static char *get_modinfo(const struct load_info *info, const char *tag)
 	return get_next_modinfo(info, tag, NULL);
 }
 
-/**
- * verify_module_namespace() - does @modname have access to this symbol's @namespace
- * @namespace: export symbol namespace
- * @modname: module name
- *
- * If @namespace is prefixed with "module:" to indicate it is a module namespace
- * then test if @modname matches any of the comma separated patterns.
- *
- * The patterns only support tail-glob.
- */
-static bool verify_module_namespace(const char *namespace, const char *modname)
-{
-	size_t len, modlen = strlen(modname);
-	const char *prefix = "module:";
-	const char *sep;
-	bool glob;
-
-	if (!strstarts(namespace, prefix))
-		return false;
-
-	for (namespace += strlen(prefix); *namespace; namespace = sep) {
-		sep = strchrnul(namespace, ',');
-		len = sep - namespace;
-
-		glob = false;
-		if (sep[-1] == '*') {
-			len--;
-			glob = true;
-		}
-
-		if (*sep)
-			sep++;
-
-		if (mod_strncmp(namespace, modname, len) == 0 && (glob || len == modlen))
-			return true;
-	}
-
-	return false;
-}
-
 static int verify_namespace_is_imported(const struct load_info *info,
 					const struct kernel_symbol *sym,
 					struct module *mod)
@@ -1156,10 +1092,6 @@ static int verify_namespace_is_imported(const struct load_info *info,
 
 	namespace = kernel_symbol_namespace(sym);
 	if (namespace && namespace[0]) {
-
-		if (verify_module_namespace(namespace, mod->name))
-			return 0;
-
 		for_each_modinfo_entry(imported_namespace, info, "import_ns") {
 			if (strcmp(namespace, imported_namespace) == 0)
 				return 0;
@@ -1573,14 +1505,8 @@ static int apply_relocations(struct module *mod, const struct load_info *info)
 		if (infosec >= info->hdr->e_shnum)
 			continue;
 
-		/*
-		 * Don't bother with non-allocated sections.
-		 * An exception is the percpu section, which has separate allocations
-		 * for individual CPUs. We relocate the percpu section in the initial
-		 * ELF template and subsequently copy it to the per-CPU destinations.
-		 */
-		if (!(info->sechdrs[infosec].sh_flags & SHF_ALLOC) &&
-		    (!infosec || infosec != info->index.pcpu))
+		/* Don't bother with non-allocated sections */
+		if (!(info->sechdrs[infosec].sh_flags & SHF_ALLOC))
 			continue;
 
 		if (info->sechdrs[i].sh_flags & SHF_RELA_LIVEPATCH)
@@ -1732,30 +1658,15 @@ static void module_license_taint_check(struct module *mod, const char *license)
 	}
 }
 
-static int setup_modinfo(struct module *mod, struct load_info *info)
+static void setup_modinfo(struct module *mod, struct load_info *info)
 {
 	const struct module_attribute *attr;
-	char *imported_namespace;
 	int i;
 
 	for (i = 0; (attr = modinfo_attrs[i]); i++) {
 		if (attr->setup)
 			attr->setup(mod, get_modinfo(info, attr->attr.name));
 	}
-
-	for_each_modinfo_entry(imported_namespace, info, "import_ns") {
-		/*
-		 * 'module:' prefixed namespaces are implicit, disallow
-		 * explicit imports.
-		 */
-		if (strstarts(imported_namespace, "module:")) {
-			pr_err("%s: module tries to import module namespace: %s\n",
-			       mod->name, imported_namespace);
-			return -EPERM;
-		}
-	}
-
-	return 0;
 }
 
 static void free_modinfo(struct module *mod)
@@ -2702,8 +2613,9 @@ static int find_module_sections(struct module *mod, struct load_info *info)
 
 static int move_module(struct module *mod, struct load_info *info)
 {
-	int i, ret;
-	enum mod_mem_type t = MOD_MEM_NUM_TYPES;
+	int i;
+	enum mod_mem_type t = 0;
+	int ret = -ENOMEM;
 	bool codetag_section_found = false;
 
 	for_each_mod_mem_type(type) {
@@ -2781,7 +2693,7 @@ static int move_module(struct module *mod, struct load_info *info)
 	return 0;
 out_err:
 	module_memory_restore_rox(mod);
-	while (t--)
+	for (t--; t >= 0; t--)
 		module_memory_free(mod, t);
 	if (codetag_section_found)
 		codetag_free_module_sections(mod);
@@ -2904,7 +2816,6 @@ static void module_deallocate(struct module *mod, struct load_info *info)
 {
 	percpu_modfree(mod);
 	module_arch_freeing_init(mod);
-	codetag_free_module_sections(mod);
 
 	free_mod_mem(mod);
 }
@@ -3411,9 +3322,7 @@ static int load_module(struct load_info *info, const char __user *uargs,
 		goto free_unload;
 
 	/* Set up MODINFO_ATTR fields */
-	err = setup_modinfo(mod, info);
-	if (err)
-		goto free_modinfo;
+	setup_modinfo(mod, info);
 
 	/* Fix up syms, so that st_value is a pointer to location. */
 	err = simplify_symbols(mod, info);
@@ -3476,11 +3385,10 @@ static int load_module(struct load_info *info, const char __user *uargs,
 			goto sysfs_cleanup;
 	}
 
-	if (codetag_load_module(mod))
-		goto sysfs_cleanup;
-
 	/* Get rid of temporary copy. */
 	free_copy(info, flags);
+
+	codetag_load_module(mod);
 
 	/* Done! */
 	trace_module_load(mod);

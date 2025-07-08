@@ -63,11 +63,11 @@ static void test_missed_beacon(struct kunit *test)
 	struct iwl_rx_packet *pkt;
 	struct iwl_mld_kunit_link link1 = {
 		.id = 0,
-		.chandef = &chandef_6ghz_160mhz,
+		.band = NL80211_BAND_6GHZ,
 	};
 	struct iwl_mld_kunit_link link2 = {
 		.id = 1,
-		.chandef = &chandef_5ghz_80mhz,
+		.band = NL80211_BAND_5GHZ,
 	};
 
 	kunit_activate_static_stub(test, ieee80211_connection_loss,

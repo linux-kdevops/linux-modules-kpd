@@ -103,8 +103,7 @@ static int drm_connector_hdmi_audio_hook_plugged_cb(struct device *dev,
 	connector->hdmi_audio.plugged_cb = fn;
 	connector->hdmi_audio.plugged_cb_dev = codec_dev;
 
-	if (fn)
-		fn(codec_dev, connector->hdmi_audio.last_state);
+	fn(codec_dev, connector->hdmi_audio.last_state);
 
 	mutex_unlock(&connector->hdmi_audio.lock);
 

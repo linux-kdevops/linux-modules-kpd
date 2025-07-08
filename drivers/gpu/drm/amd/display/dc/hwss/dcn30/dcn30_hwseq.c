@@ -74,7 +74,6 @@ void dcn30_log_color_state(struct dc *dc,
 {
 	struct dc_context *dc_ctx = dc->ctx;
 	struct resource_pool *pool = dc->res_pool;
-	bool is_gamut_remap_available = false;
 	int i;
 
 	DTN_INFO("DPP:  DGAM ROM  DGAM ROM type  DGAM LUT  SHAPER mode"
@@ -89,16 +88,16 @@ void dcn30_log_color_state(struct dc *dc,
 		struct dcn_dpp_state s = {0};
 
 		dpp->funcs->dpp_read_state(dpp, &s);
-
-		if (dpp->funcs->dpp_get_gamut_remap) {
-			dpp->funcs->dpp_get_gamut_remap(dpp, &s.gamut_remap);
-			is_gamut_remap_available = true;
-		}
+		dpp->funcs->dpp_get_gamut_remap(dpp, &s.gamut_remap);
 
 		if (!s.is_enabled)
 			continue;
 
-		DTN_INFO("[%2d]:  %7x  %13s  %8s  %11s  %10s  %15s  %10s  %9s",
+		DTN_INFO("[%2d]:  %7x  %13s  %8s  %11s  %10s  %15s  %10s  %9s"
+			 "  %12s  "
+			 "%010lld %010lld %010lld %010lld "
+			 "%010lld %010lld %010lld %010lld "
+			 "%010lld %010lld %010lld %010lld",
 			dpp->inst,
 			s.pre_dgam_mode,
 			(s.pre_dgam_select == 0) ? "sRGB" :
@@ -122,14 +121,7 @@ void dcn30_log_color_state(struct dc *dc,
 			(s.lut3d_size == 0) ? "17x17x17" : "9x9x9",
 			(s.rgam_lut_mode == 0) ? "Bypass" :
 			 ((s.rgam_lut_mode == 1) ? "RAM A" :
-						   "RAM B"));
-
-		if (is_gamut_remap_available) {
-			DTN_INFO("  %12s  "
-				 "%010lld %010lld %010lld %010lld "
-				 "%010lld %010lld %010lld %010lld "
-				 "%010lld %010lld %010lld %010lld",
-
+						   "RAM B"),
 			(s.gamut_remap.gamut_adjust_type == 0) ? "Bypass" :
 				((s.gamut_remap.gamut_adjust_type == 1) ? "HW" :
 									  "SW"),
@@ -145,8 +137,6 @@ void dcn30_log_color_state(struct dc *dc,
 			s.gamut_remap.temperature_matrix[9].value,
 			s.gamut_remap.temperature_matrix[10].value,
 			s.gamut_remap.temperature_matrix[11].value);
-		}
-
 		DTN_INFO("\n");
 	}
 	DTN_INFO("\n");

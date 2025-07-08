@@ -831,6 +831,4 @@ mlx5hws_definer_conv_match_params_to_compressed_fc(struct mlx5hws_context *ctx,
 						   u32 *match_param,
 						   int *fc_sz);
 
-const char *mlx5hws_definer_fname_to_str(enum mlx5hws_definer_fname fname);
-
 #endif /* HWS_DEFINER_H_ */

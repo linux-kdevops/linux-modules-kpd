@@ -12,7 +12,6 @@
 #include "policy.h"
 #include "eval.h"
 #include "fs.h"
-#include "audit.h"
 
 #define MAX_VERSION_SIZE ARRAY_SIZE("65535.65535.65535")
 
@@ -287,13 +286,8 @@ static ssize_t getactive(struct file *f, char __user *data,
  * On success this updates the policy represented by $name,
  * in-place.
  *
- * Return:
- * * Length of buffer written		- Success
- * * %-EPERM				- Insufficient permission
- * * %-ENOMEM				- Out of memory (OOM)
- * * %-ENOENT				- Policy was deleted while updating
- * * %-EINVAL				- Policy name mismatch
- * * %-ESTALE				- Policy version too old
+ * Return: Length of buffer written on success. If an error occurs,
+ * the function will return the -errno.
  */
 static ssize_t update_policy(struct file *f, const char __user *data,
 			     size_t len, loff_t *offset)
@@ -302,29 +296,21 @@ static ssize_t update_policy(struct file *f, const char __user *data,
 	char *copy = NULL;
 	int rc = 0;
 
-	if (!file_ns_capable(f, &init_user_ns, CAP_MAC_ADMIN)) {
-		rc = -EPERM;
-		goto out;
-	}
+	if (!file_ns_capable(f, &init_user_ns, CAP_MAC_ADMIN))
+		return -EPERM;
 
 	copy = memdup_user(data, len);
-	if (IS_ERR(copy)) {
-		rc = PTR_ERR(copy);
-		copy = NULL;
-		goto out;
-	}
+	if (IS_ERR(copy))
+		return PTR_ERR(copy);
 
 	root = d_inode(f->f_path.dentry->d_parent);
 	inode_lock(root);
 	rc = ipe_update_policy(root, NULL, 0, copy, len);
 	inode_unlock(root);
 
-out:
 	kfree(copy);
-	if (rc) {
-		ipe_audit_policy_load(ERR_PTR(rc));
+	if (rc)
 		return rc;
-	}
 
 	return len;
 }

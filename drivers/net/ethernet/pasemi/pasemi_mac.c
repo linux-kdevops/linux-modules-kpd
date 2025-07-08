@@ -934,8 +934,7 @@ static irqreturn_t pasemi_mac_rx_intr(int irq, void *data)
 
 static void pasemi_mac_tx_timer(struct timer_list *t)
 {
-	struct pasemi_mac_txring *txring = timer_container_of(txring, t,
-							      clean_timer);
+	struct pasemi_mac_txring *txring = from_timer(txring, t, clean_timer);
 	struct pasemi_mac *mac = txring->mac;
 
 	pasemi_mac_clean_tx(txring);

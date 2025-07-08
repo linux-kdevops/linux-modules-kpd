@@ -12,7 +12,6 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <asm/unistd.h>
 #include <kern_util.h>
 #include <init.h>
 #include <os.h>
@@ -47,7 +46,7 @@ static void *write_sigio_thread(void *unused)
 			       __func__, errno);
 		}
 
-		CATCH_EINTR(r = syscall(__NR_tgkill, pid, pid, SIGIO));
+		CATCH_EINTR(r = tgkill(pid, pid, SIGIO));
 		if (r < 0)
 			printk(UM_KERN_ERR "%s: tgkill failed, errno = %d\n",
 			       __func__, errno);

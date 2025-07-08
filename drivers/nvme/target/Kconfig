@@ -3,7 +3,7 @@
 config NVME_TARGET
 	tristate "NVMe Target support"
 	depends on BLOCK
-	select CONFIGFS_FS
+	depends on CONFIGFS_FS
 	select NVME_KEYRING if NVME_TARGET_TCP_TLS
 	select KEYS if NVME_TARGET_TCP_TLS
 	select SGL_ALLOC

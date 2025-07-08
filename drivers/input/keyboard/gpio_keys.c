@@ -449,8 +449,6 @@ static enum hrtimer_restart gpio_keys_irq_timer(struct hrtimer *t)
 						      release_timer);
 	struct input_dev *input = bdata->input;
 
-	guard(spinlock_irqsave)(&bdata->lock);
-
 	if (bdata->key_pressed) {
 		input_report_key(input, *bdata->code, 0);
 		input_sync(input);
@@ -488,7 +486,7 @@ static irqreturn_t gpio_keys_irq_isr(int irq, void *dev_id)
 	if (bdata->release_delay)
 		hrtimer_start(&bdata->release_timer,
 			      ms_to_ktime(bdata->release_delay),
-			      HRTIMER_MODE_REL);
+			      HRTIMER_MODE_REL_HARD);
 out:
 	return IRQ_HANDLED;
 }
@@ -630,7 +628,7 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 
 		bdata->release_delay = button->debounce_interval;
 		hrtimer_setup(&bdata->release_timer, gpio_keys_irq_timer,
-			      CLOCK_REALTIME, HRTIMER_MODE_REL);
+			      CLOCK_REALTIME, HRTIMER_MODE_REL_HARD);
 
 		isr = gpio_keys_irq_isr;
 		irqflags = 0;

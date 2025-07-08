@@ -11,11 +11,8 @@ maintainers:
 
 properties:
   compatible:
-    oneOf:
-      - items:
-          - const: parade,ps8833
-          - const: parade,ps8830
-      - const: parade,ps8830
+    enum:
+      - parade,ps8830
 
   reg:
     maxItems: 1

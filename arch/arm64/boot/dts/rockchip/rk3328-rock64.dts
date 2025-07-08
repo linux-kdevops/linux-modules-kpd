@@ -343,7 +343,6 @@
 
 		/* maximum speed for Rockchip SPI */
 		spi-max-frequency = <50000000>;
-		vcc-supply = <&vcc_io>;
 	};
 };
 

@@ -21,8 +21,6 @@ CFLAGS += $(KHDR_INCLUDES)
 
 CFLAGS += -I$(top_srcdir)/tools/include
 
-OUTPUT ?= $(CURDIR)
-
 export CFLAGS
 export top_srcdir
 

@@ -146,9 +146,6 @@ static char *automount_fullpath(struct dentry *dentry, void *page)
 	}
 	spin_unlock(&tcon->tc_lock);
 
-	if (unlikely(!page))
-		return ERR_PTR(-ENOMEM);
-
 	s = dentry_path_raw(dentry, page, PATH_MAX);
 	if (IS_ERR(s))
 		return s;
@@ -286,6 +283,7 @@ struct vfsmount *cifs_d_automount(struct path *path)
 		return newmnt;
 	}
 
+	mntget(newmnt); /* prevent immediate expiration */
 	mnt_set_expiry(newmnt, &cifs_automount_list);
 	schedule_delayed_work(&cifs_automount_task,
 			      cifs_mountpoint_expiry_timeout);

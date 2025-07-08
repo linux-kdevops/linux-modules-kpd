@@ -387,8 +387,13 @@ EXPORT_SYMBOL_NS_GPL(ad7091r_writeable_reg, "IIO_AD7091R");
 
 bool ad7091r_volatile_reg(struct device *dev, unsigned int reg)
 {
-	/* The volatile ad7091r registers are also the only RO ones. */
-	return !ad7091r_writeable_reg(dev, reg);
+	switch (reg) {
+	case AD7091R_REG_RESULT:
+	case AD7091R_REG_ALERT:
+		return true;
+	default:
+		return false;
+	}
 }
 EXPORT_SYMBOL_NS_GPL(ad7091r_volatile_reg, "IIO_AD7091R");
 

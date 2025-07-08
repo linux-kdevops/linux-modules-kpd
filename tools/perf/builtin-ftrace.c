@@ -19,7 +19,6 @@
 #include <ctype.h>
 #include <linux/capability.h>
 #include <linux/string.h>
-#include <sys/stat.h>
 
 #include "debug.h"
 #include <subcmd/pager.h>
@@ -45,8 +44,6 @@ static volatile sig_atomic_t workload_exec_errno;
 static volatile sig_atomic_t done;
 
 static struct stats latency_stats;  /* for tracepoints */
-
-static char tracing_instance[PATH_MAX];	/* Trace instance directory */
 
 static void sig_handler(int sig __maybe_unused)
 {
@@ -103,34 +100,6 @@ static bool is_ftrace_supported(void)
 	return supported;
 }
 
-/*
- * Wrapper to test if a file in directory .../tracing/instances/XXX
- * exists. If so return the .../tracing/instances/XXX file for use.
- * Otherwise the file exists only in directory .../tracing and
- * is applicable to all instances, for example file available_filter_functions.
- * Return that file name in this case.
- *
- * This functions works similar to get_tracing_file() and expects its caller
- * to free the returned file name.
- *
- * The global variable tracing_instance is set in init_tracing_instance()
- * called at the  beginning to a process specific tracing subdirectory.
- */
-static char *get_tracing_instance_file(const char *name)
-{
-	char *file;
-
-	if (asprintf(&file, "%s/%s", tracing_instance, name) < 0)
-		return NULL;
-
-	if (!access(file, F_OK))
-		return file;
-
-	free(file);
-	file = get_tracing_file(name);
-	return file;
-}
-
 static int __write_tracing_file(const char *name, const char *val, bool append)
 {
 	char *file;
@@ -140,7 +109,7 @@ static int __write_tracing_file(const char *name, const char *val, bool append)
 	char errbuf[512];
 	char *val_copy;
 
-	file = get_tracing_instance_file(name);
+	file = get_tracing_file(name);
 	if (!file) {
 		pr_debug("cannot get tracing file: %s\n", name);
 		return -1;
@@ -198,7 +167,7 @@ static int read_tracing_file_to_stdout(const char *name)
 	int fd;
 	int ret = -1;
 
-	file = get_tracing_instance_file(name);
+	file = get_tracing_file(name);
 	if (!file) {
 		pr_debug("cannot get tracing file: %s\n", name);
 		return -1;
@@ -240,7 +209,7 @@ static int read_tracing_file_by_line(const char *name,
 	char *file;
 	FILE *fp;
 
-	file = get_tracing_instance_file(name);
+	file = get_tracing_file(name);
 	if (!file) {
 		pr_debug("cannot get tracing file: %s\n", name);
 		return -1;
@@ -328,39 +297,6 @@ static int reset_tracing_files(struct perf_ftrace *ftrace __maybe_unused)
 	reset_tracing_filters();
 	reset_tracing_options(ftrace);
 	return 0;
-}
-
-/* Remove .../tracing/instances/XXX subdirectory created with
- * init_tracing_instance().
- */
-static void exit_tracing_instance(void)
-{
-	if (rmdir(tracing_instance))
-		pr_err("failed to delete tracing/instances directory\n");
-}
-
-/* Create subdirectory within .../tracing/instances/XXX to have session
- * or process specific setup. To delete this setup, simply remove the
- * subdirectory.
- */
-static int init_tracing_instance(void)
-{
-	char dirname[] = "instances/perf-ftrace-XXXXXX";
-	char *path;
-
-	path = get_tracing_file(dirname);
-	if (!path)
-		goto error;
-	strncpy(tracing_instance, path, sizeof(tracing_instance) - 1);
-	put_tracing_file(path);
-	path = mkdtemp(tracing_instance);
-	if (!path)
-		goto error;
-	return 0;
-
-error:
-	pr_err("failed to create tracing/instances directory\n");
-	return -1;
 }
 
 static int set_tracing_pid(struct perf_ftrace *ftrace)
@@ -693,17 +629,14 @@ static int __cmd_ftrace(struct perf_ftrace *ftrace)
 
 	select_tracer(ftrace);
 
-	if (init_tracing_instance() < 0)
-		goto out;
-
 	if (reset_tracing_files(ftrace) < 0) {
 		pr_err("failed to reset ftrace\n");
-		goto out_reset;
+		goto out;
 	}
 
 	/* reset ftrace buffer */
 	if (write_tracing_file("trace", "0") < 0)
-		goto out_reset;
+		goto out;
 
 	if (set_tracing_options(ftrace) < 0)
 		goto out_reset;
@@ -715,7 +648,7 @@ static int __cmd_ftrace(struct perf_ftrace *ftrace)
 
 	setup_pager();
 
-	trace_file = get_tracing_instance_file("trace_pipe");
+	trace_file = get_tracing_file("trace_pipe");
 	if (!trace_file) {
 		pr_err("failed to open trace_pipe\n");
 		goto out_reset;
@@ -790,7 +723,7 @@ static int __cmd_ftrace(struct perf_ftrace *ftrace)
 out_close_fd:
 	close(trace_fd);
 out_reset:
-	exit_tracing_instance();
+	reset_tracing_files(ftrace);
 out:
 	return (done && !workload_exec_errno) ? 0 : -1;
 }
@@ -991,9 +924,6 @@ static int prepare_func_latency(struct perf_ftrace *ftrace)
 	if (ftrace->target.use_bpf)
 		return perf_ftrace__latency_prepare_bpf(ftrace);
 
-	if (init_tracing_instance() < 0)
-		return -1;
-
 	if (reset_tracing_files(ftrace) < 0) {
 		pr_err("failed to reset ftrace\n");
 		return -1;
@@ -1012,7 +942,7 @@ static int prepare_func_latency(struct perf_ftrace *ftrace)
 		return -1;
 	}
 
-	trace_file = get_tracing_instance_file("trace_pipe");
+	trace_file = get_tracing_file("trace_pipe");
 	if (!trace_file) {
 		pr_err("failed to open trace_pipe\n");
 		return -1;
@@ -1063,7 +993,7 @@ static int cleanup_func_latency(struct perf_ftrace *ftrace)
 	if (ftrace->target.use_bpf)
 		return perf_ftrace__latency_cleanup_bpf(ftrace);
 
-	exit_tracing_instance();
+	reset_tracing_files(ftrace);
 	return 0;
 }
 
@@ -1374,20 +1304,17 @@ static int __cmd_profile(struct perf_ftrace *ftrace)
 		goto out;
 	}
 
-	if (init_tracing_instance() < 0)
-		goto out;
-
 	if (reset_tracing_files(ftrace) < 0) {
 		pr_err("failed to reset ftrace\n");
-		goto out_reset;
+		goto out;
 	}
 
 	/* reset ftrace buffer */
 	if (write_tracing_file("trace", "0") < 0)
-		goto out_reset;
+		goto out;
 
 	if (set_tracing_options(ftrace) < 0)
-		goto out_reset;
+		return -1;
 
 	if (write_tracing_file("current_tracer", ftrace->tracer) < 0) {
 		pr_err("failed to set current_tracer to %s\n", ftrace->tracer);
@@ -1396,7 +1323,7 @@ static int __cmd_profile(struct perf_ftrace *ftrace)
 
 	setup_pager();
 
-	trace_file = get_tracing_instance_file("trace_pipe");
+	trace_file = get_tracing_file("trace_pipe");
 	if (!trace_file) {
 		pr_err("failed to open trace_pipe\n");
 		goto out_reset;
@@ -1458,7 +1385,7 @@ out_free_line:
 out_close_fd:
 	close(trace_fd);
 out_reset:
-	exit_tracing_instance();
+	reset_tracing_files(ftrace);
 out:
 	return (done && !workload_exec_errno) ? 0 : -1;
 }

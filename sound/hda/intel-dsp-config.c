@@ -112,10 +112,6 @@ static const struct config_entry config_table[] = {
 		.flags = FLAG_SST,
 		.device = PCI_DEVICE_ID_INTEL_HDA_RPL_M,
 	},
-	{
-		.flags = FLAG_SST,
-		.device = PCI_DEVICE_ID_INTEL_HDA_FCL,
-	},
 #endif
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_APOLLOLAKE)
 	{
@@ -541,7 +537,7 @@ static const struct config_entry config_table[] = {
 	},
 #endif
 
-	/* Panther Lake, Wildcat Lake */
+	/* Panther Lake */
 #if IS_ENABLED(CONFIG_SND_SOC_SOF_PANTHERLAKE)
 	{
 		.flags = FLAG_SOF | FLAG_SOF_ONLY_IF_DMIC_OR_SOUNDWIRE,
@@ -550,10 +546,6 @@ static const struct config_entry config_table[] = {
 	{
 		.flags = FLAG_SOF | FLAG_SOF_ONLY_IF_DMIC_OR_SOUNDWIRE,
 		.device = PCI_DEVICE_ID_INTEL_HDA_PTL_H,
-	},
-	{
-		.flags = FLAG_SOF | FLAG_SOF_ONLY_IF_DMIC_OR_SOUNDWIRE,
-		.device = PCI_DEVICE_ID_INTEL_HDA_WCL,
 	},
 
 #endif

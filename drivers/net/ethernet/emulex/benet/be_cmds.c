@@ -1609,7 +1609,7 @@ int be_cmd_get_stats(struct be_adapter *adapter, struct be_dma_mem *nonemb_cmd)
 	/* version 1 of the cmd is not supported only by BE2 */
 	if (BE2_chip(adapter))
 		hdr->version = 0;
-	else if (BE3_chip(adapter) || lancer_chip(adapter))
+	if (BE3_chip(adapter) || lancer_chip(adapter))
 		hdr->version = 1;
 	else
 		hdr->version = 2;
@@ -2615,11 +2615,7 @@ err:
 	return status;
 }
 
-/*
- * Since the cookie is text, add a parsing-skipped space to keep it from
- * ever being matched on storage holding this source file.
- */
-static const char flash_cookie[32] __nonstring = "*** SE FLAS" "H DIRECTORY *** ";
+static char flash_cookie[2][16] = {"*** SE FLAS", "H DIRECTORY *** "};
 
 static bool phy_flashing_required(struct be_adapter *adapter)
 {

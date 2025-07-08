@@ -316,3 +316,6 @@ int sdca_regmap_write_defaults(struct device *dev, struct regmap *regmap,
 	return 0;
 }
 EXPORT_SYMBOL_NS(sdca_regmap_write_defaults, "SND_SOC_SDCA");
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("SDCA library");

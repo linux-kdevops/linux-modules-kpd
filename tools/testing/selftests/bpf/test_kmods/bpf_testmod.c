@@ -134,10 +134,6 @@ bpf_testmod_test_arg_ptr_to_struct(struct bpf_testmod_struct_arg_1 *a) {
 	return bpf_testmod_test_struct_arg_result;
 }
 
-__weak noinline void bpf_testmod_looooooooooooooooooooooooooooooong_name(void)
-{
-}
-
 __bpf_kfunc void
 bpf_testmod_test_mod_kfunc(int i)
 {
@@ -385,7 +381,7 @@ int bpf_testmod_fentry_ok;
 
 noinline ssize_t
 bpf_testmod_test_read(struct file *file, struct kobject *kobj,
-		      const struct bin_attribute *bin_attr,
+		      struct bin_attribute *bin_attr,
 		      char *buf, loff_t off, size_t len)
 {
 	struct bpf_testmod_test_read_ctx ctx = {
@@ -417,7 +413,7 @@ bpf_testmod_test_read(struct file *file, struct kobject *kobj,
 
 	(void)bpf_testmod_test_arg_ptr_to_struct(&struct_arg1_2);
 
-	(void)trace_bpf_testmod_test_raw_tp_null_tp(NULL);
+	(void)trace_bpf_testmod_test_raw_tp_null(NULL);
 
 	bpf_testmod_test_struct_ops3();
 
@@ -435,14 +431,14 @@ bpf_testmod_test_read(struct file *file, struct kobject *kobj,
 	if (bpf_testmod_loop_test(101) > 100)
 		trace_bpf_testmod_test_read(current, &ctx);
 
-	trace_bpf_testmod_test_nullable_bare_tp(NULL);
+	trace_bpf_testmod_test_nullable_bare(NULL);
 
 	/* Magic number to enable writable tp */
 	if (len == 64) {
 		struct bpf_testmod_test_writable_ctx writable = {
 			.val = 1024,
 		};
-		trace_bpf_testmod_test_writable_bare_tp(&writable);
+		trace_bpf_testmod_test_writable_bare(&writable);
 		if (writable.early_ret)
 			return snprintf(buf, len, "%d\n", writable.val);
 	}
@@ -465,7 +461,7 @@ ALLOW_ERROR_INJECTION(bpf_testmod_test_read, ERRNO);
 
 noinline ssize_t
 bpf_testmod_test_write(struct file *file, struct kobject *kobj,
-		      const struct bin_attribute *bin_attr,
+		      struct bin_attribute *bin_attr,
 		      char *buf, loff_t off, size_t len)
 {
 	struct bpf_testmod_test_write_ctx ctx = {
@@ -474,7 +470,7 @@ bpf_testmod_test_write(struct file *file, struct kobject *kobj,
 		.len = len,
 	};
 
-	trace_bpf_testmod_test_write_bare_tp(current, &ctx);
+	trace_bpf_testmod_test_write_bare(current, &ctx);
 
 	return -EIO; /* always fail */
 }
@@ -567,7 +563,7 @@ static void testmod_unregister_uprobe(void)
 
 static ssize_t
 bpf_testmod_uprobe_write(struct file *file, struct kobject *kobj,
-			 const struct bin_attribute *bin_attr,
+			 struct bin_attribute *bin_attr,
 			 char *buf, loff_t off, size_t len)
 {
 	unsigned long offset = 0;
@@ -1344,7 +1340,7 @@ static int st_ops_gen_prologue_with_kfunc(struct bpf_insn *insn_buf, bool direct
 	*insn++ = BPF_STX_MEM(BPF_DW, BPF_REG_6, BPF_REG_7, offsetof(struct st_ops_args, a));
 	*insn++ = BPF_JMP_IMM(BPF_JA, 0, 0, 2);
 	*insn++ = BPF_MOV64_REG(BPF_REG_1, BPF_REG_0);
-	*insn++ = BPF_CALL_KFUNC(0, bpf_cgroup_release_id);
+	*insn++ = BPF_CALL_KFUNC(0, bpf_cgroup_release_id),
 	*insn++ = BPF_MOV64_REG(BPF_REG_1, BPF_REG_8);
 	*insn++ = prog->insnsi[0];
 
@@ -1383,7 +1379,7 @@ static int st_ops_gen_epilogue_with_kfunc(struct bpf_insn *insn_buf, const struc
 	*insn++ = BPF_STX_MEM(BPF_DW, BPF_REG_1, BPF_REG_6, offsetof(struct st_ops_args, a));
 	*insn++ = BPF_JMP_IMM(BPF_JA, 0, 0, 2);
 	*insn++ = BPF_MOV64_REG(BPF_REG_1, BPF_REG_0);
-	*insn++ = BPF_CALL_KFUNC(0, bpf_cgroup_release_id);
+	*insn++ = BPF_CALL_KFUNC(0, bpf_cgroup_release_id),
 	*insn++ = BPF_MOV64_REG(BPF_REG_0, BPF_REG_6);
 	*insn++ = BPF_ALU64_IMM(BPF_MUL, BPF_REG_0, 2);
 	*insn++ = BPF_EXIT_INSN();

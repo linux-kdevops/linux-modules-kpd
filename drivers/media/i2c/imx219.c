@@ -718,11 +718,9 @@ static int imx219_configure_lanes(struct imx219 *imx219)
 				  ARRAY_SIZE(imx219_4lane_regs), NULL);
 };
 
-static int imx219_enable_streams(struct v4l2_subdev *sd,
-				 struct v4l2_subdev_state *state, u32 pad,
-				 u64 streams_mask)
+static int imx219_start_streaming(struct imx219 *imx219,
+				  struct v4l2_subdev_state *state)
 {
-	struct imx219 *imx219 = to_imx219(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(&imx219->sd);
 	int ret;
 
@@ -771,16 +769,12 @@ static int imx219_enable_streams(struct v4l2_subdev *sd,
 	return 0;
 
 err_rpm_put:
-	pm_runtime_mark_last_busy(&client->dev);
-	pm_runtime_put_autosuspend(&client->dev);
+	pm_runtime_put(&client->dev);
 	return ret;
 }
 
-static int imx219_disable_streams(struct v4l2_subdev *sd,
-				  struct v4l2_subdev_state *state, u32 pad,
-				  u64 streams_mask)
+static void imx219_stop_streaming(struct imx219 *imx219)
 {
-	struct imx219 *imx219 = to_imx219(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(&imx219->sd);
 	int ret;
 
@@ -793,9 +787,23 @@ static int imx219_disable_streams(struct v4l2_subdev *sd,
 	__v4l2_ctrl_grab(imx219->vflip, false);
 	__v4l2_ctrl_grab(imx219->hflip, false);
 
-	pm_runtime_mark_last_busy(&client->dev);
-	pm_runtime_put_autosuspend(&client->dev);
+	pm_runtime_put(&client->dev);
+}
 
+static int imx219_set_stream(struct v4l2_subdev *sd, int enable)
+{
+	struct imx219 *imx219 = to_imx219(sd);
+	struct v4l2_subdev_state *state;
+	int ret = 0;
+
+	state = v4l2_subdev_lock_and_get_active_state(sd);
+
+	if (enable)
+		ret = imx219_start_streaming(imx219, state);
+	else
+		imx219_stop_streaming(imx219);
+
+	v4l2_subdev_unlock_state(state);
 	return ret;
 }
 
@@ -987,7 +995,7 @@ static int imx219_init_state(struct v4l2_subdev *sd,
 }
 
 static const struct v4l2_subdev_video_ops imx219_video_ops = {
-	.s_stream = v4l2_subdev_s_stream_helper,
+	.s_stream = imx219_set_stream,
 };
 
 static const struct v4l2_subdev_pad_ops imx219_pad_ops = {
@@ -996,8 +1004,6 @@ static const struct v4l2_subdev_pad_ops imx219_pad_ops = {
 	.set_fmt = imx219_set_pad_format,
 	.get_selection = imx219_get_selection,
 	.enum_frame_size = imx219_enum_frame_size,
-	.enable_streams = imx219_enable_streams,
-	.disable_streams = imx219_disable_streams,
 };
 
 static const struct v4l2_subdev_ops imx219_subdev_ops = {
@@ -1274,8 +1280,6 @@ static int imx219_probe(struct i2c_client *client)
 	}
 
 	pm_runtime_idle(dev);
-	pm_runtime_set_autosuspend_delay(dev, 1000);
-	pm_runtime_use_autosuspend(dev);
 
 	return 0;
 

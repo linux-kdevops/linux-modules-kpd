@@ -15,6 +15,7 @@
 #include <linux/notifier.h>
 #include <linux/ctype.h>
 #include <linux/err.h>
+#include <linux/fb.h>
 #include <linux/slab.h>
 
 #ifdef CONFIG_PMAC_BACKLIGHT
@@ -56,10 +57,10 @@
  * a hot-key to adjust backlight, the driver must notify the backlight
  * core that brightness has changed using backlight_force_update().
  *
- * Display drives can control the backlight device's status using
- * backlight_notify_blank() and backlight_notify_blank_all(). If this
- * results in a change in the backlight state the functions call the
- * update_status() operation.
+ * The backlight driver core receives notifications from fbdev and
+ * if the event is FB_EVENT_BLANK and if the value of blank, from the
+ * FBIOBLANK ioctrl, results in a change in the backlight state the
+ * update_status() operation is called.
  */
 
 static struct list_head backlight_dev_list;
@@ -77,40 +78,85 @@ static const char *const backlight_scale_types[] = {
 	[BACKLIGHT_SCALE_NON_LINEAR]	= "non-linear",
 };
 
-void backlight_notify_blank(struct backlight_device *bd, struct device *display_dev,
-			    bool fb_on, bool prev_fb_on)
+#if defined(CONFIG_FB_CORE) || (defined(CONFIG_FB_CORE_MODULE) && \
+				defined(CONFIG_BACKLIGHT_CLASS_DEVICE_MODULE))
+/*
+ * fb_notifier_callback
+ *
+ * This callback gets called when something important happens inside a
+ * framebuffer driver. The backlight core only cares about FB_BLANK_UNBLANK
+ * which is reported to the driver using backlight_update_status()
+ * as a state change.
+ *
+ * There may be several fbdev's connected to the backlight device,
+ * in which case they are kept track of. A state change is only reported
+ * if there is a change in backlight for the specified fbdev.
+ */
+static int fb_notifier_callback(struct notifier_block *self,
+				unsigned long event, void *data)
 {
-	guard(mutex)(&bd->ops_lock);
+	struct backlight_device *bd;
+	struct fb_event *evdata = data;
+	struct fb_info *info = evdata->info;
+	struct backlight_device *fb_bd = fb_bl_device(info);
+	int node = info->node;
+	int fb_blank = 0;
+
+	/* If we aren't interested in this event, skip it immediately ... */
+	if (event != FB_EVENT_BLANK)
+		return 0;
+
+	bd = container_of(self, struct backlight_device, fb_notif);
+	mutex_lock(&bd->ops_lock);
 
 	if (!bd->ops)
-		return;
-	if (bd->ops->controls_device && !bd->ops->controls_device(bd, display_dev))
-		return;
+		goto out;
+	if (bd->ops->controls_device && !bd->ops->controls_device(bd, info->device))
+		goto out;
+	if (fb_bd && fb_bd != bd)
+		goto out;
 
-	if (fb_on && (!prev_fb_on || !bd->use_count)) {
+	fb_blank = *(int *)evdata->data;
+	if (fb_blank == FB_BLANK_UNBLANK && !bd->fb_bl_on[node]) {
+		bd->fb_bl_on[node] = true;
 		if (!bd->use_count++) {
 			bd->props.state &= ~BL_CORE_FBBLANK;
 			backlight_update_status(bd);
 		}
-	} else if (!fb_on && prev_fb_on && bd->use_count) {
+	} else if (fb_blank != FB_BLANK_UNBLANK && bd->fb_bl_on[node]) {
+		bd->fb_bl_on[node] = false;
 		if (!(--bd->use_count)) {
 			bd->props.state |= BL_CORE_FBBLANK;
 			backlight_update_status(bd);
 		}
 	}
+out:
+	mutex_unlock(&bd->ops_lock);
+	return 0;
 }
-EXPORT_SYMBOL(backlight_notify_blank);
 
-void backlight_notify_blank_all(struct device *display_dev, bool fb_on, bool prev_fb_on)
+static int backlight_register_fb(struct backlight_device *bd)
 {
-	struct backlight_device *bd;
+	memset(&bd->fb_notif, 0, sizeof(bd->fb_notif));
+	bd->fb_notif.notifier_call = fb_notifier_callback;
 
-	guard(mutex)(&backlight_dev_list_mutex);
-
-	list_for_each_entry(bd, &backlight_dev_list, entry)
-		backlight_notify_blank(bd, display_dev, fb_on, prev_fb_on);
+	return fb_register_client(&bd->fb_notif);
 }
-EXPORT_SYMBOL(backlight_notify_blank_all);
+
+static void backlight_unregister_fb(struct backlight_device *bd)
+{
+	fb_unregister_client(&bd->fb_notif);
+}
+#else
+static inline int backlight_register_fb(struct backlight_device *bd)
+{
+	return 0;
+}
+
+static inline void backlight_unregister_fb(struct backlight_device *bd)
+{
+}
+#endif /* CONFIG_FB_CORE */
 
 static void backlight_generate_event(struct backlight_device *bd,
 				     enum backlight_update_reason reason)
@@ -401,6 +447,12 @@ struct backlight_device *backlight_device_register(const char *name,
 		return ERR_PTR(rc);
 	}
 
+	rc = backlight_register_fb(new_bd);
+	if (rc) {
+		device_unregister(&new_bd->dev);
+		return ERR_PTR(rc);
+	}
+
 	new_bd->ops = ops;
 
 #ifdef CONFIG_PMAC_BACKLIGHT
@@ -487,6 +539,7 @@ void backlight_device_unregister(struct backlight_device *bd)
 	bd->ops = NULL;
 	mutex_unlock(&bd->ops_lock);
 
+	backlight_unregister_fb(bd);
 	device_unregister(&bd->dev);
 }
 EXPORT_SYMBOL(backlight_device_unregister);

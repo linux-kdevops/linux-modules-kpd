@@ -1229,11 +1229,6 @@ static void mac80211_hwsim_set_tsf(struct ieee80211_hw *hw,
 	/* MLD not supported here */
 	u32 bcn_int = data->link_data[0].beacon_int;
 	u64 delta = abs(tsf - now);
-	struct ieee80211_bss_conf *conf;
-
-	conf = link_conf_dereference_protected(vif, data->link_data[0].link_id);
-	if (conf && !conf->enable_beacon)
-		return;
 
 	/* adjust after beaconing with new timestamp at old TBTT */
 	if (tsf > now) {
@@ -2278,7 +2273,7 @@ static void mac80211_hwsim_beacon_tx(void *arg, u8 *mac,
 {
 	struct mac80211_hwsim_link_data *link_data = arg;
 	u32 link_id = link_data->link_id;
-	struct ieee80211_bss_conf *link_conf, *tx_bss_conf;
+	struct ieee80211_bss_conf *link_conf;
 	struct mac80211_hwsim_data *data =
 		container_of(link_data, struct mac80211_hwsim_data,
 			     link_data[link_id]);
@@ -2297,11 +2292,10 @@ static void mac80211_hwsim_beacon_tx(void *arg, u8 *mac,
 	    vif->type != NL80211_IFTYPE_OCB)
 		return;
 
-	tx_bss_conf = rcu_access_pointer(link_conf->tx_bss_conf);
-	if (tx_bss_conf && tx_bss_conf != link_conf)
+	if (vif->mbssid_tx_vif && vif->mbssid_tx_vif != vif)
 		return;
 
-	if (link_conf->ema_ap) {
+	if (vif->bss_conf.ema_ap) {
 		struct ieee80211_ema_beacons *ema;
 		u8 i = 0;
 

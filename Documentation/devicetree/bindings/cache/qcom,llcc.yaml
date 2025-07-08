@@ -40,7 +40,6 @@ properties:
       - qcom,sm8450-llcc
       - qcom,sm8550-llcc
       - qcom,sm8650-llcc
-      - qcom,sm8750-llcc
       - qcom,x1e80100-llcc
 
   reg:
@@ -275,7 +274,6 @@ allOf:
               - qcom,sm8450-llcc
               - qcom,sm8550-llcc
               - qcom,sm8650-llcc
-              - qcom,sm8750-llcc
     then:
       properties:
         reg:

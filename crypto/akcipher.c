@@ -97,7 +97,6 @@ static const struct crypto_type crypto_akcipher_type = {
 	.maskset = CRYPTO_ALG_TYPE_AHASH_MASK,
 	.type = CRYPTO_ALG_TYPE_AKCIPHER,
 	.tfmsize = offsetof(struct crypto_akcipher, base),
-	.algsize = offsetof(struct akcipher_alg, base),
 };
 
 int crypto_grab_akcipher(struct crypto_akcipher_spawn *spawn,

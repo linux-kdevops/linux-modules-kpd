@@ -1118,10 +1118,6 @@ static void __drm_gpusvm_range_unmap_pages(struct drm_gpusvm *gpusvm,
 	lockdep_assert_held(&gpusvm->notifier_lock);
 
 	if (range->flags.has_dma_mapping) {
-		struct drm_gpusvm_range_flags flags = {
-			.__flags = range->flags.__flags,
-		};
-
 		for (i = 0, j = 0; i < npages; j++) {
 			struct drm_pagemap_device_addr *addr = &range->dma_addr[j];
 
@@ -1135,12 +1131,8 @@ static void __drm_gpusvm_range_unmap_pages(struct drm_gpusvm *gpusvm,
 							    dev, *addr);
 			i += 1 << addr->order;
 		}
-
-		/* WRITE_ONCE pairs with READ_ONCE for opportunistic checks */
-		flags.has_devmem_pages = false;
-		flags.has_dma_mapping = false;
-		WRITE_ONCE(range->flags.__flags, flags.__flags);
-
+		range->flags.has_devmem_pages = false;
+		range->flags.has_dma_mapping = false;
 		range->dpagemap = NULL;
 	}
 }
@@ -1338,10 +1330,10 @@ int drm_gpusvm_range_get_pages(struct drm_gpusvm *gpusvm,
 	unsigned long num_dma_mapped;
 	unsigned int order = 0;
 	unsigned long *pfns;
+	struct page **pages;
 	int err = 0;
 	struct dev_pagemap *pagemap;
 	struct drm_pagemap *dpagemap;
-	struct drm_gpusvm_range_flags flags;
 
 retry:
 	hmm_range.notifier_seq = mmu_interval_read_begin(notifier);
@@ -1377,6 +1369,7 @@ retry:
 	if (err)
 		goto err_free;
 
+	pages = (struct page **)pfns;
 map_pages:
 	/*
 	 * Perform all dma mappings under the notifier lock to not
@@ -1385,8 +1378,7 @@ map_pages:
 	 */
 	drm_gpusvm_notifier_lock(gpusvm);
 
-	flags.__flags = range->flags.__flags;
-	if (flags.unmapped) {
+	if (range->flags.unmapped) {
 		drm_gpusvm_notifier_unlock(gpusvm);
 		err = -EFAULT;
 		goto err_free;
@@ -1452,16 +1444,13 @@ map_pages:
 				err = -EFAULT;
 				goto err_unmap;
 			}
+
+			pages[i] = page;
 		} else {
 			dma_addr_t addr;
 
 			if (is_zone_device_page(page) || zdd) {
 				err = -EOPNOTSUPP;
-				goto err_unmap;
-			}
-
-			if (ctx->devmem_only) {
-				err = -EFAULT;
 				goto err_unmap;
 			}
 
@@ -1480,16 +1469,13 @@ map_pages:
 		}
 		i += 1 << order;
 		num_dma_mapped = i;
-		flags.has_dma_mapping = true;
+		range->flags.has_dma_mapping = true;
 	}
 
 	if (zdd) {
-		flags.has_devmem_pages = true;
+		range->flags.has_devmem_pages = true;
 		range->dpagemap = dpagemap;
 	}
-
-	/* WRITE_ONCE pairs with READ_ONCE for opportunistic checks */
-	WRITE_ONCE(range->flags.__flags, flags.__flags);
 
 	drm_gpusvm_notifier_unlock(gpusvm);
 	kvfree(pfns);
@@ -1779,8 +1765,6 @@ int drm_gpusvm_migrate_to_devmem(struct drm_gpusvm *gpusvm,
 		goto err_finalize;
 
 	/* Upon success bind devmem allocation to range and zdd */
-	devmem_allocation->timeslice_expiration = get_jiffies_64() +
-		msecs_to_jiffies(ctx->timeslice_ms);
 	zdd->devmem_allocation = devmem_allocation;	/* Owns ref */
 
 err_finalize:
@@ -2000,13 +1984,6 @@ static int __drm_gpusvm_migrate_to_ram(struct vm_area_struct *vas,
 	unsigned long start, end;
 	void *buf;
 	int i, err = 0;
-
-	if (page) {
-		zdd = page->zone_device_data;
-		if (time_before64(get_jiffies_64(),
-				  zdd->devmem_allocation->timeslice_expiration))
-			return 0;
-	}
 
 	start = ALIGN_DOWN(fault_addr, size);
 	end = ALIGN(fault_addr + 1, size);

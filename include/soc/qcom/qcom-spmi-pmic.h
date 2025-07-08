@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2022 Linaro. All rights reserved.
- * Author: Casey Connolly <casey.connolly@linaro.org>
+ * Author: Caleb Connolly <caleb.connolly@linaro.org>
  */
 
 #ifndef __QCOM_SPMI_PMIC_H__

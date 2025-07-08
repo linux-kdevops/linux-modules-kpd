@@ -308,9 +308,8 @@ int btrfs_truncate_free_space_cache(struct btrfs_trans_handle *trans,
 	bool locked = false;
 
 	if (block_group) {
-		BTRFS_PATH_AUTO_FREE(path);
+		struct btrfs_path *path = btrfs_alloc_path();
 
-		path = btrfs_alloc_path();
 		if (!path) {
 			ret = -ENOMEM;
 			goto fail;
@@ -331,12 +330,13 @@ int btrfs_truncate_free_space_cache(struct btrfs_trans_handle *trans,
 		spin_lock(&block_group->lock);
 		block_group->disk_cache_state = BTRFS_DC_CLEAR;
 		spin_unlock(&block_group->lock);
+		btrfs_free_path(path);
 	}
 
 	btrfs_i_size_write(inode, 0);
 	truncate_pagecache(vfs_inode, 0);
 
-	btrfs_lock_extent(&inode->io_tree, 0, (u64)-1, &cached_state);
+	lock_extent(&inode->io_tree, 0, (u64)-1, &cached_state);
 	btrfs_drop_extent_map_range(inode, 0, (u64)-1, false);
 
 	/*
@@ -348,7 +348,7 @@ int btrfs_truncate_free_space_cache(struct btrfs_trans_handle *trans,
 	inode_sub_bytes(&inode->vfs_inode, control.sub_bytes);
 	btrfs_inode_safe_disk_i_size_write(inode, control.last_size);
 
-	btrfs_unlock_extent(&inode->io_tree, 0, (u64)-1, &cached_state);
+	unlock_extent(&inode->io_tree, 0, (u64)-1, &cached_state);
 	if (ret)
 		goto fail;
 
@@ -457,7 +457,7 @@ static int io_ctl_prepare_pages(struct btrfs_io_ctl *io_ctl, bool uptodate)
 					    mask);
 		if (IS_ERR(folio)) {
 			io_ctl_drop_pages(io_ctl);
-			return PTR_ERR(folio);
+			return -ENOMEM;
 		}
 
 		ret = set_folio_extent_mapped(folio);
@@ -1080,8 +1080,9 @@ int write_cache_extent_entries(struct btrfs_io_ctl *io_ctl,
 
 	/* Get the cluster for this block_group if it exists */
 	if (block_group && !list_empty(&block_group->cluster_list)) {
-		cluster = list_first_entry(&block_group->cluster_list,
-					   struct btrfs_free_cluster, block_group_list);
+		cluster = list_entry(block_group->cluster_list.next,
+				     struct btrfs_free_cluster,
+				     block_group_list);
 	}
 
 	if (!node && cluster) {
@@ -1159,8 +1160,8 @@ update_cache_item(struct btrfs_trans_handle *trans,
 
 	ret = btrfs_search_slot(trans, root, &key, path, 0, 1);
 	if (ret < 0) {
-		btrfs_clear_extent_bit(&BTRFS_I(inode)->io_tree, 0, inode->i_size - 1,
-				       EXTENT_DELALLOC, NULL);
+		clear_extent_bit(&BTRFS_I(inode)->io_tree, 0, inode->i_size - 1,
+				 EXTENT_DELALLOC, NULL);
 		goto fail;
 	}
 	leaf = path->nodes[0];
@@ -1171,9 +1172,9 @@ update_cache_item(struct btrfs_trans_handle *trans,
 		btrfs_item_key_to_cpu(leaf, &found_key, path->slots[0]);
 		if (found_key.objectid != BTRFS_FREE_SPACE_OBJECTID ||
 		    found_key.offset != offset) {
-			btrfs_clear_extent_bit(&BTRFS_I(inode)->io_tree, 0,
-					       inode->i_size - 1, EXTENT_DELALLOC,
-					       NULL);
+			clear_extent_bit(&BTRFS_I(inode)->io_tree, 0,
+					 inode->i_size - 1, EXTENT_DELALLOC,
+					 NULL);
 			btrfs_release_path(path);
 			goto fail;
 		}
@@ -1218,9 +1219,9 @@ static noinline_for_stack int write_pinned_extent_entries(
 	start = block_group->start;
 
 	while (start < block_group->start + block_group->length) {
-		if (!btrfs_find_first_extent_bit(unpin, start,
-						 &extent_start, &extent_end,
-						 EXTENT_DIRTY, NULL))
+		if (!find_first_extent_bit(unpin, start,
+					   &extent_start, &extent_end,
+					   EXTENT_DIRTY, NULL))
 			return 0;
 
 		/* This pinned extent is out of our range */
@@ -1266,8 +1267,8 @@ static int flush_dirty_cache(struct inode *inode)
 
 	ret = btrfs_wait_ordered_range(BTRFS_I(inode), 0, (u64)-1);
 	if (ret)
-		btrfs_clear_extent_bit(&BTRFS_I(inode)->io_tree, 0, inode->i_size - 1,
-				       EXTENT_DELALLOC, NULL);
+		clear_extent_bit(&BTRFS_I(inode)->io_tree, 0, inode->i_size - 1,
+				 EXTENT_DELALLOC, NULL);
 
 	return ret;
 }
@@ -1287,8 +1288,8 @@ cleanup_write_cache_enospc(struct inode *inode,
 			   struct extent_state **cached_state)
 {
 	io_ctl_drop_pages(io_ctl);
-	btrfs_unlock_extent(&BTRFS_I(inode)->io_tree, 0, i_size_read(inode) - 1,
-			    cached_state);
+	unlock_extent(&BTRFS_I(inode)->io_tree, 0, i_size_read(inode) - 1,
+		      cached_state);
 }
 
 static int __btrfs_wait_cache_io(struct btrfs_root *root,
@@ -1413,8 +1414,8 @@ static int __btrfs_write_out_cache(struct inode *inode,
 	if (ret)
 		goto out_unlock;
 
-	btrfs_lock_extent(&BTRFS_I(inode)->io_tree, 0, i_size_read(inode) - 1,
-			  &cached_state);
+	lock_extent(&BTRFS_I(inode)->io_tree, 0, i_size_read(inode) - 1,
+		    &cached_state);
 
 	io_ctl_set_generation(io_ctl, trans->transid);
 
@@ -1474,8 +1475,8 @@ static int __btrfs_write_out_cache(struct inode *inode,
 	io_ctl_drop_pages(io_ctl);
 	io_ctl_free(io_ctl);
 
-	btrfs_unlock_extent(&BTRFS_I(inode)->io_tree, 0, i_size_read(inode) - 1,
-			    &cached_state);
+	unlock_extent(&BTRFS_I(inode)->io_tree, 0, i_size_read(inode) - 1,
+		      &cached_state);
 
 	/*
 	 * at this point the pages are under IO and we're happy,
@@ -2341,8 +2342,9 @@ again:
 		struct rb_node *node;
 		struct btrfs_free_space *entry;
 
-		cluster = list_first_entry(&block_group->cluster_list,
-					   struct btrfs_free_cluster, block_group_list);
+		cluster = list_entry(block_group->cluster_list.next,
+				     struct btrfs_free_cluster,
+				     block_group_list);
 		spin_lock(&cluster->lock);
 		node = rb_first(&cluster->root);
 		if (!node) {

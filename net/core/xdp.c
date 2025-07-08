@@ -17,7 +17,6 @@
 #include <net/page_pool/helpers.h>
 
 #include <net/hotdata.h>
-#include <net/netdev_lock.h>
 #include <net/xdp.h>
 #include <net/xdp_priv.h> /* struct xdp_mem_allocator */
 #include <trace/events/xdp.h>
@@ -438,8 +437,8 @@ void __xdp_return(netmem_ref netmem, enum xdp_mem_type mem_type,
 		netmem = netmem_compound_head(netmem);
 		if (napi_direct && xdp_return_frame_no_direct())
 			napi_direct = false;
-		/* No need to check netmem_is_pp() as mem->type knows this a
-		 * page_pool page
+		/* No need to check ((page->pp_magic & ~0x3UL) == PP_SIGNATURE)
+		 * as mem->type knows this a page_pool page
 		 */
 		page_pool_put_full_netmem(netmem_get_pp(netmem), netmem,
 					  napi_direct);
@@ -698,23 +697,23 @@ static noinline bool xdp_copy_frags_from_zc(struct sk_buff *skb,
 	nr_frags = xinfo->nr_frags;
 
 	for (u32 i = 0; i < nr_frags; i++) {
-		const skb_frag_t *frag = &xinfo->frags[i];
-		u32 len = skb_frag_size(frag);
+		u32 len = skb_frag_size(&xinfo->frags[i]);
 		u32 offset, truesize = len;
-		struct page *page;
+		netmem_ref netmem;
 
-		page = page_pool_dev_alloc(pp, &offset, &truesize);
-		if (unlikely(!page)) {
+		netmem = page_pool_dev_alloc_netmem(pp, &offset, &truesize);
+		if (unlikely(!netmem)) {
 			sinfo->nr_frags = i;
 			return false;
 		}
 
-		memcpy(page_address(page) + offset, skb_frag_address(frag),
+		memcpy(__netmem_address(netmem),
+		       __netmem_address(xinfo->frags[i].netmem),
 		       LARGEST_ALIGN(len));
-		__skb_fill_page_desc_noacc(sinfo, i, page, offset, len);
+		__skb_fill_netmem_desc_noacc(sinfo, i, netmem, offset, len);
 
 		tsize += truesize;
-		pfmemalloc |= page_is_pfmemalloc(page);
+		pfmemalloc |= netmem_is_pfmemalloc(netmem);
 	}
 
 	xdp_update_skb_shared_info(skb, nr_frags, xinfo->xdp_frags_size,
@@ -738,27 +737,25 @@ static noinline bool xdp_copy_frags_from_zc(struct sk_buff *skb,
  */
 struct sk_buff *xdp_build_skb_from_zc(struct xdp_buff *xdp)
 {
+	struct page_pool *pp = this_cpu_read(system_page_pool);
 	const struct xdp_rxq_info *rxq = xdp->rxq;
 	u32 len = xdp->data_end - xdp->data_meta;
 	u32 truesize = xdp->frame_sz;
-	struct sk_buff *skb = NULL;
-	struct page_pool *pp;
+	struct sk_buff *skb;
 	int metalen;
 	void *data;
 
 	if (!IS_ENABLED(CONFIG_PAGE_POOL))
 		return NULL;
 
-	local_lock_nested_bh(&system_page_pool.bh_lock);
-	pp = this_cpu_read(system_page_pool.pool);
 	data = page_pool_dev_alloc_va(pp, &truesize);
 	if (unlikely(!data))
-		goto out;
+		return NULL;
 
 	skb = napi_build_skb(data, truesize);
 	if (unlikely(!skb)) {
 		page_pool_free_va(pp, data, true);
-		goto out;
+		return NULL;
 	}
 
 	skb_mark_for_recycle(skb);
@@ -777,16 +774,13 @@ struct sk_buff *xdp_build_skb_from_zc(struct xdp_buff *xdp)
 	if (unlikely(xdp_buff_has_frags(xdp)) &&
 	    unlikely(!xdp_copy_frags_from_zc(skb, xdp, pp))) {
 		napi_consume_skb(skb, true);
-		skb = NULL;
-		goto out;
+		return NULL;
 	}
 
 	xsk_buff_free(xdp);
 
 	skb->protocol = eth_type_trans(skb, rxq->dev);
 
-out:
-	local_unlock_nested_bh(&system_page_pool.bh_lock);
 	return skb;
 }
 EXPORT_SYMBOL_GPL(xdp_build_skb_from_zc);
@@ -997,60 +991,34 @@ static int __init xdp_metadata_init(void)
 }
 late_initcall(xdp_metadata_init);
 
-void xdp_set_features_flag_locked(struct net_device *dev, xdp_features_t val)
+void xdp_set_features_flag(struct net_device *dev, xdp_features_t val)
 {
 	val &= NETDEV_XDP_ACT_MASK;
 	if (dev->xdp_features == val)
 		return;
 
-	netdev_assert_locked_or_invisible(dev);
 	dev->xdp_features = val;
 
 	if (dev->reg_state == NETREG_REGISTERED)
 		call_netdevice_notifiers(NETDEV_XDP_FEAT_CHANGE, dev);
 }
-EXPORT_SYMBOL_GPL(xdp_set_features_flag_locked);
-
-void xdp_set_features_flag(struct net_device *dev, xdp_features_t val)
-{
-	netdev_lock(dev);
-	xdp_set_features_flag_locked(dev, val);
-	netdev_unlock(dev);
-}
 EXPORT_SYMBOL_GPL(xdp_set_features_flag);
 
-void xdp_features_set_redirect_target_locked(struct net_device *dev,
-					     bool support_sg)
+void xdp_features_set_redirect_target(struct net_device *dev, bool support_sg)
 {
 	xdp_features_t val = (dev->xdp_features | NETDEV_XDP_ACT_NDO_XMIT);
 
 	if (support_sg)
 		val |= NETDEV_XDP_ACT_NDO_XMIT_SG;
-	xdp_set_features_flag_locked(dev, val);
-}
-EXPORT_SYMBOL_GPL(xdp_features_set_redirect_target_locked);
-
-void xdp_features_set_redirect_target(struct net_device *dev, bool support_sg)
-{
-	netdev_lock(dev);
-	xdp_features_set_redirect_target_locked(dev, support_sg);
-	netdev_unlock(dev);
+	xdp_set_features_flag(dev, val);
 }
 EXPORT_SYMBOL_GPL(xdp_features_set_redirect_target);
 
-void xdp_features_clear_redirect_target_locked(struct net_device *dev)
+void xdp_features_clear_redirect_target(struct net_device *dev)
 {
 	xdp_features_t val = dev->xdp_features;
 
 	val &= ~(NETDEV_XDP_ACT_NDO_XMIT | NETDEV_XDP_ACT_NDO_XMIT_SG);
-	xdp_set_features_flag_locked(dev, val);
-}
-EXPORT_SYMBOL_GPL(xdp_features_clear_redirect_target_locked);
-
-void xdp_features_clear_redirect_target(struct net_device *dev)
-{
-	netdev_lock(dev);
-	xdp_features_clear_redirect_target_locked(dev);
-	netdev_unlock(dev);
+	xdp_set_features_flag(dev, val);
 }
 EXPORT_SYMBOL_GPL(xdp_features_clear_redirect_target);

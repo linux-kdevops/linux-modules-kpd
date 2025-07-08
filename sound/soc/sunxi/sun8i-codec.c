@@ -248,10 +248,12 @@ static int sun8i_codec_runtime_resume(struct device *dev)
 	struct sun8i_codec *scodec = dev_get_drvdata(dev);
 	int ret;
 
-	ret = clk_prepare_enable(scodec->clk_bus);
-	if (ret) {
-		dev_err(dev, "Failed to enable the bus clock\n");
-		return ret;
+	if (scodec->clk_bus) {
+		ret = clk_prepare_enable(scodec->clk_bus);
+		if (ret) {
+			dev_err(dev, "Failed to enable the bus clock\n");
+			return ret;
+		}
 	}
 
 	regcache_cache_only(scodec->regmap, false);
@@ -272,7 +274,8 @@ static int sun8i_codec_runtime_suspend(struct device *dev)
 	regcache_cache_only(scodec->regmap, true);
 	regcache_mark_dirty(scodec->regmap);
 
-	clk_disable_unprepare(scodec->clk_bus);
+	if (scodec->clk_bus)
+		clk_disable_unprepare(scodec->clk_bus);
 
 	return 0;
 }

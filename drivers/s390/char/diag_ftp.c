@@ -159,7 +159,7 @@ ssize_t diag_ftp_cmd(const struct hmcdrv_ftp_cmdspec *ftp, size_t *fsize)
 		goto out;
 	}
 
-	len = strscpy(ldfpl->fident, ftp->fname);
+	len = strscpy(ldfpl->fident, ftp->fname, sizeof(ldfpl->fident));
 	if (len < 0) {
 		len = -EINVAL;
 		goto out_free;

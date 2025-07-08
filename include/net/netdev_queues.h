@@ -85,11 +85,9 @@ struct netdev_queue_stats_tx {
  * for some of the events is not maintained, and reliable "total" cannot
  * be provided).
  *
- * Ops are called under the instance lock if netdev_need_ops_lock()
- * returns true, otherwise under rtnl_lock.
  * Device drivers can assume that when collecting total device stats,
  * the @get_base_stats and subsequent per-queue calls are performed
- * "atomically" (without releasing the relevant lock).
+ * "atomically" (without releasing the rtnl_lock).
  *
  * Device drivers are encouraged to reset the per-queue statistics when
  * number of queues change. This is because the primary use case for
@@ -288,27 +286,27 @@ netdev_txq_completed_mb(struct netdev_queue *dev_queue,
 
 #define netif_subqueue_try_stop(dev, idx, get_desc, start_thrs)		\
 	({								\
-		struct netdev_queue *_txq;				\
+		struct netdev_queue *txq;				\
 									\
-		_txq = netdev_get_tx_queue(dev, idx);			\
-		netif_txq_try_stop(_txq, get_desc, start_thrs);		\
+		txq = netdev_get_tx_queue(dev, idx);			\
+		netif_txq_try_stop(txq, get_desc, start_thrs);		\
 	})
 
 #define netif_subqueue_maybe_stop(dev, idx, get_desc, stop_thrs, start_thrs) \
 	({								\
-		struct netdev_queue *_txq;				\
+		struct netdev_queue *txq;				\
 									\
-		_txq = netdev_get_tx_queue(dev, idx);			\
-		netif_txq_maybe_stop(_txq, get_desc, stop_thrs, start_thrs); \
+		txq = netdev_get_tx_queue(dev, idx);			\
+		netif_txq_maybe_stop(txq, get_desc, stop_thrs, start_thrs); \
 	})
 
 #define netif_subqueue_completed_wake(dev, idx, pkts, bytes,		\
 				      get_desc, start_thrs)		\
 	({								\
-		struct netdev_queue *_txq;				\
+		struct netdev_queue *txq;				\
 									\
-		_txq = netdev_get_tx_queue(dev, idx);			\
-		netif_txq_completed_wake(_txq, pkts, bytes,		\
+		txq = netdev_get_tx_queue(dev, idx);			\
+		netif_txq_completed_wake(txq, pkts, bytes,		\
 					 get_desc, start_thrs);		\
 	})
 

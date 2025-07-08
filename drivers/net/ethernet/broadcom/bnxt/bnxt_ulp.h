@@ -10,6 +10,9 @@
 #ifndef BNXT_ULP_H
 #define BNXT_ULP_H
 
+#define BNXT_ROCE_ULP	0
+#define BNXT_MAX_ULP	1
+
 #define BNXT_MIN_ROCE_CP_RINGS	2
 #define BNXT_MIN_ROCE_STAT_CTXS	1
 
@@ -47,6 +50,7 @@ struct bnxt_ulp {
 	unsigned long	*async_events_bmap;
 	u16		max_async_event_id;
 	u16		msix_requested;
+	atomic_t	ref_count;
 };
 
 struct bnxt_en_dev {

@@ -73,10 +73,5 @@
         "Unit": "MDF",
         "CountersNumFixed": "0",
         "CountersNumGeneric": "4"
-    },
-    {
-        "Unit": "UBOX",
-        "CountersNumFixed": "0",
-        "CountersNumGeneric": "2"
     }
 ]

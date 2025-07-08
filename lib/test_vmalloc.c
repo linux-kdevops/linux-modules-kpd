@@ -13,9 +13,9 @@
 #include <linux/moduleparam.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
+#include <linux/rwsem.h>
 #include <linux/mm.h>
 #include <linux/rcupdate.h>
-#include <linux/srcu.h>
 #include <linux/slab.h>
 
 #define __param(type, name, init, msg)		\
@@ -58,9 +58,10 @@ __param(int, run_test_mask, INT_MAX,
 );
 
 /*
- * This is for synchronization of setup phase.
+ * Read write semaphore for synchronization of setup
+ * phase that is done in main thread and workers.
  */
-DEFINE_STATIC_SRCU(prepare_for_test_srcu);
+static DECLARE_RWSEM(prepare_for_test_rwsem);
 
 /*
  * Completion tracking for worker threads.
@@ -457,7 +458,7 @@ static int test_func(void *private)
 	/*
 	 * Block until initialization is done.
 	 */
-	synchronize_srcu(&prepare_for_test_srcu);
+	down_read(&prepare_for_test_rwsem);
 
 	t->start = get_cycles();
 	for (i = 0; i < ARRAY_SIZE(test_case_array); i++) {
@@ -486,6 +487,8 @@ static int test_func(void *private)
 		t->data[index].time = delta;
 	}
 	t->stop = get_cycles();
+
+	up_read(&prepare_for_test_rwsem);
 	test_report_one_done();
 
 	/*
@@ -523,7 +526,7 @@ init_test_configuration(void)
 
 static void do_concurrent_test(void)
 {
-	int i, ret, idx;
+	int i, ret;
 
 	/*
 	 * Set some basic configurations plus sanity check.
@@ -535,7 +538,7 @@ static void do_concurrent_test(void)
 	/*
 	 * Put on hold all workers.
 	 */
-	idx = srcu_read_lock(&prepare_for_test_srcu);
+	down_write(&prepare_for_test_rwsem);
 
 	for (i = 0; i < nr_threads; i++) {
 		struct test_driver *t = &tdriver[i];
@@ -552,7 +555,7 @@ static void do_concurrent_test(void)
 	/*
 	 * Now let the workers do their job.
 	 */
-	srcu_read_unlock(&prepare_for_test_srcu, idx);
+	up_write(&prepare_for_test_rwsem);
 
 	/*
 	 * Sleep quiet until all workers are done with 1 second
@@ -591,11 +594,10 @@ static void do_concurrent_test(void)
 	kvfree(tdriver);
 }
 
-static int __init vmalloc_test_init(void)
+static int vmalloc_test_init(void)
 {
 	do_concurrent_test();
-	/* Fail will directly unload the module */
-	return IS_BUILTIN(CONFIG_TEST_VMALLOC) ? 0:-EAGAIN;
+	return -EAGAIN; /* Fail will directly unload the module */
 }
 
 module_init(vmalloc_test_init)

@@ -167,10 +167,6 @@ struct fwnode_handle *fwnode_get_next_available_child_node(
 	for (child = fwnode_get_next_child_node(fwnode, NULL); child;	\
 	     child = fwnode_get_next_child_node(fwnode, child))
 
-#define fwnode_for_each_named_child_node(fwnode, child, name)		\
-	fwnode_for_each_child_node(fwnode, child)			\
-		if (!fwnode_name_eq(child, name)) { } else
-
 #define fwnode_for_each_available_child_node(fwnode, child)		       \
 	for (child = fwnode_get_next_available_child_node(fwnode, NULL); child;\
 	     child = fwnode_get_next_available_child_node(fwnode, child))
@@ -182,18 +178,10 @@ struct fwnode_handle *device_get_next_child_node(const struct device *dev,
 	for (child = device_get_next_child_node(dev, NULL); child;	\
 	     child = device_get_next_child_node(dev, child))
 
-#define device_for_each_named_child_node(dev, child, name)		\
-	device_for_each_child_node(dev, child)				\
-		if (!fwnode_name_eq(child, name)) { } else
-
 #define device_for_each_child_node_scoped(dev, child)			\
 	for (struct fwnode_handle *child __free(fwnode_handle) =	\
 		device_get_next_child_node(dev, NULL);			\
 	     child; child = device_get_next_child_node(dev, child))
-
-#define device_for_each_named_child_node_scoped(dev, child, name)	\
-	device_for_each_child_node_scoped(dev, child)			\
-		if (!fwnode_name_eq(child, name)) { } else
 
 struct fwnode_handle *fwnode_get_named_child_node(const struct fwnode_handle *fwnode,
 						  const char *childname);
@@ -220,20 +208,7 @@ DEFINE_FREE(fwnode_handle, struct fwnode_handle *, fwnode_handle_put(_T))
 int fwnode_irq_get(const struct fwnode_handle *fwnode, unsigned int index);
 int fwnode_irq_get_byname(const struct fwnode_handle *fwnode, const char *name);
 
-unsigned int fwnode_get_child_node_count(const struct fwnode_handle *fwnode);
-
-static inline unsigned int device_get_child_node_count(const struct device *dev)
-{
-	return fwnode_get_child_node_count(dev_fwnode(dev));
-}
-
-unsigned int fwnode_get_named_child_node_count(const struct fwnode_handle *fwnode,
-					       const char *name);
-static inline unsigned int device_get_named_child_node_count(const struct device *dev,
-							     const char *name)
-{
-	return fwnode_get_named_child_node_count(dev_fwnode(dev), name);
-}
+unsigned int device_get_child_node_count(const struct device *dev);
 
 static inline int device_property_read_u8(const struct device *dev,
 					  const char *propname, u8 *val)

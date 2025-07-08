@@ -268,35 +268,35 @@ static int __init setup_elf_platform(void)
 	add_device_randomness(&cpu_id, sizeof(cpu_id));
 	switch (cpu_id.machine) {
 	default:	/* Use "z10" as default. */
-		strscpy(elf_platform, "z10");
+		strcpy(elf_platform, "z10");
 		break;
 	case 0x2817:
 	case 0x2818:
-		strscpy(elf_platform, "z196");
+		strcpy(elf_platform, "z196");
 		break;
 	case 0x2827:
 	case 0x2828:
-		strscpy(elf_platform, "zEC12");
+		strcpy(elf_platform, "zEC12");
 		break;
 	case 0x2964:
 	case 0x2965:
-		strscpy(elf_platform, "z13");
+		strcpy(elf_platform, "z13");
 		break;
 	case 0x3906:
 	case 0x3907:
-		strscpy(elf_platform, "z14");
+		strcpy(elf_platform, "z14");
 		break;
 	case 0x8561:
 	case 0x8562:
-		strscpy(elf_platform, "z15");
+		strcpy(elf_platform, "z15");
 		break;
 	case 0x3931:
 	case 0x3932:
-		strscpy(elf_platform, "z16");
+		strcpy(elf_platform, "z16");
 		break;
 	case 0x9175:
 	case 0x9176:
-		strscpy(elf_platform, "z17");
+		strcpy(elf_platform, "z17");
 		break;
 	}
 	return 0;

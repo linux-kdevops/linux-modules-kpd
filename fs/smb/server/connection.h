@@ -108,7 +108,6 @@ struct ksmbd_conn {
 	__le16				signing_algorithm;
 	bool				binding;
 	atomic_t			refcnt;
-	bool				is_aapl;
 };
 
 struct ksmbd_conn_ops {
@@ -133,7 +132,6 @@ struct ksmbd_transport_ops {
 			  void *buf, unsigned int len,
 			  struct smb2_buffer_desc_v1 *desc,
 			  unsigned int desc_len);
-	void (*free_transport)(struct ksmbd_transport *kt);
 };
 
 struct ksmbd_transport {

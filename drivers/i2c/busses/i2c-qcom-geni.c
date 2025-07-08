@@ -71,6 +71,7 @@ enum geni_i2c_err_code {
 									<< 5)
 
 #define I2C_AUTO_SUSPEND_DELAY	250
+#define KHZ(freq)		(1000 * freq)
 #define PACKING_BYTES_PW	4
 
 #define ABORT_TIMEOUT		HZ
@@ -147,18 +148,18 @@ struct geni_i2c_clk_fld {
  * source_clock = 19.2 MHz
  */
 static const struct geni_i2c_clk_fld geni_i2c_clk_map_19p2mhz[] = {
-	{ I2C_MAX_STANDARD_MODE_FREQ, 7, 10, 12, 26 },
-	{ I2C_MAX_FAST_MODE_FREQ, 2,  5, 11, 22 },
-	{ I2C_MAX_FAST_MODE_PLUS_FREQ, 1, 2,  8, 18 },
-	{}
+	{KHZ(100), 7, 10, 12, 26},
+	{KHZ(400), 2,  5, 11, 22},
+	{KHZ(1000), 1, 2,  8, 18},
+	{},
 };
 
 /* source_clock = 32 MHz */
 static const struct geni_i2c_clk_fld geni_i2c_clk_map_32mhz[] = {
-	{ I2C_MAX_STANDARD_MODE_FREQ, 8, 14, 18, 40 },
-	{ I2C_MAX_FAST_MODE_FREQ, 4,  3, 11, 20 },
-	{ I2C_MAX_FAST_MODE_PLUS_FREQ, 2, 3,  6, 15 },
-	{}
+	{KHZ(100), 8, 14, 18, 40},
+	{KHZ(400), 4,  3, 11, 20},
+	{KHZ(1000), 2, 3,  6, 15},
+	{},
 };
 
 static int geni_i2c_clk_map_idx(struct geni_i2c_dev *gi2c)
@@ -727,8 +728,8 @@ static u32 geni_i2c_func(struct i2c_adapter *adap)
 }
 
 static const struct i2c_algorithm geni_i2c_algo = {
-	.xfer = geni_i2c_xfer,
-	.functionality = geni_i2c_func,
+	.master_xfer	= geni_i2c_xfer,
+	.functionality	= geni_i2c_func,
 };
 
 #ifdef CONFIG_ACPI
@@ -811,7 +812,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 				       &gi2c->clk_freq_out);
 	if (ret) {
 		dev_info(dev, "Bus frequency not specified, default to 100kHz.\n");
-		gi2c->clk_freq_out = I2C_MAX_STANDARD_MODE_FREQ;
+		gi2c->clk_freq_out = KHZ(100);
 	}
 
 	if (has_acpi_companion(dev))

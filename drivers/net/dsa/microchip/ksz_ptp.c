@@ -319,21 +319,22 @@ int ksz_get_ts_info(struct dsa_switch *ds, int port, struct kernel_ethtool_ts_in
 	return 0;
 }
 
-int ksz_hwtstamp_get(struct dsa_switch *ds, int port,
-		     struct kernel_hwtstamp_config *config)
+int ksz_hwtstamp_get(struct dsa_switch *ds, int port, struct ifreq *ifr)
 {
 	struct ksz_device *dev = ds->priv;
+	struct hwtstamp_config *config;
 	struct ksz_port *prt;
 
 	prt = &dev->ports[port];
-	*config = prt->tstamp_config;
+	config = &prt->tstamp_config;
 
-	return 0;
+	return copy_to_user(ifr->ifr_data, config, sizeof(*config)) ?
+		-EFAULT : 0;
 }
 
 static int ksz_set_hwtstamp_config(struct ksz_device *dev,
 				   struct ksz_port *prt,
-				   struct kernel_hwtstamp_config *config)
+				   struct hwtstamp_config *config)
 {
 	int ret;
 
@@ -403,21 +404,26 @@ static int ksz_set_hwtstamp_config(struct ksz_device *dev,
 	return ksz_ptp_enable_mode(dev);
 }
 
-int ksz_hwtstamp_set(struct dsa_switch *ds, int port,
-		     struct kernel_hwtstamp_config *config,
-		     struct netlink_ext_ack *extack)
+int ksz_hwtstamp_set(struct dsa_switch *ds, int port, struct ifreq *ifr)
 {
 	struct ksz_device *dev = ds->priv;
+	struct hwtstamp_config config;
 	struct ksz_port *prt;
 	int ret;
 
 	prt = &dev->ports[port];
 
-	ret = ksz_set_hwtstamp_config(dev, prt, config);
+	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
+		return -EFAULT;
+
+	ret = ksz_set_hwtstamp_config(dev, prt, &config);
 	if (ret)
 		return ret;
 
-	prt->tstamp_config = *config;
+	memcpy(&prt->tstamp_config, &config, sizeof(config));
+
+	if (copy_to_user(ifr->ifr_data, &config, sizeof(config)))
+		return -EFAULT;
 
 	return 0;
 }
@@ -1130,8 +1136,8 @@ int ksz_ptp_irq_setup(struct dsa_switch *ds, u8 p)
 
 	init_completion(&port->tstamp_msg_comp);
 
-	ptpirq->domain = irq_domain_create_linear(of_fwnode_handle(dev->dev->of_node),
-						  ptpirq->nirqs, &ksz_ptp_irq_domain_ops, ptpirq);
+	ptpirq->domain = irq_domain_add_linear(dev->dev->of_node, ptpirq->nirqs,
+					       &ksz_ptp_irq_domain_ops, ptpirq);
 	if (!ptpirq->domain)
 		return -ENOMEM;
 

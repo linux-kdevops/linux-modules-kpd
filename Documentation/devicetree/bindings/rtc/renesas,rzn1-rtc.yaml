@@ -33,14 +33,10 @@ properties:
       - const: pps
 
   clocks:
-    minItems: 1
-    maxItems: 2
+    maxItems: 1
 
   clock-names:
-    minItems: 1
-    items:
-      - const: hclk
-      - const: xtal
+    const: hclk
 
   power-domains:
     maxItems: 1

@@ -35,6 +35,7 @@
 #include <asm/bootparam.h>
 #include <asm/desc_defs.h>
 #include <asm/trapnr.h>
+#include "pgtable.h"
 
 /*
  * Fix alignment at 16 bytes. Following CONFIG_FUNCTION_ALIGNMENT will result

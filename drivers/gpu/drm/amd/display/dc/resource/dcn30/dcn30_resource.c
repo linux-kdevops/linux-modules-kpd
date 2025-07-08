@@ -1891,6 +1891,8 @@ static int get_refresh_rate(struct dc_state *context)
 
 	/* check if refresh rate at least 120hz */
 	timing = &context->streams[0]->timing;
+	if (timing == NULL)
+		return 0;
 
 	h_v_total = timing->h_total * timing->v_total;
 	if (h_v_total == 0)
@@ -2035,7 +2037,7 @@ void dcn30_calculate_wm_and_dlg(
 	DC_FP_END();
 }
 
-enum dc_status dcn30_validate_bandwidth(struct dc *dc,
+bool dcn30_validate_bandwidth(struct dc *dc,
 		struct dc_state *context,
 		bool fast_validate)
 {
@@ -2092,7 +2094,7 @@ validate_out:
 
 	BW_VAL_TRACE_FINISH();
 
-	return out ? DC_OK : DC_FAIL_BANDWIDTH_VALIDATE;
+	return out;
 }
 
 void dcn30_update_bw_bounding_box(struct dc *dc, struct clk_bw_params *bw_params)

@@ -65,12 +65,13 @@ anarion_config_dt(struct platform_device *pdev,
 {
 	struct anarion_gmac *gmac;
 	void __iomem *ctl_block;
+	int err;
 
 	ctl_block = devm_platform_ioremap_resource(pdev, 1);
 	if (IS_ERR(ctl_block)) {
-		dev_err(&pdev->dev, "Cannot get reset region (%pe)!\n",
-			ctl_block);
-		return ERR_CAST(ctl_block);
+		err = PTR_ERR(ctl_block);
+		dev_err(&pdev->dev, "Cannot get reset region (%d)!\n", err);
+		return ERR_PTR(err);
 	}
 
 	gmac = devm_kzalloc(&pdev->dev, sizeof(*gmac), GFP_KERNEL);
@@ -79,11 +80,17 @@ anarion_config_dt(struct platform_device *pdev,
 
 	gmac->ctl_block = ctl_block;
 
-	if (phy_interface_mode_is_rgmii(plat_dat->phy_interface)) {
+	switch (plat_dat->phy_interface) {
+	case PHY_INTERFACE_MODE_RGMII:
+		fallthrough;
+	case PHY_INTERFACE_MODE_RGMII_ID:
+	case PHY_INTERFACE_MODE_RGMII_RXID:
+	case PHY_INTERFACE_MODE_RGMII_TXID:
 		gmac->phy_intf_sel = GMAC_CONFIG_INTF_RGMII;
-	} else {
-		dev_err(&pdev->dev, "Unsupported phy-mode (%s)\n",
-			phy_modes(plat_dat->phy_interface));
+		break;
+	default:
+		dev_err(&pdev->dev, "Unsupported phy-mode (%d)\n",
+			plat_dat->phy_interface);
 		return ERR_PTR(-ENOTSUPP);
 	}
 
@@ -111,9 +118,10 @@ static int anarion_dwmac_probe(struct platform_device *pdev)
 
 	plat_dat->init = anarion_gmac_init;
 	plat_dat->exit = anarion_gmac_exit;
+	anarion_gmac_init(pdev, gmac);
 	plat_dat->bsp_priv = gmac;
 
-	return devm_stmmac_pltfr_probe(pdev, plat_dat, &stmmac_res);
+	return stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
 }
 
 static const struct of_device_id anarion_dwmac_match[] = {
@@ -124,6 +132,7 @@ MODULE_DEVICE_TABLE(of, anarion_dwmac_match);
 
 static struct platform_driver anarion_dwmac_driver = {
 	.probe  = anarion_dwmac_probe,
+	.remove = stmmac_pltfr_remove,
 	.driver = {
 		.name           = "anarion-dwmac",
 		.pm		= &stmmac_pltfr_pm_ops,

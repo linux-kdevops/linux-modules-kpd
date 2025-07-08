@@ -45,6 +45,7 @@ struct zynqmp_dpsub_audio {
 
 	struct {
 		struct snd_soc_dai_link_component cpu;
+		struct snd_soc_dai_link_component codec;
 		struct snd_soc_dai_link_component platform;
 	} components[ZYNQMP_NUM_PCMS];
 
@@ -402,8 +403,10 @@ int zynqmp_audio_init(struct zynqmp_dpsub *dpsub)
 		link->num_cpus = 1;
 		link->cpus[0].dai_name = audio->dai_name;
 
-		link->codecs = &snd_soc_dummy_dlc;
+		link->codecs = &audio->components[i].codec;
 		link->num_codecs = 1;
+		link->codecs[0].name = "snd-soc-dummy";
+		link->codecs[0].dai_name = "snd-soc-dummy-dai";
 
 		link->platforms = &audio->components[i].platform;
 		link->num_platforms = 1;

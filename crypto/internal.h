@@ -46,7 +46,6 @@ struct crypto_type {
 	unsigned int maskclear;
 	unsigned int maskset;
 	unsigned int tfmsize;
-	unsigned int algsize;
 };
 
 enum {
@@ -67,7 +66,8 @@ extern struct blocking_notifier_head crypto_chain;
 
 int alg_test(const char *driver, const char *alg, u32 type, u32 mask);
 
-#if !IS_BUILTIN(CONFIG_CRYPTO_ALGAPI) || !IS_ENABLED(CONFIG_CRYPTO_SELFTESTS)
+#if !IS_BUILTIN(CONFIG_CRYPTO_ALGAPI) || \
+    IS_ENABLED(CONFIG_CRYPTO_MANAGER_DISABLE_TESTS)
 static inline bool crypto_boot_test_finished(void)
 {
 	return true;
@@ -86,7 +86,7 @@ static inline void set_crypto_boot_test_finished(void)
 	static_branch_enable(&__crypto_boot_test_finished);
 }
 #endif /* !IS_BUILTIN(CONFIG_CRYPTO_ALGAPI) ||
-	* !IS_ENABLED(CONFIG_CRYPTO_SELFTESTS)
+	* IS_ENABLED(CONFIG_CRYPTO_MANAGER_DISABLE_TESTS)
 	*/
 
 #ifdef CONFIG_PROC_FS
@@ -128,6 +128,7 @@ void *crypto_create_tfm_node(struct crypto_alg *alg,
 			const struct crypto_type *frontend, int node);
 void *crypto_clone_tfm(const struct crypto_type *frontend,
 		       struct crypto_tfm *otfm);
+void crypto_destroy_alg(struct crypto_alg *alg);
 
 static inline void *crypto_create_tfm(struct crypto_alg *alg,
 			const struct crypto_type *frontend)
@@ -161,8 +162,6 @@ static inline struct crypto_alg *crypto_alg_get(struct crypto_alg *alg)
 	refcount_inc(&alg->cra_refcnt);
 	return alg;
 }
-
-void crypto_destroy_alg(struct crypto_alg *alg);
 
 static inline void crypto_alg_put(struct crypto_alg *alg)
 {

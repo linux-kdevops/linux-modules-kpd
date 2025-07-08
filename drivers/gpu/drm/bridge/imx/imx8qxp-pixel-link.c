@@ -128,7 +128,6 @@ static void imx8qxp_pixel_link_set_mst_addr(struct imx8qxp_pixel_link *pl)
 }
 
 static int imx8qxp_pixel_link_bridge_attach(struct drm_bridge *bridge,
-					    struct drm_encoder *encoder,
 					    enum drm_bridge_attach_flags flags)
 {
 	struct imx8qxp_pixel_link *pl = bridge->driver_private;
@@ -139,7 +138,7 @@ static int imx8qxp_pixel_link_bridge_attach(struct drm_bridge *bridge,
 		return -EINVAL;
 	}
 
-	return drm_bridge_attach(encoder,
+	return drm_bridge_attach(bridge->encoder,
 				 pl->next_bridge, bridge,
 				 DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 }

@@ -134,14 +134,16 @@ static ssize_t value_store(struct device *dev,
 	long value;
 
 	status = kstrtol(buf, 0, &value);
-	if (status)
-		return status;
 
 	guard(mutex)(&data->mutex);
 
-	status = gpiod_set_value_cansleep(desc, value);
+	if (!test_bit(FLAG_IS_OUT, &desc->flags))
+		return -EPERM;
+
 	if (status)
 		return status;
+
+	gpiod_set_value_cansleep(desc, value);
 
 	return size;
 }

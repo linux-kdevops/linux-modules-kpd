@@ -856,16 +856,11 @@ static struct clock_event_device timer_clockevent = {
 
 static irqreturn_t um_timer(int irq, void *dev)
 {
-	/*
-	 * Interrupt the (possibly) running userspace process, technically this
-	 * should only happen if userspace is currently executing.
-	 * With infinite CPU time-travel, we can only get here when userspace
-	 * is not executing. Do not notify there and avoid spurious scheduling.
-	 */
-	if (time_travel_mode != TT_MODE_INFCPU &&
-	    time_travel_mode != TT_MODE_EXTERNAL &&
-	    get_current()->mm)
+	if (get_current()->mm != NULL)
+	{
+        /* userspace - relay signal, results in correct userspace timers */
 		os_alarm_process(get_current()->mm->context.id.pid);
+	}
 
 	(*timer_clockevent.event_handler)(&timer_clockevent);
 

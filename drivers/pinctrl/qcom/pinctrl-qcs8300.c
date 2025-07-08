@@ -1204,7 +1204,7 @@ static const struct msm_pinctrl_soc_data qcs8300_pinctrl = {
 	.nfunctions = ARRAY_SIZE(qcs8300_functions),
 	.groups = qcs8300_groups,
 	.ngroups = ARRAY_SIZE(qcs8300_groups),
-	.ngpios = 134,
+	.ngpios = 133,
 	.wakeirq_map = qcs8300_pdc_map,
 	.nwakeirq_map = ARRAY_SIZE(qcs8300_pdc_map),
 	.egpio_func = 11,
@@ -1227,6 +1227,7 @@ static struct platform_driver qcs8300_pinctrl_driver = {
 		.of_match_table = qcs8300_pinctrl_of_match,
 	},
 	.probe = qcs8300_pinctrl_probe,
+	.remove = msm_pinctrl_remove,
 };
 
 static int __init qcs8300_pinctrl_init(void)

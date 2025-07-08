@@ -217,7 +217,7 @@ required:
   - reg
   - spi-max-frequency
 
-unevaluatedProperties: false
+additionalProperties: false
 
 examples:
   - |

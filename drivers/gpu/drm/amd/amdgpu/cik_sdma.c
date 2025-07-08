@@ -56,8 +56,6 @@ static void cik_sdma_set_buffer_funcs(struct amdgpu_device *adev);
 static void cik_sdma_set_vm_pte_funcs(struct amdgpu_device *adev);
 static int cik_sdma_soft_reset(struct amdgpu_ip_block *ip_block);
 
-u32 amdgpu_cik_gpu_check_soft_reset(struct amdgpu_device *adev);
-
 MODULE_FIRMWARE("amdgpu/bonaire_sdma.bin");
 MODULE_FIRMWARE("amdgpu/bonaire_sdma1.bin");
 MODULE_FIRMWARE("amdgpu/hawaii_sdma.bin");
@@ -68,6 +66,9 @@ MODULE_FIRMWARE("amdgpu/kabini_sdma.bin");
 MODULE_FIRMWARE("amdgpu/kabini_sdma1.bin");
 MODULE_FIRMWARE("amdgpu/mullins_sdma.bin");
 MODULE_FIRMWARE("amdgpu/mullins_sdma1.bin");
+
+u32 amdgpu_cik_gpu_check_soft_reset(struct amdgpu_device *adev);
+
 
 static void cik_sdma_free_microcode(struct amdgpu_device *adev)
 {
@@ -992,9 +993,14 @@ static int cik_sdma_sw_fini(struct amdgpu_ip_block *ip_block)
 
 static int cik_sdma_hw_init(struct amdgpu_ip_block *ip_block)
 {
+	int r;
 	struct amdgpu_device *adev = ip_block->adev;
 
-	return cik_sdma_start(adev);
+	r = cik_sdma_start(adev);
+	if (r)
+		return r;
+
+	return r;
 }
 
 static int cik_sdma_hw_fini(struct amdgpu_ip_block *ip_block)
@@ -1034,10 +1040,14 @@ static bool cik_sdma_is_idle(struct amdgpu_ip_block *ip_block)
 static int cik_sdma_wait_for_idle(struct amdgpu_ip_block *ip_block)
 {
 	unsigned i;
+	u32 tmp;
 	struct amdgpu_device *adev = ip_block->adev;
 
 	for (i = 0; i < adev->usec_timeout; i++) {
-		if (cik_sdma_is_idle(ip_block))
+		tmp = RREG32(mmSRBM_STATUS2) & (SRBM_STATUS2__SDMA_BUSY_MASK |
+				SRBM_STATUS2__SDMA1_BUSY_MASK);
+
+		if (!tmp)
 			return 0;
 		udelay(1);
 	}

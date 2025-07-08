@@ -8,7 +8,6 @@ kafs-y := \
 	addr_prefs.o \
 	callback.o \
 	cell.o \
-	cm_security.o \
 	cmservice.o \
 	dir.o \
 	dir_edit.o \

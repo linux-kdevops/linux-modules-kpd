@@ -874,14 +874,13 @@ int fib_newrule(struct net *net, struct sk_buff *skb, struct nlmsghdr *nlh,
 		struct netlink_ext_ack *extack, bool rtnl_held)
 {
 	struct fib_rule *rule = NULL, *r, *last = NULL;
+	struct fib_rule_hdr *frh = nlmsg_data(nlh);
 	int err = -EINVAL, unresolved = 0;
 	struct fib_rules_ops *ops = NULL;
 	struct nlattr *tb[FRA_MAX + 1];
 	bool user_priority = false;
-	struct fib_rule_hdr *frh;
 
-	frh = nlmsg_payload(nlh, sizeof(*frh));
-	if (!frh) {
+	if (nlh->nlmsg_len < nlmsg_msg_size(sizeof(*frh))) {
 		NL_SET_ERR_MSG(extack, "Invalid msg length");
 		goto errout;
 	}
@@ -1003,14 +1002,13 @@ int fib_delrule(struct net *net, struct sk_buff *skb, struct nlmsghdr *nlh,
 		struct netlink_ext_ack *extack, bool rtnl_held)
 {
 	struct fib_rule *rule = NULL, *nlrule = NULL;
+	struct fib_rule_hdr *frh = nlmsg_data(nlh);
 	struct fib_rules_ops *ops = NULL;
 	struct nlattr *tb[FRA_MAX+1];
 	bool user_priority = false;
-	struct fib_rule_hdr *frh;
 	int err = -EINVAL;
 
-	frh = nlmsg_payload(nlh, sizeof(*frh));
-	if (!frh) {
+	if (nlh->nlmsg_len < nlmsg_msg_size(sizeof(*frh))) {
 		NL_SET_ERR_MSG(extack, "Invalid msg length");
 		goto errout;
 	}
@@ -1262,12 +1260,12 @@ static int fib_valid_dumprule_req(const struct nlmsghdr *nlh,
 {
 	struct fib_rule_hdr *frh;
 
-	frh = nlmsg_payload(nlh, sizeof(*frh));
-	if (!frh) {
+	if (nlh->nlmsg_len < nlmsg_msg_size(sizeof(*frh))) {
 		NL_SET_ERR_MSG(extack, "Invalid header for fib rule dump request");
 		return -EINVAL;
 	}
 
+	frh = nlmsg_data(nlh);
 	if (frh->dst_len || frh->src_len || frh->tos || frh->table ||
 	    frh->res1 || frh->res2 || frh->action || frh->flags) {
 		NL_SET_ERR_MSG(extack,

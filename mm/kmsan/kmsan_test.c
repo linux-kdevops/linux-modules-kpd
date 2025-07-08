@@ -732,4 +732,3 @@ kunit_test_suites(&kmsan_test_suite);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Alexander Potapenko <glider@google.com>");
-MODULE_DESCRIPTION("Test cases for KMSAN");

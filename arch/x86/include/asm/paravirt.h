@@ -175,24 +175,26 @@ static inline void __write_cr4(unsigned long x)
 	PVOP_VCALL1(cpu.write_cr4, x);
 }
 
-static inline u64 paravirt_read_msr(u32 msr)
+static inline u64 paravirt_read_msr(unsigned msr)
 {
 	return PVOP_CALL1(u64, cpu.read_msr, msr);
 }
 
-static inline void paravirt_write_msr(u32 msr, u64 val)
+static inline void paravirt_write_msr(unsigned msr,
+				      unsigned low, unsigned high)
 {
-	PVOP_VCALL2(cpu.write_msr, msr, val);
+	PVOP_VCALL3(cpu.write_msr, msr, low, high);
 }
 
-static inline int paravirt_read_msr_safe(u32 msr, u64 *val)
+static inline u64 paravirt_read_msr_safe(unsigned msr, int *err)
 {
-	return PVOP_CALL2(int, cpu.read_msr_safe, msr, val);
+	return PVOP_CALL2(u64, cpu.read_msr_safe, msr, err);
 }
 
-static inline int paravirt_write_msr_safe(u32 msr, u64 val)
+static inline int paravirt_write_msr_safe(unsigned msr,
+					  unsigned low, unsigned high)
 {
-	return PVOP_CALL2(int, cpu.write_msr_safe, msr, val);
+	return PVOP_CALL3(int, cpu.write_msr_safe, msr, low, high);
 }
 
 #define rdmsr(msr, val1, val2)			\
@@ -202,45 +204,54 @@ do {						\
 	val2 = _l >> 32;			\
 } while (0)
 
-static __always_inline void wrmsr(u32 msr, u32 low, u32 high)
-{
-	paravirt_write_msr(msr, (u64)high << 32 | low);
-}
+#define wrmsr(msr, val1, val2)			\
+do {						\
+	paravirt_write_msr(msr, val1, val2);	\
+} while (0)
 
-#define rdmsrq(msr, val)			\
+#define rdmsrl(msr, val)			\
 do {						\
 	val = paravirt_read_msr(msr);		\
 } while (0)
 
-static inline void wrmsrq(u32 msr, u64 val)
+static inline void wrmsrl(unsigned msr, u64 val)
 {
-	paravirt_write_msr(msr, val);
+	wrmsr(msr, (u32)val, (u32)(val>>32));
 }
 
-static inline int wrmsrq_safe(u32 msr, u64 val)
-{
-	return paravirt_write_msr_safe(msr, val);
-}
+#define wrmsr_safe(msr, a, b)	paravirt_write_msr_safe(msr, a, b)
 
 /* rdmsr with exception handling */
 #define rdmsr_safe(msr, a, b)				\
 ({							\
-	u64 _l;						\
-	int _err = paravirt_read_msr_safe((msr), &_l);	\
+	int _err;					\
+	u64 _l = paravirt_read_msr_safe(msr, &_err);	\
 	(*a) = (u32)_l;					\
-	(*b) = (u32)(_l >> 32);				\
+	(*b) = _l >> 32;				\
 	_err;						\
 })
 
-static __always_inline int rdmsrq_safe(u32 msr, u64 *p)
+static inline int rdmsrl_safe(unsigned msr, unsigned long long *p)
 {
-	return paravirt_read_msr_safe(msr, p);
+	int err;
+
+	*p = paravirt_read_msr_safe(msr, &err);
+	return err;
 }
 
-static __always_inline u64 rdpmc(int counter)
+static inline unsigned long long paravirt_read_pmc(int counter)
 {
 	return PVOP_CALL1(u64, cpu.read_pmc, counter);
 }
+
+#define rdpmc(counter, low, high)		\
+do {						\
+	u64 _l = paravirt_read_pmc(counter);	\
+	low = (u32)_l;				\
+	high = _l >> 32;			\
+} while (0)
+
+#define rdpmcl(counter, val) ((val) = paravirt_read_pmc(counter))
 
 static inline void paravirt_alloc_ldt(struct desc_struct *ldt, unsigned entries)
 {
@@ -463,6 +474,8 @@ static inline void set_p4d(p4d_t *p4dp, p4d_t p4d)
 	PVOP_VCALL2(mmu.set_p4d, p4dp, val);
 }
 
+#if CONFIG_PGTABLE_LEVELS >= 5
+
 static inline p4d_t __p4d(p4dval_t val)
 {
 	p4dval_t ret = PVOP_ALT_CALLEE1(p4dval_t, mmu.make_p4d, val,
@@ -493,6 +506,8 @@ static inline void __set_pgd(pgd_t *pgdp, pgd_t pgd)
 	if (pgtable_l5_enabled())					\
 		set_pgd(pgdp, native_make_pgd(0));			\
 } while (0)
+
+#endif  /* CONFIG_PGTABLE_LEVELS == 5 */
 
 static inline void p4d_clear(p4d_t *p4dp)
 {

@@ -26,7 +26,6 @@
 #include <linux/i2c.h>
 #include <linux/media-bus-format.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -135,14 +134,6 @@ struct panel_desc {
 
 	/** @connector_type: LVDS, eDP, DSI, DPI, etc. */
 	int connector_type;
-};
-
-struct panel_desc_dsi {
-	struct panel_desc desc;
-
-	unsigned long flags;
-	enum mipi_dsi_pixel_format format;
-	unsigned int lanes;
 };
 
 struct panel_simple {
@@ -439,7 +430,10 @@ static const struct drm_panel_funcs panel_simple_funcs = {
 	.get_timings = panel_simple_get_timings,
 };
 
-static struct panel_desc *panel_dpi_probe(struct device *dev)
+static struct panel_desc panel_dpi;
+
+static int panel_dpi_probe(struct device *dev,
+			   struct panel_simple *panel)
 {
 	struct display_timing *timing;
 	const struct device_node *np;
@@ -451,17 +445,17 @@ static struct panel_desc *panel_dpi_probe(struct device *dev)
 	np = dev->of_node;
 	desc = devm_kzalloc(dev, sizeof(*desc), GFP_KERNEL);
 	if (!desc)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	timing = devm_kzalloc(dev, sizeof(*timing), GFP_KERNEL);
 	if (!timing)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	ret = of_get_display_timing(np, "panel-timing", timing);
 	if (ret < 0) {
 		dev_err(dev, "%pOF: no panel-timing node found for \"panel-dpi\" binding\n",
 			np);
-		return ERR_PTR(ret);
+		return ret;
 	}
 
 	desc->timings = timing;
@@ -479,7 +473,9 @@ static struct panel_desc *panel_dpi_probe(struct device *dev)
 	/* We do not know the connector for the DT node, so guess it */
 	desc->connector_type = DRM_MODE_CONNECTOR_DPI;
 
-	return desc;
+	panel->desc = desc;
+
+	return 0;
 }
 
 #define PANEL_SIMPLE_BOUNDS_CHECK(to_check, bounds, field) \
@@ -574,44 +570,8 @@ static int panel_simple_override_nondefault_lvds_datamapping(struct device *dev,
 	return 0;
 }
 
-static const struct panel_desc *panel_simple_get_desc(struct device *dev)
+static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 {
-	if (IS_ENABLED(CONFIG_DRM_MIPI_DSI) &&
-	    dev_is_mipi_dsi(dev)) {
-		const struct panel_desc_dsi *dsi_desc;
-
-		dsi_desc = of_device_get_match_data(dev);
-		if (!dsi_desc)
-			return ERR_PTR(-ENODEV);
-
-		return &dsi_desc->desc;
-	}
-
-	if (dev_is_platform(dev)) {
-		const struct panel_desc *desc;
-
-		desc = of_device_get_match_data(dev);
-		if (!desc) {
-			/*
-			 * panel-dpi probes without a descriptor and
-			 * panel_dpi_probe() will initialize one for us
-			 * based on the device tree.
-			 */
-			if (of_device_is_compatible(dev->of_node, "panel-dpi"))
-				return panel_dpi_probe(dev);
-			else
-				return ERR_PTR(-ENODEV);
-		}
-
-		return desc;
-	}
-
-	return ERR_PTR(-ENODEV);
-}
-
-static struct panel_simple *panel_simple_probe(struct device *dev)
-{
-	const struct panel_desc *desc;
 	struct panel_simple *panel;
 	struct display_timing dt;
 	struct device_node *ddc;
@@ -619,31 +579,26 @@ static struct panel_simple *panel_simple_probe(struct device *dev)
 	u32 bus_flags;
 	int err;
 
-	desc = panel_simple_get_desc(dev);
-	if (IS_ERR(desc))
-		return ERR_CAST(desc);
-
-	panel = devm_drm_panel_alloc(dev, struct panel_simple, base,
-				     &panel_simple_funcs, desc->connector_type);
-	if (IS_ERR(panel))
-		return ERR_CAST(panel);
+	panel = devm_kzalloc(dev, sizeof(*panel), GFP_KERNEL);
+	if (!panel)
+		return -ENOMEM;
 
 	panel->desc = desc;
 
 	panel->supply = devm_regulator_get(dev, "power");
 	if (IS_ERR(panel->supply))
-		return ERR_CAST(panel->supply);
+		return PTR_ERR(panel->supply);
 
 	panel->enable_gpio = devm_gpiod_get_optional(dev, "enable",
 						     GPIOD_OUT_LOW);
 	if (IS_ERR(panel->enable_gpio))
-		return dev_err_cast_probe(dev, panel->enable_gpio,
-					  "failed to request GPIO\n");
+		return dev_err_probe(dev, PTR_ERR(panel->enable_gpio),
+				     "failed to request GPIO\n");
 
 	err = of_drm_get_panel_orientation(dev->of_node, &panel->orientation);
 	if (err) {
 		dev_err(dev, "%pOF: failed to get orientation %d\n", dev->of_node, err);
-		return ERR_PTR(err);
+		return err;
 	}
 
 	ddc = of_parse_phandle(dev->of_node, "ddc-i2c-bus", 0);
@@ -652,12 +607,19 @@ static struct panel_simple *panel_simple_probe(struct device *dev)
 		of_node_put(ddc);
 
 		if (!panel->ddc)
-			return ERR_PTR(-EPROBE_DEFER);
+			return -EPROBE_DEFER;
 	}
 
-	if (!of_device_is_compatible(dev->of_node, "panel-dpi") &&
-	    !of_get_display_timing(dev->of_node, "panel-timing", &dt))
-		panel_simple_parse_panel_timing_node(dev, panel, &dt);
+	if (desc == &panel_dpi) {
+		/* Handle the generic panel-dpi binding */
+		err = panel_dpi_probe(dev, panel);
+		if (err)
+			goto free_ddc;
+		desc = panel->desc;
+	} else {
+		if (!of_get_display_timing(dev->of_node, "panel-timing", &dt))
+			panel_simple_parse_panel_timing_node(dev, panel, &dt);
+	}
 
 	if (desc->connector_type == DRM_MODE_CONNECTOR_LVDS) {
 		/* Optional data-mapping property for overriding bus format */
@@ -732,6 +694,8 @@ static struct panel_simple *panel_simple_probe(struct device *dev)
 	pm_runtime_set_autosuspend_delay(dev, 1000);
 	pm_runtime_use_autosuspend(dev);
 
+	drm_panel_init(&panel->base, dev, &panel_simple_funcs, connector_type);
+
 	err = drm_panel_of_backlight(&panel->base);
 	if (err) {
 		dev_err_probe(dev, err, "Could not find backlight\n");
@@ -740,7 +704,7 @@ static struct panel_simple *panel_simple_probe(struct device *dev)
 
 	drm_panel_add(&panel->base);
 
-	return panel;
+	return 0;
 
 disable_pm_runtime:
 	pm_runtime_dont_use_autosuspend(dev);
@@ -749,7 +713,7 @@ free_ddc:
 	if (panel->ddc)
 		put_device(&panel->ddc->dev);
 
-	return ERR_PTR(err);
+	return err;
 }
 
 static void panel_simple_shutdown(struct device *dev)
@@ -2235,14 +2199,13 @@ static const struct display_timing evervision_vgg644804_timing = {
 static const struct panel_desc evervision_vgg644804 = {
 	.timings = &evervision_vgg644804_timing,
 	.num_timings = 1,
-	.bpc = 6,
+	.bpc = 8,
 	.size = {
 		.width = 115,
 		.height = 86,
 	},
 	.bus_format = MEDIA_BUS_FMT_RGB666_1X7X3_SPWG,
-	.bus_flags = DRM_BUS_FLAG_DE_HIGH,
-	.connector_type = DRM_MODE_CONNECTOR_LVDS,
+	.bus_flags = DRM_BUS_FLAG_DE_HIGH | DRM_BUS_FLAG_PIXDATA_SAMPLE_NEGEDGE,
 };
 
 static const struct display_timing evervision_vgg804821_timing = {
@@ -3565,30 +3528,6 @@ static const struct panel_desc newhaven_nhd_43_480272ef_atxl = {
 	.connector_type = DRM_MODE_CONNECTOR_DPI,
 };
 
-static const struct drm_display_mode nlt_nl13676bc25_03f_mode = {
-	.clock = 75400,
-	.hdisplay = 1366,
-	.hsync_start = 1366 + 14,
-	.hsync_end = 1366 + 14 + 56,
-	.htotal = 1366 + 14 + 56 + 64,
-	.vdisplay = 768,
-	.vsync_start = 768 + 1,
-	.vsync_end = 768 + 1 + 3,
-	.vtotal = 768 + 1 + 3 + 22,
-};
-
-static const struct panel_desc nlt_nl13676bc25_03f = {
-	.modes = &nlt_nl13676bc25_03f_mode,
-	.num_modes = 1,
-	.bpc = 8,
-	.size = {
-		.width = 363,
-		.height = 215,
-	},
-	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
-	.connector_type = DRM_MODE_CONNECTOR_LVDS,
-};
-
 static const struct display_timing nlt_nl192108ac18_02d_timing = {
 	.pixelclock = { 130000000, 148350000, 163000000 },
 	.hactive = { 1920, 1920, 1920 },
@@ -3856,32 +3795,6 @@ static const struct panel_desc pda_91_00156_a0  = {
 		.height = 91,
 	},
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
-};
-
-static const struct drm_display_mode powertip_ph128800t004_zza01_mode = {
-	.clock = 71150,
-	.hdisplay = 1280,
-	.hsync_start = 1280 + 48,
-	.hsync_end = 1280 + 48 + 32,
-	.htotal = 1280 + 48 + 32 + 80,
-	.vdisplay = 800,
-	.vsync_start = 800 + 9,
-	.vsync_end = 800 + 9 + 8,
-	.vtotal = 800 + 9 + 8 + 6,
-	.flags = DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
-};
-
-static const struct panel_desc powertip_ph128800t004_zza01 = {
-	.modes = &powertip_ph128800t004_zza01_mode,
-	.num_modes = 1,
-	.bpc = 8,
-	.size = {
-		.width = 216,
-		.height = 135,
-	},
-	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
-	.bus_flags = DRM_BUS_FLAG_DE_HIGH,
-	.connector_type = DRM_MODE_CONNECTOR_LVDS,
 };
 
 static const struct drm_display_mode powertip_ph128800t006_zhc01_mode = {
@@ -4481,10 +4394,10 @@ static const struct panel_desc tianma_tm070jvhg33 = {
 };
 
 /*
- * The TM070JDHG34-00 datasheet computes total blanking as back porch +
- * front porch, not including sync pulse width. This is for both H and
- * V. To make the total blanking and period correct, subtract the pulse
- * width from the front porch.
+ * The datasheet computes total blanking as back porch + front porch, not
+ * including sync pulse width. This is for both H and V. To make the total
+ * blanking and period correct, subtract the pulse width from the front
+ * porch.
  *
  * This works well for the Min and Typ values, but for Max values the sync
  * pulse width is higher than back porch + front porch, so work around that
@@ -4493,10 +4406,6 @@ static const struct panel_desc tianma_tm070jvhg33 = {
  *
  * Exact datasheet values are added as a comment where they differ from the
  * ones implemented for the above reason.
- *
- * The P0700WXF1MBAA datasheet is even less detailed, only listing period
- * and total blanking time, however the resulting values are the same as
- * the TM070JDHG34-00.
  */
 static const struct display_timing tianma_tm070jdhg34_00_timing = {
 	.pixelclock = { 68400000, 71900000, 78100000 },
@@ -4518,30 +4427,6 @@ static const struct panel_desc tianma_tm070jdhg34_00 = {
 	.size = {
 		.width = 150, /* 149.76 */
 		.height = 94, /* 93.60 */
-	},
-	.delay = {
-		.prepare = 15,		/* Tp1 */
-		.enable = 150,		/* Tp2 */
-		.disable = 150,		/* Tp4 */
-		.unprepare = 120,	/* Tp3 */
-	},
-	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
-	.connector_type = DRM_MODE_CONNECTOR_LVDS,
-};
-
-static const struct panel_desc tianma_p0700wxf1mbaa = {
-	.timings = &tianma_tm070jdhg34_00_timing,
-	.num_timings = 1,
-	.bpc = 8,
-	.size = {
-		.width = 150, /* 149.76 */
-		.height = 94, /* 93.60 */
-	},
-	.delay = {
-		.prepare = 18,		/* Tr + Tp1 */
-		.enable = 152,		/* Tp2 + Tp5 */
-		.disable = 152,		/* Tp6 + Tp4 */
-		.unprepare = 120,	/* Tp3 */
 	},
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
 	.connector_type = DRM_MODE_CONNECTOR_LVDS,
@@ -5237,9 +5122,6 @@ static const struct of_device_id platform_of_match[] = {
 		.compatible = "newhaven,nhd-4.3-480272ef-atxl",
 		.data = &newhaven_nhd_43_480272ef_atxl,
 	}, {
-		.compatible = "nlt,nl13676bc25-03f",
-		.data = &nlt_nl13676bc25_03f,
-	}, {
 		.compatible = "nlt,nl192108ac18-02d",
 		.data = &nlt_nl192108ac18_02d,
 	}, {
@@ -5272,9 +5154,6 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "pda,91-00156-a0",
 		.data = &pda_91_00156_a0,
-	}, {
-		.compatible = "powertip,ph128800t004-zza01",
-		.data = &powertip_ph128800t004_zza01,
 	}, {
 		.compatible = "powertip,ph128800t006-zhc01",
 		.data = &powertip_ph128800t006_zhc01,
@@ -5335,9 +5214,6 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "tfc,s9700rtwv43tr-01b",
 		.data = &tfc_s9700rtwv43tr_01b,
-	}, {
-		.compatible = "tianma,p0700wxf1mbaa",
-		.data = &tianma_p0700wxf1mbaa,
 	}, {
 		.compatible = "tianma,tm070jdhg30",
 		.data = &tianma_tm070jdhg30,
@@ -5404,12 +5280,7 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		/* Must be the last entry */
 		.compatible = "panel-dpi",
-
-		/*
-		 * Explicitly NULL, the panel_desc structure will be
-		 * allocated by panel_dpi_probe().
-		 */
-		.data = NULL,
+		.data = &panel_dpi,
 	}, {
 		/* sentinel */
 	}
@@ -5418,13 +5289,13 @@ MODULE_DEVICE_TABLE(of, platform_of_match);
 
 static int panel_simple_platform_probe(struct platform_device *pdev)
 {
-	struct panel_simple *panel;
+	const struct panel_desc *desc;
 
-	panel = panel_simple_probe(&pdev->dev);
-	if (IS_ERR(panel))
-		return PTR_ERR(panel);
+	desc = of_device_get_match_data(&pdev->dev);
+	if (!desc)
+		return -ENODEV;
 
-	return 0;
+	return panel_simple_probe(&pdev->dev, desc);
 }
 
 static void panel_simple_platform_remove(struct platform_device *pdev)
@@ -5452,6 +5323,14 @@ static struct platform_driver panel_simple_platform_driver = {
 	.probe = panel_simple_platform_probe,
 	.remove = panel_simple_platform_remove,
 	.shutdown = panel_simple_platform_shutdown,
+};
+
+struct panel_desc_dsi {
+	struct panel_desc desc;
+
+	unsigned long flags;
+	enum mipi_dsi_pixel_format format;
+	unsigned int lanes;
 };
 
 static const struct drm_display_mode auo_b080uan01_mode = {
@@ -5687,14 +5566,16 @@ MODULE_DEVICE_TABLE(of, dsi_of_match);
 static int panel_simple_dsi_probe(struct mipi_dsi_device *dsi)
 {
 	const struct panel_desc_dsi *desc;
-	struct panel_simple *panel;
 	int err;
 
-	panel = panel_simple_probe(&dsi->dev);
-	if (IS_ERR(panel))
-		return PTR_ERR(panel);
+	desc = of_device_get_match_data(&dsi->dev);
+	if (!desc)
+		return -ENODEV;
 
-	desc = container_of(panel->desc, struct panel_desc_dsi, desc);
+	err = panel_simple_probe(&dsi->dev, &desc->desc);
+	if (err < 0)
+		return err;
+
 	dsi->mode_flags = desc->flags;
 	dsi->format = desc->format;
 	dsi->lanes = desc->lanes;

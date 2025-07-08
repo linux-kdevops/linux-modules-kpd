@@ -120,17 +120,17 @@ static void afs_issue_write_worker(struct work_struct *work)
 
 #if 0 // Error injection
 	if (subreq->debug_index == 3)
-		return netfs_write_subrequest_terminated(subreq, -ENOANO);
+		return netfs_write_subrequest_terminated(subreq, -ENOANO, false);
 
 	if (!subreq->retry_count) {
 		set_bit(NETFS_SREQ_NEED_RETRY, &subreq->flags);
-		return netfs_write_subrequest_terminated(subreq, -EAGAIN);
+		return netfs_write_subrequest_terminated(subreq, -EAGAIN, false);
 	}
 #endif
 
 	op = afs_alloc_operation(wreq->netfs_priv, vnode->volume);
 	if (IS_ERR(op))
-		return netfs_write_subrequest_terminated(subreq, -EAGAIN);
+		return netfs_write_subrequest_terminated(subreq, -EAGAIN, false);
 
 	afs_op_set_vnode(op, 0, vnode);
 	op->file[0].dv_delta	= 1;
@@ -166,7 +166,7 @@ static void afs_issue_write_worker(struct work_struct *work)
 		break;
 	}
 
-	netfs_write_subrequest_terminated(subreq, ret < 0 ? ret : subreq->len);
+	netfs_write_subrequest_terminated(subreq, ret < 0 ? ret : subreq->len, false);
 }
 
 void afs_issue_write(struct netfs_io_subrequest *subreq)
@@ -202,7 +202,6 @@ void afs_retry_request(struct netfs_io_request *wreq, struct netfs_io_stream *st
 	case NETFS_READ_GAPS:
 	case NETFS_READ_SINGLE:
 	case NETFS_READ_FOR_WRITE:
-	case NETFS_UNBUFFERED_READ:
 	case NETFS_DIO_READ:
 		return;
 	default:

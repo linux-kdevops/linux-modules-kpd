@@ -159,8 +159,7 @@ struct drm_gem_object_funcs {
 	 * @vmap:
 	 *
 	 * Returns a virtual address for the buffer. Used by the
-	 * drm_gem_dmabuf_vmap() helper. Called with a held GEM reservation
-	 * lock.
+	 * drm_gem_dmabuf_vmap() helper.
 	 *
 	 * This callback is optional.
 	 */
@@ -170,8 +169,7 @@ struct drm_gem_object_funcs {
 	 * @vunmap:
 	 *
 	 * Releases the address previously returned by @vmap. Used by the
-	 * drm_gem_dmabuf_vunmap() helper. Called with a held GEM reservation
-	 * lock.
+	 * drm_gem_dmabuf_vunmap() helper.
 	 *
 	 * This callback is optional.
 	 */
@@ -194,8 +192,7 @@ struct drm_gem_object_funcs {
 	 * @evict:
 	 *
 	 * Evicts gem object out from memory. Used by the drm_gem_object_evict()
-	 * helper. Returns 0 on success, -errno otherwise. Called with a held
-	 * GEM reservation lock.
+	 * helper. Returns 0 on success, -errno otherwise.
 	 *
 	 * This callback is optional.
 	 */
@@ -540,8 +537,8 @@ void drm_gem_put_pages(struct drm_gem_object *obj, struct page **pages,
 void drm_gem_lock(struct drm_gem_object *obj);
 void drm_gem_unlock(struct drm_gem_object *obj);
 
-int drm_gem_vmap(struct drm_gem_object *obj, struct iosys_map *map);
-void drm_gem_vunmap(struct drm_gem_object *obj, struct iosys_map *map);
+int drm_gem_vmap_unlocked(struct drm_gem_object *obj, struct iosys_map *map);
+void drm_gem_vunmap_unlocked(struct drm_gem_object *obj, struct iosys_map *map);
 
 int drm_gem_objects_lookup(struct drm_file *filp, void __user *bo_handles,
 			   int count, struct drm_gem_object ***objs_out);
@@ -564,7 +561,7 @@ unsigned long drm_gem_lru_scan(struct drm_gem_lru *lru,
 			       unsigned long *remaining,
 			       bool (*shrink)(struct drm_gem_object *obj));
 
-int drm_gem_evict_locked(struct drm_gem_object *obj);
+int drm_gem_evict(struct drm_gem_object *obj);
 
 /**
  * drm_gem_object_is_shared_for_memory_stats - helper for shared memory stats

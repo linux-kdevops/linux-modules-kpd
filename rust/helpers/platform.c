@@ -11,8 +11,3 @@ void rust_helper_platform_set_drvdata(struct platform_device *pdev, void *data)
 {
 	platform_set_drvdata(pdev, data);
 }
-
-bool rust_helper_dev_is_platform(const struct device *dev)
-{
-	return dev_is_platform(dev);
-}

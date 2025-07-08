@@ -237,9 +237,7 @@ static int cs42l43_get_speaker_id_gpios(struct cs42l43_spi *priv, int *result)
 	int i, ret;
 
 	descs = gpiod_get_array_optional(priv->dev, "spk-id", GPIOD_IN);
-	if (!descs)
-		return 0;
-	else if (IS_ERR(descs))
+	if (IS_ERR_OR_NULL(descs))
 		return PTR_ERR(descs);
 
 	spkid = 0;

@@ -39,7 +39,6 @@ enum model_id {
 	RCAR_M1,
 	RCAR_GEN2,
 	RCAR_GEN3,
-	RCAR_GEN4,
 };
 
 enum rvin_csi_id {
@@ -61,6 +60,39 @@ enum rvin_isp_id {
 #define RVIN_REMOTES_MAX \
 	(((unsigned int)RVIN_CSI_MAX) > ((unsigned int)RVIN_ISP_MAX) ? \
 	 (unsigned int)RVIN_CSI_MAX : (unsigned int)RVIN_ISP_MAX)
+
+/**
+ * enum rvin_dma_state - DMA states
+ * @STOPPED:   No operation in progress
+ * @STARTING:  Capture starting up
+ * @RUNNING:   Operation in progress have buffers
+ * @STOPPING:  Stopping operation
+ * @SUSPENDED: Capture is suspended
+ */
+enum rvin_dma_state {
+	STOPPED = 0,
+	STARTING,
+	RUNNING,
+	STOPPING,
+	SUSPENDED,
+};
+
+/**
+ * enum rvin_buffer_type
+ *
+ * Describes how a buffer is given to the hardware. To be able
+ * to capture SEQ_TB/BT it's needed to capture to the same vb2
+ * buffer twice so the type of buffer needs to be kept.
+ *
+ * @FULL: One capture fills the whole vb2 buffer
+ * @HALF_TOP: One capture fills the top half of the vb2 buffer
+ * @HALF_BOTTOM: One capture fills the bottom half of the vb2 buffer
+ */
+enum rvin_buffer_type {
+	FULL,
+	HALF_TOP,
+	HALF_BOTTOM,
+};
 
 /**
  * struct rvin_video_format - Data format stored in memory
@@ -162,11 +194,11 @@ struct rvin_info {
  * @scratch:		cpu address for scratch buffer
  * @scratch_phys:	physical address of the scratch buffer
  *
- * @qlock:		Protects @buf_hw, @buf_list, @sequence and @running
+ * @qlock:		protects @buf_hw, @buf_list, @sequence and @state
  * @buf_hw:		Keeps track of buffers given to HW slot
  * @buf_list:		list of queued buffers
  * @sequence:		V4L2 buffers sequence number
- * @running:		Keeps track of if the VIN is running
+ * @state:		keeps track of operation state
  *
  * @is_csi:		flag to mark the VIN as using a CSI-2 subdevice
  * @chsel:		Cached value of the current CSI-2 channel selection
@@ -205,11 +237,12 @@ struct rvin_dev {
 	spinlock_t qlock;
 	struct {
 		struct vb2_v4l2_buffer *buffer;
+		enum rvin_buffer_type type;
 		dma_addr_t phys;
 	} buf_hw[HW_BUFFER_NUM];
 	struct list_head buf_list;
 	unsigned int sequence;
-	bool running;
+	enum rvin_dma_state state;
 
 	bool is_csi;
 	unsigned int chsel;

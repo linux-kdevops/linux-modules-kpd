@@ -20,7 +20,6 @@
 #include <dt-bindings/soc/qcom,gpr.h>
 #include <dt-bindings/soc/qcom,rpmh-rsc.h>
 #include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
-#include <dt-bindings/thermal/thermal.h>
 
 / {
 	interrupt-parent = <&intc>;
@@ -72,8 +71,8 @@
 			reg = <0x0 0x0>;
 			enable-method = "psci";
 			next-level-cache = <&l2_0>;
-			power-domains = <&cpu_pd0>, <&scmi_dvfs 0>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd0>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 
 			l2_0: l2-cache {
@@ -89,8 +88,8 @@
 			reg = <0x0 0x100>;
 			enable-method = "psci";
 			next-level-cache = <&l2_0>;
-			power-domains = <&cpu_pd1>, <&scmi_dvfs 0>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd1>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -100,8 +99,8 @@
 			reg = <0x0 0x200>;
 			enable-method = "psci";
 			next-level-cache = <&l2_0>;
-			power-domains = <&cpu_pd2>, <&scmi_dvfs 0>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd2>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -111,8 +110,8 @@
 			reg = <0x0 0x300>;
 			enable-method = "psci";
 			next-level-cache = <&l2_0>;
-			power-domains = <&cpu_pd3>, <&scmi_dvfs 0>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd3>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -122,8 +121,8 @@
 			reg = <0x0 0x10000>;
 			enable-method = "psci";
 			next-level-cache = <&l2_1>;
-			power-domains = <&cpu_pd4>, <&scmi_dvfs 1>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd4>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 
 			l2_1: l2-cache {
@@ -139,8 +138,8 @@
 			reg = <0x0 0x10100>;
 			enable-method = "psci";
 			next-level-cache = <&l2_1>;
-			power-domains = <&cpu_pd5>, <&scmi_dvfs 1>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd5>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -150,8 +149,8 @@
 			reg = <0x0 0x10200>;
 			enable-method = "psci";
 			next-level-cache = <&l2_1>;
-			power-domains = <&cpu_pd6>, <&scmi_dvfs 1>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd6>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -161,8 +160,8 @@
 			reg = <0x0 0x10300>;
 			enable-method = "psci";
 			next-level-cache = <&l2_1>;
-			power-domains = <&cpu_pd7>, <&scmi_dvfs 1>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd7>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -172,8 +171,8 @@
 			reg = <0x0 0x20000>;
 			enable-method = "psci";
 			next-level-cache = <&l2_2>;
-			power-domains = <&cpu_pd8>, <&scmi_dvfs 2>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd8>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 
 			l2_2: l2-cache {
@@ -189,8 +188,8 @@
 			reg = <0x0 0x20100>;
 			enable-method = "psci";
 			next-level-cache = <&l2_2>;
-			power-domains = <&cpu_pd9>, <&scmi_dvfs 2>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd9>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -200,8 +199,8 @@
 			reg = <0x0 0x20200>;
 			enable-method = "psci";
 			next-level-cache = <&l2_2>;
-			power-domains = <&cpu_pd10>, <&scmi_dvfs 2>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd10>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -211,8 +210,8 @@
 			reg = <0x0 0x20300>;
 			enable-method = "psci";
 			next-level-cache = <&l2_2>;
-			power-domains = <&cpu_pd11>, <&scmi_dvfs 2>;
-			power-domain-names = "psci", "perf";
+			power-domains = <&cpu_pd11>;
+			power-domain-names = "psci";
 			cpu-idle-states = <&cluster_c4>;
 		};
 
@@ -253,7 +252,7 @@
 				};
 			};
 
-			cpu_map_cluster2: cluster2 {
+			cluster2 {
 				core0 {
 					cpu = <&cpu8>;
 				};
@@ -322,21 +321,6 @@
 			interconnects = <&aggre2_noc MASTER_CRYPTO QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 			qcom,dload-mode = <&tcsr 0x19000>;
-		};
-
-		scmi {
-			compatible = "arm,scmi";
-			mboxes = <&cpucp_mbox 0>, <&cpucp_mbox 2>;
-			mbox-names = "tx", "rx";
-			shmem = <&cpu_scp_lpri0>, <&cpu_scp_lpri1>;
-
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			scmi_dvfs: protocol@13 {
-				reg = <0x13>;
-				#power-domain-cells = <1>;
-			};
 		};
 	};
 
@@ -879,8 +863,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -915,8 +899,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -951,8 +935,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -987,8 +971,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1023,8 +1007,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1059,8 +1043,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1095,8 +1079,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1131,8 +1115,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1167,8 +1151,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1203,8 +1187,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1239,8 +1223,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1275,8 +1259,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1311,8 +1295,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>;
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
 						     "qup-config";
 
@@ -1336,8 +1320,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1372,8 +1356,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1408,8 +1392,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1444,8 +1428,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_2 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_2 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_2 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1524,8 +1508,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1560,8 +1544,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1596,8 +1580,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1632,8 +1616,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1668,8 +1652,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1704,8 +1688,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1740,8 +1724,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1776,8 +1760,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1812,8 +1796,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1848,8 +1832,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1884,8 +1868,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1920,8 +1904,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1956,8 +1940,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -1992,8 +1976,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2028,8 +2012,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>;
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
 						     "qup-config";
 
@@ -2053,8 +2037,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2089,8 +2073,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_1 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_1 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre1_noc MASTER_QUP_1 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2168,8 +2152,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2204,8 +2188,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2240,8 +2224,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2276,8 +2260,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2312,8 +2296,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2348,8 +2332,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>;
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
 						     "qup-config";
 
@@ -2373,8 +2357,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2409,8 +2393,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2445,8 +2429,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2481,8 +2465,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2517,8 +2501,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2553,8 +2537,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2589,8 +2573,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2625,8 +2609,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2661,8 +2645,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2697,8 +2681,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -2733,8 +2717,8 @@
 
 				interconnects = <&clk_virt MASTER_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS
 						 &clk_virt SLAVE_QUP_CORE_0 QCOM_ICC_TAG_ALWAYS>,
-						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ACTIVE_ONLY>,
+						<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+						 &config_noc SLAVE_QUP_0 QCOM_ICC_TAG_ALWAYS>,
 						<&aggre2_noc MASTER_QUP_0 QCOM_ICC_TAG_ALWAYS
 						 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
 				interconnect-names = "qup-core",
@@ -3141,7 +3125,7 @@
 			device_type = "pci";
 			compatible = "qcom,pcie-x1e80100";
 			reg = <0x0 0x01bd0000 0x0 0x3000>,
-			      <0x0 0x78000000 0x0 0xf20>,
+			      <0x0 0x78000000 0x0 0xf1d>,
 			      <0x0 0x78000f40 0x0 0xa8>,
 			      <0x0 0x78001000 0x0 0x1000>,
 			      <0x0 0x78100000 0x0 0x100000>,
@@ -3210,8 +3194,8 @@
 
 			interconnects = <&pcie_north_anoc MASTER_PCIE_3 QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &cnoc_main SLAVE_PCIE_3 QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &cnoc_main SLAVE_PCIE_3 QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "pcie-mem",
 					     "cpu-pcie";
 
@@ -3224,10 +3208,6 @@
 
 			phys = <&pcie3_phy>;
 			phy-names = "pciephy";
-
-			eq-presets-8gts = /bits/ 16 <0x5555 0x5555 0x5555 0x5555
-						     0x5555 0x5555 0x5555 0x5555>;
-			eq-presets-16gts = /bits/ 8 <0x55 0x55 0x55 0x55 0x55 0x55 0x55 0x55>;
 
 			operating-points-v2 = <&pcie3_opp_table>;
 
@@ -3415,8 +3395,8 @@
 
 			interconnects = <&pcie_south_anoc MASTER_PCIE_6A QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &cnoc_main SLAVE_PCIE_6A QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &cnoc_main SLAVE_PCIE_6A QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "pcie-mem",
 					     "cpu-pcie";
 
@@ -3430,9 +3410,6 @@
 
 			phys = <&pcie6a_phy>;
 			phy-names = "pciephy";
-
-			eq-presets-8gts = /bits/ 16 <0x5555 0x5555 0x5555 0x5555>;
-			eq-presets-16gts = /bits/ 8 <0x55 0x55 0x55 0x55>;
 
 			status = "disabled";
 		};
@@ -3545,8 +3522,8 @@
 
 			interconnects = <&pcie_north_anoc MASTER_PCIE_5 QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &cnoc_main SLAVE_PCIE_5 QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &cnoc_main SLAVE_PCIE_5 QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "pcie-mem",
 					     "cpu-pcie";
 
@@ -3560,8 +3537,6 @@
 
 			phys = <&pcie5_phy>;
 			phy-names = "pciephy";
-
-			eq-presets-8gts = /bits/ 16 <0x5555 0x5555>;
 
 			status = "disabled";
 		};
@@ -3583,10 +3558,8 @@
 				      "pipe",
 				      "pipediv2";
 
-			resets = <&gcc GCC_PCIE_5_PHY_BCR>,
-				 <&gcc GCC_PCIE_5_NOCSR_COM_PHY_BCR>;
-			reset-names = "phy",
-				      "phy_nocsr";
+			resets = <&gcc GCC_PCIE_5_PHY_BCR>;
+			reset-names = "phy";
 
 			assigned-clocks = <&gcc GCC_PCIE_5_PHY_RCHNG_CLK>;
 			assigned-clock-rates = <100000000>;
@@ -3673,8 +3646,8 @@
 
 			interconnects = <&pcie_north_anoc MASTER_PCIE_4 QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &cnoc_main SLAVE_PCIE_4 QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &cnoc_main SLAVE_PCIE_4 QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "pcie-mem",
 					     "cpu-pcie";
 
@@ -3688,8 +3661,6 @@
 
 			phys = <&pcie4_phy>;
 			phy-names = "pciephy";
-
-			eq-presets-8gts = /bits/ 16 <0x5555 0x5555>;
 
 			status = "disabled";
 
@@ -3721,10 +3692,8 @@
 				      "pipe",
 				      "pipediv2";
 
-			resets = <&gcc GCC_PCIE_4_PHY_BCR>,
-				 <&gcc GCC_PCIE_4_NOCSR_COM_PHY_BCR>;
-			reset-names = "phy",
-				      "phy_nocsr";
+			resets = <&gcc GCC_PCIE_4_PHY_BCR>;
+			reset-names = "phy";
 
 			assigned-clocks = <&gcc GCC_PCIE_4_PHY_RCHNG_CLK>;
 			assigned-clock-rates = <100000000>;
@@ -3778,88 +3747,65 @@
 
 			status = "disabled";
 
-			gpu_zap_shader: zap-shader {
+			zap-shader {
 				memory-region = <&gpu_microcode_mem>;
 			};
 
 			gpu_opp_table: opp-table {
-				compatible = "operating-points-v2-adreno", "operating-points-v2";
-
-				opp-1250000000 {
-					opp-hz = /bits/ 64 <1250000000>;
-					opp-level = <RPMH_REGULATOR_LEVEL_TURBO_L3>;
-					opp-peak-kBps = <16500000>;
-					qcom,opp-acd-level = <0xa82a5ffd>;
-				};
-
-				opp-1175000000 {
-					opp-hz = /bits/ 64 <1175000000>;
-					opp-level = <RPMH_REGULATOR_LEVEL_TURBO_L2>;
-					opp-peak-kBps = <14398438>;
-					qcom,opp-acd-level = <0xa82a5ffd>;
-				};
+				compatible = "operating-points-v2";
 
 				opp-1100000000 {
 					opp-hz = /bits/ 64 <1100000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_TURBO_L1>;
-					opp-peak-kBps = <14398438>;
-					qcom,opp-acd-level = <0xa82a5ffd>;
+					opp-peak-kBps = <16500000>;
 				};
 
 				opp-1000000000 {
 					opp-hz = /bits/ 64 <1000000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_TURBO>;
 					opp-peak-kBps = <14398438>;
-					qcom,opp-acd-level = <0xa82b5ffd>;
 				};
 
 				opp-925000000 {
 					opp-hz = /bits/ 64 <925000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_NOM_L1>;
 					opp-peak-kBps = <14398438>;
-					qcom,opp-acd-level = <0xa82b5ffd>;
 				};
 
 				opp-800000000 {
 					opp-hz = /bits/ 64 <800000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_NOM>;
 					opp-peak-kBps = <12449219>;
-					qcom,opp-acd-level = <0xa82c5ffd>;
 				};
 
 				opp-744000000 {
 					opp-hz = /bits/ 64 <744000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_SVS_L2>;
 					opp-peak-kBps = <10687500>;
-					qcom,opp-acd-level = <0x882e5ffd>;
 				};
 
 				opp-687000000 {
 					opp-hz = /bits/ 64 <687000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_SVS_L1>;
 					opp-peak-kBps = <8171875>;
-					qcom,opp-acd-level = <0x882e5ffd>;
 				};
 
 				opp-550000000 {
 					opp-hz = /bits/ 64 <550000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_SVS>;
 					opp-peak-kBps = <6074219>;
-					qcom,opp-acd-level = <0xc0285ffd>;
 				};
 
 				opp-390000000 {
 					opp-hz = /bits/ 64 <390000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS>;
 					opp-peak-kBps = <3000000>;
-					qcom,opp-acd-level = <0xc0285ffd>;
 				};
 
 				opp-300000000 {
 					opp-hz = /bits/ 64 <300000000>;
 					opp-level = <RPMH_REGULATOR_LEVEL_LOW_SVS_D1>;
 					opp-peak-kBps = <2136719>;
-					qcom,opp-acd-level = <0xc02b5ffd>;
 				};
 			};
 		};
@@ -4748,8 +4694,8 @@
 
 			interconnects = <&usb_south_anoc MASTER_USB3_2 QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &config_noc SLAVE_USB3_2 QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &config_noc SLAVE_USB3_2 QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "usb-ddr",
 					     "apps-usb";
 
@@ -4848,8 +4794,8 @@
 
 			interconnects = <&usb_north_anoc MASTER_USB2 QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &config_noc SLAVE_USB2 QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &config_noc SLAVE_USB2 QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "usb-ddr",
 					     "apps-usb";
 
@@ -4867,8 +4813,6 @@
 				maximum-speed = "high-speed";
 				snps,dis-u1-entry-quirk;
 				snps,dis-u2-entry-quirk;
-
-				dma-coherent;
 
 				ports {
 					#address-cells = <1>;
@@ -4935,8 +4879,8 @@
 
 			interconnects = <&usb_north_anoc MASTER_USB3_MP QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &config_noc SLAVE_USB3_MP QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &config_noc SLAVE_USB3_MP QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "usb-ddr",
 					     "apps-usb";
 
@@ -5109,8 +5053,8 @@
 
 			interconnects = <&usb_south_anoc MASTER_USB3_1 QCOM_ICC_TAG_ALWAYS
 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>,
-					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &config_noc SLAVE_USB3_1 QCOM_ICC_TAG_ACTIVE_ONLY>;
+					<&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ALWAYS
+					 &config_noc SLAVE_USB3_1 QCOM_ICC_TAG_ALWAYS>;
 			interconnect-names = "usb-ddr",
 					     "apps-usb";
 
@@ -7989,20 +7933,6 @@
 			dma-coherent;
 		};
 
-		pcie_smmu: iommu@15400000 {
-			compatible = "arm,smmu-v3";
-			reg = <0 0x15400000 0 0x80000>;
-			#iommu-cells = <1>;
-			interrupts = <GIC_SPI 138 IRQ_TYPE_EDGE_RISING>,
-				     <GIC_SPI 134 IRQ_TYPE_EDGE_RISING>,
-				     <GIC_SPI 136 IRQ_TYPE_EDGE_RISING>;
-			interrupt-names = "eventq",
-					  "gerror",
-					  "cmdq-sync";
-			dma-coherent;
-			status = "reserved"; /* Controlled by Gunyah. */
-		};
-
 		intc: interrupt-controller@17000000 {
 			compatible = "arm,gic-v3";
 			reg = <0 0x17000000 0 0x10000>,     /* GICD */
@@ -8027,13 +7957,6 @@
 				msi-controller;
 				#msi-cells = <1>;
 			};
-		};
-
-		cpucp_mbox: mailbox@17430000 {
-			compatible = "qcom,x1e80100-cpucp-mbox";
-			reg = <0 0x17430000 0 0x10000>, <0 0x18830000 0 0x10000>;
-			interrupts = <GIC_SPI 28 IRQ_TYPE_LEVEL_HIGH>;
-			#mbox-cells = <1>;
 		};
 
 		apps_rsc: rsc@17500000 {
@@ -8219,32 +8142,6 @@
 			};
 		};
 
-		sram: sram@18b4e000 {
-			compatible = "mmio-sram";
-			reg = <0x0 0x18b4e000 0x0 0x400>;
-
-			#address-cells = <1>;
-			#size-cells = <1>;
-			ranges = <0x0 0x0 0x18b4e000 0x400>;
-
-			cpu_scp_lpri0: scp-sram-section@0 {
-				compatible = "arm,scmi-shmem";
-				reg = <0x0 0x200>;
-			};
-
-			cpu_scp_lpri1: scp-sram-section@200 {
-				compatible = "arm,scmi-shmem";
-				reg = <0x200 0x200>;
-			};
-		};
-
-		sbsa_watchdog: watchdog@1c840000 {
-			compatible = "arm,sbsa-gwdt";
-			reg = <0 0x1c840000 0 0x1000>,
-			      <0 0x1c850000 0 0x1000>;
-			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
-		};
-
 		pmu@24091000 {
 			compatible = "qcom,x1e80100-llcc-bwmon", "qcom,sc7280-llcc-bwmon";
 			reg = <0 0x24091000 0 0x1000>;
@@ -8302,22 +8199,9 @@
 		};
 
 		/* cluster0 */
-		bwmon_cluster0: pmu@240b3400 {
+		pmu@240b3400 {
 			compatible = "qcom,x1e80100-cpu-bwmon", "qcom,sdm845-bwmon";
 			reg = <0 0x240b3400 0 0x600>;
-
-			interrupts = <GIC_SPI 581 IRQ_TYPE_LEVEL_HIGH>;
-
-			interconnects = <&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
-					 &gem_noc SLAVE_LLCC QCOM_ICC_TAG_ACTIVE_ONLY>;
-
-			operating-points-v2 = <&cpu_bwmon_opp_table>;
-		};
-
-		/* cluster2 */
-		bwmon_cluster2: pmu@240b5400 {
-			compatible = "qcom,x1e80100-cpu-bwmon", "qcom,sdm845-bwmon";
-			reg = <0 0x240b5400 0 0x600>;
 
 			interrupts = <GIC_SPI 581 IRQ_TYPE_LEVEL_HIGH>;
 
@@ -8353,6 +8237,19 @@
 					opp-peak-kBps = <17064000>;
 				};
 			};
+		};
+
+		/* cluster2 */
+		pmu@240b5400 {
+			compatible = "qcom,x1e80100-cpu-bwmon", "qcom,sdm845-bwmon";
+			reg = <0 0x240b5400 0 0x600>;
+
+			interrupts = <GIC_SPI 581 IRQ_TYPE_LEVEL_HIGH>;
+
+			interconnects = <&gem_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
+					 &gem_noc SLAVE_LLCC QCOM_ICC_TAG_ACTIVE_ONLY>;
+
+			operating-points-v2 = <&cpu_bwmon_opp_table>;
 		};
 
 		/* cluster1 */
@@ -8560,19 +8457,33 @@
 				};
 
 				aoss0-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
 		};
 
 		cpu0-0-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 1>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8580,11 +8491,25 @@
 		};
 
 		cpu0-0-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 2>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8592,11 +8517,25 @@
 		};
 
 		cpu0-1-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 3>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8604,11 +8543,25 @@
 		};
 
 		cpu0-1-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 4>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8616,11 +8569,25 @@
 		};
 
 		cpu0-2-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 5>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8628,11 +8595,25 @@
 		};
 
 		cpu0-2-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 6>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8640,11 +8621,25 @@
 		};
 
 		cpu0-3-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 7>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8652,11 +8647,25 @@
 		};
 
 		cpu0-3-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 8>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8667,9 +8676,15 @@
 			thermal-sensors = <&tsens0 9>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "hot";
+				};
+
 				cpuss2-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -8679,9 +8694,15 @@
 			thermal-sensors = <&tsens0 10>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "hot";
+				};
+
 				cpuss2-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -8698,7 +8719,7 @@
 				};
 
 				mem-critical {
-					temperature = <115000>;
+					temperature = <125000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
@@ -8706,19 +8727,15 @@
 		};
 
 		video-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens0 12>;
 
 			trips {
 				trip-point0 {
-					temperature = <90000>;
-					hysteresis = <2000>;
-					type = "hot";
-				};
-
-				video-critical {
-					temperature = <115000>;
+					temperature = <125000>;
 					hysteresis = <1000>;
-					type = "critical";
+					type = "passive";
 				};
 			};
 		};
@@ -8734,19 +8751,33 @@
 				};
 
 				aoss0-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
 		};
 
 		cpu1-0-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 1>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8754,11 +8785,25 @@
 		};
 
 		cpu1-0-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 2>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8766,11 +8811,25 @@
 		};
 
 		cpu1-1-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 3>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8778,11 +8837,25 @@
 		};
 
 		cpu1-1-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 4>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8790,11 +8863,25 @@
 		};
 
 		cpu1-2-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 5>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8802,11 +8889,25 @@
 		};
 
 		cpu1-2-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 6>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8814,11 +8915,25 @@
 		};
 
 		cpu1-3-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 7>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8826,11 +8941,25 @@
 		};
 
 		cpu1-3-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens1 8>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8841,9 +8970,15 @@
 			thermal-sensors = <&tsens1 9>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "hot";
+				};
+
 				cpuss2-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -8853,9 +8988,15 @@
 			thermal-sensors = <&tsens1 10>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "hot";
+				};
+
 				cpuss2-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -8872,19 +9013,33 @@
 				};
 
 				aoss0-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
 		};
 
 		cpu2-0-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 1>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8892,11 +9047,25 @@
 		};
 
 		cpu2-0-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 2>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8904,11 +9073,25 @@
 		};
 
 		cpu2-1-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 3>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8916,11 +9099,25 @@
 		};
 
 		cpu2-1-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 4>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8928,11 +9125,25 @@
 		};
 
 		cpu2-2-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 5>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8940,11 +9151,25 @@
 		};
 
 		cpu2-2-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 6>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8952,11 +9177,25 @@
 		};
 
 		cpu2-3-top-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 7>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8964,11 +9203,25 @@
 		};
 
 		cpu2-3-btm-thermal {
+			polling-delay-passive = <250>;
+
 			thermal-sensors = <&tsens2 8>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				trip-point1 {
+					temperature = <95000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
 				cpu-critical {
-					temperature = <115000>;
+					temperature = <110000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -8979,9 +9232,15 @@
 			thermal-sensors = <&tsens2 9>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "hot";
+				};
+
 				cpuss2-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -8991,9 +9250,15 @@
 			thermal-sensors = <&tsens2 10>;
 
 			trips {
+				trip-point0 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "hot";
+				};
+
 				cpuss2-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -9010,8 +9275,8 @@
 				};
 
 				aoss0-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -9028,8 +9293,8 @@
 				};
 
 				nsp0-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -9046,8 +9311,8 @@
 				};
 
 				nsp1-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -9064,8 +9329,8 @@
 				};
 
 				nsp2-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -9082,34 +9347,33 @@
 				};
 
 				nsp3-critical {
-					temperature = <115000>;
-					hysteresis = <1000>;
+					temperature = <125000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
 		};
 
 		gpuss-0-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 5>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss0_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss0_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9117,26 +9381,25 @@
 		};
 
 		gpuss-1-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 6>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss1_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss1_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9144,26 +9407,25 @@
 		};
 
 		gpuss-2-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 7>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss2_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss2_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9171,26 +9433,25 @@
 		};
 
 		gpuss-3-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 8>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss3_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss3_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9198,26 +9459,25 @@
 		};
 
 		gpuss-4-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 9>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss4_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss4_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9225,26 +9485,25 @@
 		};
 
 		gpuss-5-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 10>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss5_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss5_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9252,26 +9511,25 @@
 		};
 
 		gpuss-6-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 11>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss6_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss6_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9279,26 +9537,25 @@
 		};
 
 		gpuss-7-thermal {
-			polling-delay-passive = <200>;
+			polling-delay-passive = <10>;
 
 			thermal-sensors = <&tsens3 12>;
 
-			cooling-maps {
-				map0 {
-					trip = <&gpuss7_alert0>;
-					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-				};
-			};
-
 			trips {
-				gpuss7_alert0: trip-point0 {
-					temperature = <95000>;
+				trip-point0 {
+					temperature = <85000>;
 					hysteresis = <1000>;
 					type = "passive";
 				};
 
-				gpu-critical {
-					temperature = <115000>;
+				trip-point1 {
+					temperature = <90000>;
+					hysteresis = <1000>;
+					type = "hot";
+				};
+
+				trip-point2 {
+					temperature = <125000>;
 					hysteresis = <1000>;
 					type = "critical";
 				};
@@ -9317,7 +9574,7 @@
 
 				camera0-critical {
 					temperature = <115000>;
-					hysteresis = <1000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};
@@ -9335,7 +9592,7 @@
 
 				camera0-critical {
 					temperature = <115000>;
-					hysteresis = <1000>;
+					hysteresis = <0>;
 					type = "critical";
 				};
 			};

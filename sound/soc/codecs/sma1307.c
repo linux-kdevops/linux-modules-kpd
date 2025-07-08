@@ -8,6 +8,7 @@
 
 #include <linux/firmware.h>
 #include <linux/i2c.h>
+#include <linux/of_gpio.h>
 #include <linux/regmap.h>
 #include <sound/pcm_params.h>
 #include <sound/tlv.h>

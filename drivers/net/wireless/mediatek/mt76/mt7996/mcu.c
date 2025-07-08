@@ -13,7 +13,7 @@
 #define fw_name(_dev, name, ...)	({			\
 	char *_fw;						\
 	switch (mt76_chip(&(_dev)->mt76)) {			\
-	case MT7992_DEVICE_ID:						\
+	case 0x7992:						\
 		switch ((_dev)->var.type) {			\
 		case MT7992_VAR_TYPE_23:			\
 			_fw = MT7992_##name##_23;		\
@@ -22,10 +22,7 @@
 			_fw = MT7992_##name;			\
 		}						\
 		break;						\
-	case MT7990_DEVICE_ID:					\
-		_fw = MT7990_##name;				\
-		break;						\
-	case MT7996_DEVICE_ID:						\
+	case 0x7990:						\
 	default:						\
 		switch ((_dev)->var.type) {			\
 		case MT7996_VAR_TYPE_233:			\
@@ -268,7 +265,7 @@ mt7996_mcu_send_message(struct mt76_dev *mdev, struct sk_buff *skb,
 
 	txd_len = cmd & __MCU_CMD_FIELD_UNI ? sizeof(*uni_txd) : sizeof(*mcu_txd);
 	txd = (__le32 *)skb_push(skb, txd_len);
-	if (test_bit(MT76_STATE_MCU_RUNNING, &dev->mphy.state) && mt7996_has_wa(dev))
+	if (test_bit(MT76_STATE_MCU_RUNNING, &dev->mphy.state))
 		qid = MT_MCUQ_WA;
 	else
 		qid = MT_MCUQ_WM;
@@ -338,12 +335,8 @@ exit:
 int mt7996_mcu_wa_cmd(struct mt7996_dev *dev, int cmd, u32 a1, u32 a2, u32 a3)
 {
 	struct {
-		u8 _rsv[4];
-
-		__le16 tag;
-		__le16 len;
 		__le32 args[3];
-	} __packed req = {
+	} req = {
 		.args = {
 			cpu_to_le32(a1),
 			cpu_to_le32(a2),
@@ -351,16 +344,7 @@ int mt7996_mcu_wa_cmd(struct mt7996_dev *dev, int cmd, u32 a1, u32 a2, u32 a3)
 		},
 	};
 
-	if (mt7996_has_wa(dev))
-		return mt76_mcu_send_msg(&dev->mt76, cmd, &req.args,
-					 sizeof(req.args), false);
-
-	req.tag = cpu_to_le16(cmd == MCU_WA_PARAM_CMD(QUERY) ? UNI_CMD_SDO_QUERY :
-							       UNI_CMD_SDO_SET);
-	req.len = cpu_to_le16(sizeof(req) - 4);
-
-	return mt76_mcu_send_msg(&dev->mt76, MCU_WA_UNI_CMD(SDO), &req,
-				 sizeof(req), false);
+	return mt76_mcu_send_msg(&dev->mt76, cmd, &req, sizeof(req), false);
 }
 
 static void
@@ -380,27 +364,21 @@ mt7996_mcu_rx_radar_detected(struct mt7996_dev *dev, struct sk_buff *skb)
 
 	r = (struct mt7996_mcu_rdd_report *)skb->data;
 
-	switch (r->rdd_idx) {
-	case MT_RDD_IDX_BAND2:
-		mphy = dev->mt76.phys[MT_BAND2];
-		break;
-	case MT_RDD_IDX_BAND1:
-		mphy = dev->mt76.phys[MT_BAND1];
-		break;
-	case MT_RDD_IDX_BACKGROUND:
-		if (!dev->rdd2_phy)
-			return;
-		mphy = dev->rdd2_phy->mt76;
-		break;
-	default:
-		dev_err(dev->mt76.dev, "Unknown RDD idx %d\n", r->rdd_idx);
+	if (r->band_idx >= ARRAY_SIZE(dev->mt76.phys))
 		return;
-	}
+
+	if (r->band_idx == MT_RX_SEL2 && !dev->rdd2_phy)
+		return;
+
+	if (r->band_idx == MT_RX_SEL2)
+		mphy = dev->rdd2_phy->mt76;
+	else
+		mphy = dev->mt76.phys[r->band_idx];
 
 	if (!mphy)
 		return;
 
-	if (r->rdd_idx == MT_RDD_IDX_BACKGROUND)
+	if (r->band_idx == MT_RX_SEL2)
 		cfg80211_background_radar_event(mphy->hw->wiphy,
 						&dev->rdd2_chandef,
 						GFP_ATOMIC);
@@ -2264,6 +2242,9 @@ mt7996_mcu_sta_mld_setup_tlv(struct mt7996_dev *dev, struct sk_buff *skb,
 		if (!link)
 			continue;
 
+		if (!msta_link)
+			continue;
+
 		mld_setup_link->wcid = cpu_to_le16(msta_link->wcid.idx);
 		mld_setup_link->bss_idx = link->mt76.idx;
 		mld_setup_link++;
@@ -3030,9 +3011,6 @@ static int mt7996_load_ram(struct mt7996_dev *dev)
 	if (ret)
 		return ret;
 
-	if (!mt7996_has_wa(dev))
-		return 0;
-
 	ret = __mt7996_load_ram(dev, "DSP", fw_name(dev, FIRMWARE_DSP),
 				MT7996_RAM_TYPE_DSP);
 	if (ret)
@@ -3043,9 +3021,10 @@ static int mt7996_load_ram(struct mt7996_dev *dev)
 }
 
 static int
-mt7996_firmware_state(struct mt7996_dev *dev, u8 fw_state)
+mt7996_firmware_state(struct mt7996_dev *dev, bool wa)
 {
-	u32 state = FIELD_PREP(MT_TOP_MISC_FW_STATE, fw_state);
+	u32 state = FIELD_PREP(MT_TOP_MISC_FW_STATE,
+			       wa ? FW_STATE_RDY : FW_STATE_FW_DOWNLOAD);
 
 	if (!mt76_poll_msec(dev, MT_TOP_MISC, MT_TOP_MISC_FW_STATE,
 			    state, 1000)) {
@@ -3077,14 +3056,13 @@ mt7996_mcu_restart(struct mt76_dev *dev)
 
 static int mt7996_load_firmware(struct mt7996_dev *dev)
 {
-	u8 fw_state;
 	int ret;
 
 	/* make sure fw is download state */
-	if (mt7996_firmware_state(dev, FW_STATE_FW_DOWNLOAD)) {
+	if (mt7996_firmware_state(dev, false)) {
 		/* restart firmware once */
 		mt7996_mcu_restart(&dev->mt76);
-		ret = mt7996_firmware_state(dev, FW_STATE_FW_DOWNLOAD);
+		ret = mt7996_firmware_state(dev, false);
 		if (ret) {
 			dev_err(dev->mt76.dev,
 				"Firmware is not ready for download\n");
@@ -3100,8 +3078,7 @@ static int mt7996_load_firmware(struct mt7996_dev *dev)
 	if (ret)
 		return ret;
 
-	fw_state = mt7996_has_wa(dev) ? FW_STATE_RDY : FW_STATE_NORMAL_TRX;
-	ret = mt7996_firmware_state(dev, fw_state);
+	ret = mt7996_firmware_state(dev, true);
 	if (ret)
 		return ret;
 
@@ -3239,15 +3216,13 @@ int mt7996_mcu_init_firmware(struct mt7996_dev *dev)
 	if (ret)
 		return ret;
 
-	if (mt7996_has_wa(dev)) {
-		ret = mt7996_mcu_fw_log_2_host(dev, MCU_FW_LOG_WA, 0);
-		if (ret)
-			return ret;
+	ret = mt7996_mcu_fw_log_2_host(dev, MCU_FW_LOG_WA, 0);
+	if (ret)
+		return ret;
 
-		ret = mt7996_mcu_set_mwds(dev, 1);
-		if (ret)
-			return ret;
-	}
+	ret = mt7996_mcu_set_mwds(dev, 1);
+	if (ret)
+		return ret;
 
 	ret = mt7996_mcu_init_rx_airtime(dev);
 	if (ret)
@@ -3273,7 +3248,7 @@ int mt7996_mcu_init(struct mt7996_dev *dev)
 void mt7996_mcu_exit(struct mt7996_dev *dev)
 {
 	mt7996_mcu_restart(&dev->mt76);
-	if (mt7996_firmware_state(dev, FW_STATE_FW_DOWNLOAD)) {
+	if (mt7996_firmware_state(dev, false)) {
 		dev_err(dev->mt76.dev, "Failed to exit mcu\n");
 		goto out;
 	}
@@ -3560,10 +3535,11 @@ int mt7996_mcu_rdd_background_enable(struct mt7996_phy *phy,
 				     struct cfg80211_chan_def *chandef)
 {
 	struct mt7996_dev *dev = phy->dev;
-	int err, region, rdd_idx = mt7996_get_rdd_idx(phy, true);
+	int err, region;
 
 	if (!chandef) { /* disable offchain */
-		err = mt7996_mcu_rdd_cmd(dev, RDD_STOP, rdd_idx, 0);
+		err = mt7996_mcu_rdd_cmd(dev, RDD_STOP, MT_RX_SEL2,
+					 0, 0);
 		if (err)
 			return err;
 
@@ -3589,7 +3565,8 @@ int mt7996_mcu_rdd_background_enable(struct mt7996_phy *phy,
 		break;
 	}
 
-	return mt7996_mcu_rdd_cmd(dev, RDD_START, rdd_idx, region);
+	return mt7996_mcu_rdd_cmd(dev, RDD_START, MT_RX_SEL2,
+				  0, region);
 }
 
 int mt7996_mcu_set_chan_info(struct mt7996_phy *phy, u16 tag)
@@ -4456,7 +4433,8 @@ int mt7996_mcu_set_radio_en(struct mt7996_phy *phy, bool enable)
 				 &req, sizeof(req), true);
 }
 
-int mt7996_mcu_rdd_cmd(struct mt7996_dev *dev, int cmd, u8 rdd_idx, u8 val)
+int mt7996_mcu_rdd_cmd(struct mt7996_dev *dev, int cmd, u8 index,
+		       u8 rx_sel, u8 val)
 {
 	struct {
 		u8 _rsv[4];
@@ -4473,7 +4451,8 @@ int mt7996_mcu_rdd_cmd(struct mt7996_dev *dev, int cmd, u8 rdd_idx, u8 val)
 		.tag = cpu_to_le16(UNI_RDD_CTRL_PARM),
 		.len = cpu_to_le16(sizeof(req) - 4),
 		.ctrl = cmd,
-		.rdd_idx = rdd_idx,
+		.rdd_idx = index,
+		.rdd_rx_sel = rx_sel,
 		.val = val,
 	};
 
@@ -4763,26 +4742,7 @@ int mt7996_mcu_cp_support(struct mt7996_dev *dev, u8 mode)
 	    mode > mt76_connac_lmac_mapping(IEEE80211_AC_VO))
 		return -EINVAL;
 
-	if (!mt7996_has_wa(dev)) {
-		struct {
-			u8 _rsv[4];
-
-			__le16 tag;
-			__le16 len;
-			u8 cp_mode;
-			u8 rsv[3];
-		} __packed req = {
-			.tag = cpu_to_le16(UNI_CMD_SDO_CP_MODE),
-			.len = cpu_to_le16(sizeof(req) - 4),
-			.cp_mode = mode,
-		};
-
-		return mt76_mcu_send_msg(&dev->mt76, MCU_WA_UNI_CMD(SDO),
-					 &req, sizeof(req), false);
-	}
-
 	cp_mode = cpu_to_le32(mode);
-
 	return mt76_mcu_send_msg(&dev->mt76, MCU_WA_EXT_CMD(CP_SUPPORT),
 				 &cp_mode, sizeof(cp_mode), true);
 }

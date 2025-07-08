@@ -145,11 +145,13 @@ static u64 bkey_lru_type_idx(struct bch_fs *c,
 	case BCH_LRU_fragmentation: {
 		a = bch2_alloc_to_v4(k, &a_convert);
 
-		guard(rcu)();
+		rcu_read_lock();
 		struct bch_dev *ca = bch2_dev_rcu_noerror(c, k.k->p.inode);
-		return ca
+		u64 idx = ca
 			? alloc_lru_idx_fragmentation(*a, ca)
 			: 0;
+		rcu_read_unlock();
+		return idx;
 	}
 	case BCH_LRU_stripes:
 		return k.k->type == KEY_TYPE_stripe

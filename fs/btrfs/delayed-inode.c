@@ -119,12 +119,7 @@ static struct btrfs_delayed_node *btrfs_get_delayed_node(
 	return NULL;
 }
 
-/*
- * Look up an existing delayed node associated with @btrfs_inode or create a new
- * one and insert it to the delayed nodes of the root.
- *
- * Return the delayed node, or error pointer on failure.
- */
+/* Will return either the node or PTR_ERR(-ENOMEM) */
 static struct btrfs_delayed_node *btrfs_get_or_create_delayed_node(
 		struct btrfs_inode *btrfs_inode)
 {
@@ -216,13 +211,17 @@ static void btrfs_dequeue_delayed_node(struct btrfs_delayed_root *root,
 static struct btrfs_delayed_node *btrfs_first_delayed_node(
 			struct btrfs_delayed_root *delayed_root)
 {
-	struct btrfs_delayed_node *node;
+	struct list_head *p;
+	struct btrfs_delayed_node *node = NULL;
 
 	spin_lock(&delayed_root->lock);
-	node = list_first_entry_or_null(&delayed_root->node_list,
-					struct btrfs_delayed_node, n_list);
-	if (node)
-		refcount_inc(&node->refs);
+	if (list_empty(&delayed_root->node_list))
+		goto out;
+
+	p = delayed_root->node_list.next;
+	node = list_entry(p, struct btrfs_delayed_node, n_list);
+	refcount_inc(&node->refs);
+out:
 	spin_unlock(&delayed_root->lock);
 
 	return node;
@@ -294,15 +293,18 @@ static inline void btrfs_release_delayed_node(struct btrfs_delayed_node *node)
 static struct btrfs_delayed_node *btrfs_first_prepared_delayed_node(
 					struct btrfs_delayed_root *delayed_root)
 {
-	struct btrfs_delayed_node *node;
+	struct list_head *p;
+	struct btrfs_delayed_node *node = NULL;
 
 	spin_lock(&delayed_root->lock);
-	node = list_first_entry_or_null(&delayed_root->prepare_list,
-					struct btrfs_delayed_node, p_list);
-	if (node) {
-		list_del_init(&node->p_list);
-		refcount_inc(&node->refs);
-	}
+	if (list_empty(&delayed_root->prepare_list))
+		goto out;
+
+	p = delayed_root->prepare_list.next;
+	list_del_init(p);
+	node = list_entry(p, struct btrfs_delayed_node, p_list);
+	refcount_inc(&node->refs);
+out:
 	spin_unlock(&delayed_root->lock);
 
 	return node;
@@ -452,25 +454,40 @@ static void btrfs_release_delayed_item(struct btrfs_delayed_item *item)
 static struct btrfs_delayed_item *__btrfs_first_delayed_insertion_item(
 					struct btrfs_delayed_node *delayed_node)
 {
-	struct rb_node *p = rb_first_cached(&delayed_node->ins_root);
+	struct rb_node *p;
+	struct btrfs_delayed_item *item = NULL;
 
-	return rb_entry_safe(p, struct btrfs_delayed_item, rb_node);
+	p = rb_first_cached(&delayed_node->ins_root);
+	if (p)
+		item = rb_entry(p, struct btrfs_delayed_item, rb_node);
+
+	return item;
 }
 
 static struct btrfs_delayed_item *__btrfs_first_delayed_deletion_item(
 					struct btrfs_delayed_node *delayed_node)
 {
-	struct rb_node *p = rb_first_cached(&delayed_node->del_root);
+	struct rb_node *p;
+	struct btrfs_delayed_item *item = NULL;
 
-	return rb_entry_safe(p, struct btrfs_delayed_item, rb_node);
+	p = rb_first_cached(&delayed_node->del_root);
+	if (p)
+		item = rb_entry(p, struct btrfs_delayed_item, rb_node);
+
+	return item;
 }
 
 static struct btrfs_delayed_item *__btrfs_next_delayed_item(
 						struct btrfs_delayed_item *item)
 {
-	struct rb_node *p = rb_next(&item->rb_node);
+	struct rb_node *p;
+	struct btrfs_delayed_item *next = NULL;
 
-	return rb_entry_safe(p, struct btrfs_delayed_item, rb_node);
+	p = rb_next(&item->rb_node);
+	if (p)
+		next = rb_entry(p, struct btrfs_delayed_item, rb_node);
+
+	return next;
 }
 
 static int btrfs_delayed_item_reserve_metadata(struct btrfs_trans_handle *trans,
@@ -1377,23 +1394,20 @@ static int btrfs_wq_run_delayed_node(struct btrfs_delayed_root *delayed_root,
 
 void btrfs_assert_delayed_root_empty(struct btrfs_fs_info *fs_info)
 {
-	struct btrfs_delayed_node *node = btrfs_first_delayed_node(fs_info->delayed_root);
-
-	if (WARN_ON(node))
-		refcount_dec(&node->refs);
+	WARN_ON(btrfs_first_delayed_node(fs_info->delayed_root));
 }
 
-static bool could_end_wait(struct btrfs_delayed_root *delayed_root, int seq)
+static int could_end_wait(struct btrfs_delayed_root *delayed_root, int seq)
 {
 	int val = atomic_read(&delayed_root->items_seq);
 
 	if (val < seq || val >= seq + BTRFS_DELAYED_BATCH)
-		return true;
+		return 1;
 
 	if (atomic_read(&delayed_root->items) < BTRFS_DELAYED_BACKGROUND)
-		return true;
+		return 1;
 
-	return false;
+	return 0;
 }
 
 void btrfs_balance_delayed_items(struct btrfs_fs_info *fs_info)

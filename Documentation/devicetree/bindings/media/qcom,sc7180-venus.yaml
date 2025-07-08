@@ -18,12 +18,7 @@ allOf:
 
 properties:
   compatible:
-    oneOf:
-      - items:
-          - enum:
-              - qcom,qcs615-venus
-          - const: qcom,sc7180-venus
-      - const: qcom,sc7180-venus
+    const: qcom,sc7180-venus
 
   power-domains:
     minItems: 2

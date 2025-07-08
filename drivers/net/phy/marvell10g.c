@@ -1264,8 +1264,7 @@ static int mv3310_get_number_of_ports(struct phy_device *phydev)
 	return ret + 1;
 }
 
-static int mv3310_match_phy_device(struct phy_device *phydev,
-				   const struct phy_driver *phydrv)
+static int mv3310_match_phy_device(struct phy_device *phydev)
 {
 	if ((phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD] &
 	     MARVELL_PHY_ID_MASK) != MARVELL_PHY_ID_88X3310)
@@ -1274,8 +1273,7 @@ static int mv3310_match_phy_device(struct phy_device *phydev,
 	return mv3310_get_number_of_ports(phydev) == 1;
 }
 
-static int mv3340_match_phy_device(struct phy_device *phydev,
-				   const struct phy_driver *phydrv)
+static int mv3340_match_phy_device(struct phy_device *phydev)
 {
 	if ((phydev->c45_ids.device_ids[MDIO_MMD_PMAPMD] &
 	     MARVELL_PHY_ID_MASK) != MARVELL_PHY_ID_88X3310)
@@ -1299,14 +1297,12 @@ static int mv211x_match_phy_device(struct phy_device *phydev, bool has_5g)
 	return !!(val & MDIO_PCS_SPEED_5G) == has_5g;
 }
 
-static int mv2110_match_phy_device(struct phy_device *phydev,
-				   const struct phy_driver *phydrv)
+static int mv2110_match_phy_device(struct phy_device *phydev)
 {
 	return mv211x_match_phy_device(phydev, true);
 }
 
-static int mv2111_match_phy_device(struct phy_device *phydev,
-				   const struct phy_driver *phydrv)
+static int mv2111_match_phy_device(struct phy_device *phydev)
 {
 	return mv211x_match_phy_device(phydev, false);
 }

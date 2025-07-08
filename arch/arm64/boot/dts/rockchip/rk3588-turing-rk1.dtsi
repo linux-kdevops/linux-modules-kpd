@@ -214,8 +214,6 @@
 };
 
 &package_thermal {
-	polling-delay = <1000>;
-
 	trips {
 		package_active1: trip-active1 {
 			temperature = <45000>;

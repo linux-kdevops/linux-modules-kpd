@@ -10,6 +10,7 @@
 #include "bcmasp_intf_defs.h"
 
 enum bcmasp_stat_type {
+	BCMASP_STAT_RX_EDPKT,
 	BCMASP_STAT_RX_CTRL,
 	BCMASP_STAT_RX_CTRL_PER_INTF,
 	BCMASP_STAT_SOFT,
@@ -32,6 +33,8 @@ struct bcmasp_stats {
 	.reg_offset = offset, \
 }
 
+#define STAT_BCMASP_RX_EDPKT(str, offset) \
+	STAT_BCMASP_OFFSET(str, BCMASP_STAT_RX_EDPKT, offset)
 #define STAT_BCMASP_RX_CTRL(str, offset) \
 	STAT_BCMASP_OFFSET(str, BCMASP_STAT_RX_CTRL, offset)
 #define STAT_BCMASP_RX_CTRL_PER_INTF(str, offset) \
@@ -39,6 +42,11 @@ struct bcmasp_stats {
 
 /* Must match the order of struct bcmasp_mib_counters */
 static const struct bcmasp_stats bcmasp_gstrings_stats[] = {
+	/* EDPKT counters */
+	STAT_BCMASP_RX_EDPKT("RX Time Stamp", ASP_EDPKT_RX_TS_COUNTER),
+	STAT_BCMASP_RX_EDPKT("RX PKT Count", ASP_EDPKT_RX_PKT_CNT),
+	STAT_BCMASP_RX_EDPKT("RX PKT Buffered", ASP_EDPKT_HDR_EXTR_CNT),
+	STAT_BCMASP_RX_EDPKT("RX PKT Pushed to DRAM", ASP_EDPKT_HDR_OUT_CNT),
 	/* ASP RX control */
 	STAT_BCMASP_RX_CTRL_PER_INTF("Frames From Unimac",
 				     ASP_RX_CTRL_UMAC_0_FRAME_COUNT),
@@ -62,6 +70,23 @@ static const struct bcmasp_stats bcmasp_gstrings_stats[] = {
 };
 
 #define BCMASP_STATS_LEN	ARRAY_SIZE(bcmasp_gstrings_stats)
+
+static u16 bcmasp_stat_fixup_offset(struct bcmasp_intf *intf,
+				    const struct bcmasp_stats *s)
+{
+	struct bcmasp_priv *priv = intf->parent;
+
+	if (!strcmp("Frames Out(Buffer)", s->stat_string))
+		return priv->hw_info->rx_ctrl_fb_out_frame_count;
+
+	if (!strcmp("Frames Out(Filters)", s->stat_string))
+		return priv->hw_info->rx_ctrl_fb_filt_out_frame_count;
+
+	if (!strcmp("RX Buffer FIFO Depth", s->stat_string))
+		return priv->hw_info->rx_ctrl_fb_rx_fifo_depth;
+
+	return s->reg_offset;
+}
 
 static int bcmasp_get_sset_count(struct net_device *dev, int string_set)
 {
@@ -101,10 +126,13 @@ static void bcmasp_update_mib_counters(struct bcmasp_intf *intf)
 		char *p;
 
 		s = &bcmasp_gstrings_stats[i];
-		offset = s->reg_offset;
+		offset = bcmasp_stat_fixup_offset(intf, s);
 		switch (s->type) {
 		case BCMASP_STAT_SOFT:
 			continue;
+		case BCMASP_STAT_RX_EDPKT:
+			val = rx_edpkt_core_rl(intf->parent, offset);
+			break;
 		case BCMASP_STAT_RX_CTRL:
 			val = rx_ctrl_core_rl(intf->parent, offset);
 			break;
@@ -187,7 +215,7 @@ static int bcmasp_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 		memcpy(intf->sopass, wol->sopass, sizeof(wol->sopass));
 
 	mutex_lock(&priv->wol_lock);
-	bcmasp_enable_wol(intf, !!intf->wolopts);
+	priv->enable_wol(intf, !!intf->wolopts);
 	mutex_unlock(&priv->wol_lock);
 
 	return 0;
@@ -261,7 +289,7 @@ static int bcmasp_flow_get(struct bcmasp_intf *intf, struct ethtool_rxnfc *cmd)
 
 	memcpy(&cmd->fs, &nfilter->fs, sizeof(nfilter->fs));
 
-	cmd->data = intf->parent->num_net_filters;
+	cmd->data = NUM_NET_FILTERS;
 
 	return 0;
 }
@@ -308,7 +336,7 @@ static int bcmasp_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
 		break;
 	case ETHTOOL_GRXCLSRLALL:
 		err = bcmasp_netfilt_get_all_active(intf, rule_locs, &cmd->rule_cnt);
-		cmd->data = intf->parent->num_net_filters;
+		cmd->data = NUM_NET_FILTERS;
 		break;
 	default:
 		err = -EOPNOTSUPP;

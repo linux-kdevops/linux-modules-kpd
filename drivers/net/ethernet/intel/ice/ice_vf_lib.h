@@ -124,7 +124,6 @@ struct ice_vf {
 	u8 spoofchk:1;
 	u8 link_forced:1;
 	u8 link_up:1;			/* only valid if VF link is forced */
-	u8 lldp_tx_ena:1;
 
 	u32 ptp_caps;
 
@@ -135,7 +134,6 @@ struct ice_vf {
 	unsigned long vf_caps;		/* VF's adv. capabilities */
 	u8 num_req_qs;			/* num of queue pairs requested by VF */
 	u16 num_mac;
-	u16 num_mac_lldp;
 	u16 num_vf_qs;			/* num of queue configured per VF */
 	u8 vlan_strip_ena;		/* Outer and Inner VLAN strip enable */
 #define ICE_INNER_VLAN_STRIP_ENA	BIT(0)
@@ -150,9 +148,6 @@ struct ice_vf {
 
 	/* devlink port data */
 	struct devlink_port devlink_port;
-
-	u16 lldp_recipe_id;
-	u16 lldp_rule_id;
 
 	u16 num_msix;			/* num of MSI-X configured on this VF */
 	struct ice_vf_qs_bw qs_bw[ICE_MAX_RSS_QS_PER_VF];
@@ -183,11 +178,6 @@ static inline bool ice_vf_is_port_vlan_ena(struct ice_vf *vf)
 static inline u16 ice_vf_get_port_vlan_tpid(struct ice_vf *vf)
 {
 	return vf->port_vlan_info.tpid;
-}
-
-static inline bool ice_vf_is_lldp_ena(struct ice_vf *vf)
-{
-	return vf->num_mac_lldp && vf->trusted;
 }
 
 /* VF Hash Table access functions
@@ -255,8 +245,6 @@ ice_vf_clear_vsi_promisc(struct ice_vf *vf, struct ice_vsi *vsi, u8 promisc_m);
 int ice_reset_vf(struct ice_vf *vf, u32 flags);
 void ice_reset_all_vfs(struct ice_pf *pf);
 struct ice_vsi *ice_get_vf_ctrl_vsi(struct ice_pf *pf, struct ice_vsi *vsi);
-void ice_vf_update_mac_lldp_num(struct ice_vf *vf, struct ice_vsi *vsi,
-				bool incr);
 #else /* CONFIG_PCI_IOV */
 static inline struct ice_vf *ice_get_vf_by_id(struct ice_pf *pf, u16 vf_id)
 {

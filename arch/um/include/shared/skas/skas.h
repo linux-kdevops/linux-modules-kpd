@@ -8,7 +8,6 @@
 
 #include <sysdep/ptrace.h>
 
-extern int using_seccomp;
 extern int userspace_pid[];
 
 extern void new_thread_handler(void);

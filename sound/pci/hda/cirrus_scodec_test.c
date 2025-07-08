@@ -5,22 +5,12 @@
 // Copyright (C) 2023 Cirrus Logic, Inc. and
 //                    Cirrus Logic International Semiconductor Ltd.
 
-#include <kunit/platform_device.h>
-#include <kunit/resource.h>
 #include <kunit/test.h>
-#include <linux/device.h>
-#include <linux/device/faux.h>
 #include <linux/gpio/driver.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 
 #include "cirrus_scodec.h"
-
-KUNIT_DEFINE_ACTION_WRAPPER(faux_device_destroy_wrapper, faux_device_destroy,
-			    struct faux_device *)
-KUNIT_DEFINE_ACTION_WRAPPER(device_remove_software_node_wrapper,
-			    device_remove_software_node,
-			    struct device *)
 
 struct cirrus_scodec_test_gpio {
 	unsigned int pin_state;
@@ -28,7 +18,7 @@ struct cirrus_scodec_test_gpio {
 };
 
 struct cirrus_scodec_test_priv {
-	struct faux_device *amp_dev;
+	struct platform_device amp_pdev;
 	struct platform_device *gpio_pdev;
 	struct cirrus_scodec_test_gpio *gpio_priv;
 };
@@ -58,10 +48,9 @@ static int cirrus_scodec_test_gpio_direction_out(struct gpio_chip *chip,
 	return -EOPNOTSUPP;
 }
 
-static int cirrus_scodec_test_gpio_set(struct gpio_chip *chip,
-				       unsigned int offset, int value)
+static void cirrus_scodec_test_gpio_set(struct gpio_chip *chip, unsigned int offset,
+					int value)
 {
-	return -EOPNOTSUPP;
 }
 
 static int cirrus_scodec_test_gpio_set_config(struct gpio_chip *gc,
@@ -86,7 +75,7 @@ static const struct gpio_chip cirrus_scodec_test_gpio_chip = {
 	.direction_input	= cirrus_scodec_test_gpio_direction_in,
 	.get			= cirrus_scodec_test_gpio_get,
 	.direction_output	= cirrus_scodec_test_gpio_direction_out,
-	.set_rv			= cirrus_scodec_test_gpio_set,
+	.set			= cirrus_scodec_test_gpio_set,
 	.set_config		= cirrus_scodec_test_gpio_set_config,
 	.base			= -1,
 	.ngpio			= 32,
@@ -114,7 +103,6 @@ static int cirrus_scodec_test_gpio_probe(struct platform_device *pdev)
 
 static struct platform_driver cirrus_scodec_test_gpio_driver = {
 	.driver.name	= "cirrus_scodec_test_gpio_drv",
-	.driver.owner	= THIS_MODULE,
 	.probe		= cirrus_scodec_test_gpio_probe,
 };
 
@@ -123,28 +111,37 @@ static const struct software_node cirrus_scodec_test_gpio_swnode = {
 	.name = "cirrus_scodec_test_gpio",
 };
 
-static void cirrus_scodec_test_create_gpio(struct kunit *test)
+static int cirrus_scodec_test_create_gpio(struct kunit *test)
 {
 	struct cirrus_scodec_test_priv *priv = test->priv;
+	int ret;
 
-	KUNIT_ASSERT_EQ(test, 0,
-			kunit_platform_driver_register(test, &cirrus_scodec_test_gpio_driver));
+	priv->gpio_pdev = platform_device_alloc(cirrus_scodec_test_gpio_driver.driver.name, -1);
+	if (!priv->gpio_pdev)
+		return -ENOMEM;
 
-	priv->gpio_pdev = kunit_platform_device_alloc(test,
-						      cirrus_scodec_test_gpio_driver.driver.name,
-						      PLATFORM_DEVID_NONE);
-	KUNIT_ASSERT_NOT_NULL(test, priv->gpio_pdev);
+	ret = device_add_software_node(&priv->gpio_pdev->dev, &cirrus_scodec_test_gpio_swnode);
+	if (ret) {
+		platform_device_put(priv->gpio_pdev);
+		KUNIT_FAIL(test, "Failed to add swnode to gpio: %d\n", ret);
+		return ret;
+	}
 
-	KUNIT_ASSERT_EQ(test, 0, device_add_software_node(&priv->gpio_pdev->dev,
-							  &cirrus_scodec_test_gpio_swnode));
-	KUNIT_ASSERT_EQ(test, 0, kunit_add_action_or_reset(test,
-							   device_remove_software_node_wrapper,
-							   &priv->gpio_pdev->dev));
-
-	KUNIT_ASSERT_EQ(test, 0, kunit_platform_device_add(test, priv->gpio_pdev));
+	ret = platform_device_add(priv->gpio_pdev);
+	if (ret) {
+		platform_device_put(priv->gpio_pdev);
+		KUNIT_FAIL(test, "Failed to add gpio platform device: %d\n", ret);
+		return ret;
+	}
 
 	priv->gpio_priv = dev_get_drvdata(&priv->gpio_pdev->dev);
-	KUNIT_ASSERT_NOT_NULL(test, priv->gpio_priv);
+	if (!priv->gpio_priv) {
+		platform_device_put(priv->gpio_pdev);
+		KUNIT_FAIL(test, "Failed to get gpio private data\n");
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static void cirrus_scodec_test_set_gpio_ref_arg(struct software_node_ref_args *arg,
@@ -194,7 +191,7 @@ static void cirrus_scodec_test_spkid_parse(struct kunit *test)
 	const struct cirrus_scodec_test_spkid_param *param = test->param_value;
 	int num_spk_id_refs = param->num_amps * param->gpios_per_amp;
 	struct software_node_ref_args *refs;
-	struct device *dev = &priv->amp_dev->dev;
+	struct device *dev = &priv->amp_pdev.dev;
 	unsigned int v;
 	int i, ret;
 
@@ -237,16 +234,21 @@ static void cirrus_scodec_test_spkid_parse(struct kunit *test)
 static void cirrus_scodec_test_no_spkid(struct kunit *test)
 {
 	struct cirrus_scodec_test_priv *priv = test->priv;
-	struct device *dev = &priv->amp_dev->dev;
+	struct device *dev = &priv->amp_pdev.dev;
 	int ret;
 
 	ret = cirrus_scodec_get_speaker_id(dev, 0, 4, -1);
 	KUNIT_EXPECT_EQ(test, ret, -ENOENT);
 }
 
+static void cirrus_scodec_test_dev_release(struct device *dev)
+{
+}
+
 static int cirrus_scodec_test_case_init(struct kunit *test)
 {
 	struct cirrus_scodec_test_priv *priv;
+	int ret;
 
 	priv = kunit_kzalloc(test, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -255,16 +257,50 @@ static int cirrus_scodec_test_case_init(struct kunit *test)
 	test->priv = priv;
 
 	/* Create dummy GPIO */
-	cirrus_scodec_test_create_gpio(test);
+	ret = cirrus_scodec_test_create_gpio(test);
+	if (ret < 0)
+		return ret;
 
 	/* Create dummy amp driver dev */
-	priv->amp_dev = faux_device_create("cirrus_scodec_test_amp_drv", NULL, NULL);
-	KUNIT_ASSERT_NOT_NULL(test, priv->amp_dev);
-	KUNIT_ASSERT_EQ(test, 0, kunit_add_action_or_reset(test,
-							   faux_device_destroy_wrapper,
-							   priv->amp_dev));
+	priv->amp_pdev.name = "cirrus_scodec_test_amp_drv";
+	priv->amp_pdev.id = -1;
+	priv->amp_pdev.dev.release = cirrus_scodec_test_dev_release;
+	ret = platform_device_register(&priv->amp_pdev);
+	KUNIT_ASSERT_GE_MSG(test, ret, 0, "Failed to register amp platform device\n");
 
 	return 0;
+}
+
+static void cirrus_scodec_test_case_exit(struct kunit *test)
+{
+	struct cirrus_scodec_test_priv *priv = test->priv;
+
+	if (priv->amp_pdev.name)
+		platform_device_unregister(&priv->amp_pdev);
+
+	if (priv->gpio_pdev) {
+		device_remove_software_node(&priv->gpio_pdev->dev);
+		platform_device_unregister(priv->gpio_pdev);
+	}
+}
+
+static int cirrus_scodec_test_suite_init(struct kunit_suite *suite)
+{
+	int ret;
+
+	/* Register mock GPIO driver */
+	ret = platform_driver_register(&cirrus_scodec_test_gpio_driver);
+	if (ret < 0) {
+		kunit_err(suite, "Failed to register gpio platform driver, %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static void cirrus_scodec_test_suite_exit(struct kunit_suite *suite)
+{
+	platform_driver_unregister(&cirrus_scodec_test_gpio_driver);
 }
 
 static const struct cirrus_scodec_test_spkid_param cirrus_scodec_test_spkid_param_cases[] = {
@@ -320,7 +356,10 @@ static struct kunit_case cirrus_scodec_test_cases[] = {
 
 static struct kunit_suite cirrus_scodec_test_suite = {
 	.name = "snd-hda-scodec-cs35l56-test",
+	.suite_init = cirrus_scodec_test_suite_init,
+	.suite_exit = cirrus_scodec_test_suite_exit,
 	.init = cirrus_scodec_test_case_init,
+	.exit = cirrus_scodec_test_case_exit,
 	.test_cases = cirrus_scodec_test_cases,
 };
 

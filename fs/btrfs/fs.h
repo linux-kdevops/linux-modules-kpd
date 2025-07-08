@@ -300,7 +300,6 @@ enum {
 #define BTRFS_FEATURE_INCOMPAT_SAFE_CLEAR		0ULL
 
 #define BTRFS_DEFAULT_COMMIT_INTERVAL	(30)
-#define BTRFS_WARNING_COMMIT_INTERVAL	(300)
 #define BTRFS_DEFAULT_MAX_INLINE	(2048)
 
 struct btrfs_dev_replace {
@@ -472,8 +471,6 @@ struct btrfs_fs_info {
 	struct btrfs_block_rsv delayed_block_rsv;
 	/* Block reservation for delayed refs */
 	struct btrfs_block_rsv delayed_refs_rsv;
-	/* Block reservation for treelog tree */
-	struct btrfs_block_rsv treelog_rsv;
 
 	struct btrfs_block_rsv empty_block_rsv;
 
@@ -779,8 +776,10 @@ struct btrfs_fs_info {
 
 	struct btrfs_delayed_root *delayed_root;
 
+	/* Extent buffer radix tree */
+	spinlock_t buffer_lock;
 	/* Entries are eb->start / sectorsize */
-	struct xarray buffer_tree;
+	struct radix_tree_root buffer_radix;
 
 	/* Next backup root to be overwritten */
 	int backup_root_index;

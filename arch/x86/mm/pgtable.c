@@ -10,7 +10,6 @@
 #ifdef CONFIG_DYNAMIC_PHYSICAL_MASK
 phys_addr_t physical_mask __ro_after_init = (1ULL << __PHYSICAL_MASK_SHIFT) - 1;
 EXPORT_SYMBOL(physical_mask);
-SYM_PIC_ALIAS(physical_mask);
 #endif
 
 pgtable_t pte_alloc_one(struct mm_struct *mm)
@@ -69,6 +68,12 @@ static inline void pgd_list_del(pgd_t *pgd)
 	list_del(&ptdesc->pt_list);
 }
 
+#define UNSHARED_PTRS_PER_PGD				\
+	(SHARED_KERNEL_PMD ? KERNEL_PGD_BOUNDARY : PTRS_PER_PGD)
+#define MAX_UNSHARED_PTRS_PER_PGD			\
+	MAX_T(size_t, KERNEL_PGD_BOUNDARY, PTRS_PER_PGD)
+
+
 static void pgd_set_mm(pgd_t *pgd, struct mm_struct *mm)
 {
 	virt_to_ptdesc(pgd)->pt_mm = mm;
@@ -81,19 +86,29 @@ struct mm_struct *pgd_page_get_mm(struct page *page)
 
 static void pgd_ctor(struct mm_struct *mm, pgd_t *pgd)
 {
-	/* PAE preallocates all its PMDs.  No cloning needed. */
-	if (!IS_ENABLED(CONFIG_X86_PAE))
+	/* If the pgd points to a shared pagetable level (either the
+	   ptes in non-PAE, or shared PMD in PAE), then just copy the
+	   references from swapper_pg_dir. */
+	if (CONFIG_PGTABLE_LEVELS == 2 ||
+	    (CONFIG_PGTABLE_LEVELS == 3 && SHARED_KERNEL_PMD) ||
+	    CONFIG_PGTABLE_LEVELS >= 4) {
 		clone_pgd_range(pgd + KERNEL_PGD_BOUNDARY,
 				swapper_pg_dir + KERNEL_PGD_BOUNDARY,
 				KERNEL_PGD_PTRS);
+	}
 
-	/* List used to sync kernel mapping updates */
-	pgd_set_mm(pgd, mm);
-	pgd_list_add(pgd);
+	/* list required to sync kernel mapping updates */
+	if (!SHARED_KERNEL_PMD) {
+		pgd_set_mm(pgd, mm);
+		pgd_list_add(pgd);
+	}
 }
 
 static void pgd_dtor(pgd_t *pgd)
 {
+	if (SHARED_KERNEL_PMD)
+		return;
+
 	spin_lock(&pgd_lock);
 	pgd_list_del(pgd);
 	spin_unlock(&pgd_lock);
@@ -117,15 +132,15 @@ static void pgd_dtor(pgd_t *pgd)
  * processor notices the update.  Since this is expensive, and
  * all 4 top-level entries are used almost immediately in a
  * new process's life, we just pre-populate them here.
+ *
+ * Also, if we're in a paravirt environment where the kernel pmd is
+ * not shared between pagetables (!SHARED_KERNEL_PMDS), we allocate
+ * and initialize the kernel pmds here.
  */
-#define PREALLOCATED_PMDS	PTRS_PER_PGD
+#define PREALLOCATED_PMDS	UNSHARED_PTRS_PER_PGD
+#define MAX_PREALLOCATED_PMDS	MAX_UNSHARED_PTRS_PER_PGD
 
 /*
- * "USER_PMDS" are the PMDs for the user copy of the page tables when
- * PTI is enabled. They do not exist when PTI is disabled.  Note that
- * this is distinct from the user _portion_ of the kernel page tables
- * which always exists.
- *
  * We allocate separate PMDs for the kernel part of the user page-table
  * when PTI is enabled. We need them to map the per-process LDT into the
  * user-space page-table.
@@ -154,6 +169,7 @@ void pud_populate(struct mm_struct *mm, pud_t *pudp, pmd_t *pmd)
 
 /* No need to prepopulate any pagetable entries in non-PAE modes. */
 #define PREALLOCATED_PMDS	0
+#define MAX_PREALLOCATED_PMDS	0
 #define PREALLOCATED_USER_PMDS	 0
 #define MAX_PREALLOCATED_USER_PMDS 0
 #endif	/* CONFIG_X86_PAE */
@@ -189,7 +205,7 @@ static int preallocate_pmds(struct mm_struct *mm, pmd_t *pmds[], int count)
 
 		if (!ptdesc)
 			failed = true;
-		if (ptdesc && !pagetable_pmd_ctor(mm, ptdesc)) {
+		if (ptdesc && !pagetable_pmd_ctor(ptdesc)) {
 			pagetable_free(ptdesc);
 			ptdesc = NULL;
 			failed = true;
@@ -302,15 +318,68 @@ static void pgd_prepopulate_user_pmd(struct mm_struct *mm,
 {
 }
 #endif
+/*
+ * Xen paravirt assumes pgd table should be in one page. 64 bit kernel also
+ * assumes that pgd should be in one page.
+ *
+ * But kernel with PAE paging that is not running as a Xen domain
+ * only needs to allocate 32 bytes for pgd instead of one page.
+ */
+#ifdef CONFIG_X86_PAE
+
+#include <linux/slab.h>
+
+#define PGD_SIZE	(PTRS_PER_PGD * sizeof(pgd_t))
+#define PGD_ALIGN	32
+
+static struct kmem_cache *pgd_cache;
+
+void __init pgtable_cache_init(void)
+{
+	/*
+	 * When PAE kernel is running as a Xen domain, it does not use
+	 * shared kernel pmd. And this requires a whole page for pgd.
+	 */
+	if (!SHARED_KERNEL_PMD)
+		return;
+
+	/*
+	 * when PAE kernel is not running as a Xen domain, it uses
+	 * shared kernel pmd. Shared kernel pmd does not require a whole
+	 * page for pgd. We are able to just allocate a 32-byte for pgd.
+	 * During boot time, we create a 32-byte slab for pgd table allocation.
+	 */
+	pgd_cache = kmem_cache_create("pgd_cache", PGD_SIZE, PGD_ALIGN,
+				      SLAB_PANIC, NULL);
+}
 
 static inline pgd_t *_pgd_alloc(struct mm_struct *mm)
 {
 	/*
-	 * PTI and Xen need a whole page for the PAE PGD
-	 * even though the hardware only needs 32 bytes.
-	 *
-	 * For simplicity, allocate a page for all users.
+	 * If no SHARED_KERNEL_PMD, PAE kernel is running as a Xen domain.
+	 * We allocate one page for pgd.
 	 */
+	if (!SHARED_KERNEL_PMD)
+		return __pgd_alloc(mm, pgd_allocation_order());
+
+	/*
+	 * Now PAE kernel is not running as a Xen domain. We can allocate
+	 * a 32-byte slab for pgd to save memory space.
+	 */
+	return kmem_cache_alloc(pgd_cache, GFP_PGTABLE_USER);
+}
+
+static inline void _pgd_free(struct mm_struct *mm, pgd_t *pgd)
+{
+	if (!SHARED_KERNEL_PMD)
+		__pgd_free(mm, pgd);
+	else
+		kmem_cache_free(pgd_cache, pgd);
+}
+#else
+
+static inline pgd_t *_pgd_alloc(struct mm_struct *mm)
+{
 	return __pgd_alloc(mm, pgd_allocation_order());
 }
 
@@ -318,12 +387,13 @@ static inline void _pgd_free(struct mm_struct *mm, pgd_t *pgd)
 {
 	__pgd_free(mm, pgd);
 }
+#endif /* CONFIG_X86_PAE */
 
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
 	pgd_t *pgd;
 	pmd_t *u_pmds[MAX_PREALLOCATED_USER_PMDS];
-	pmd_t *pmds[PREALLOCATED_PMDS];
+	pmd_t *pmds[MAX_PREALLOCATED_PMDS];
 
 	pgd = _pgd_alloc(mm);
 
@@ -543,11 +613,11 @@ pud_t pudp_invalidate(struct vm_area_struct *vma, unsigned long address,
 #endif
 
 /**
- * reserve_top_address - Reserve a hole in the top of the kernel address space
- * @reserve: Size of hole to reserve
+ * reserve_top_address - reserves a hole in the top of kernel address space
+ * @reserve - size of hole to reserve
  *
  * Can be used to relocate the fixmap area and poke a hole in the top
- * of the kernel address space to make room for a hypervisor.
+ * of kernel address space to make room for a hypervisor.
  */
 void __init reserve_top_address(unsigned long reserve)
 {
@@ -592,12 +662,9 @@ void native_set_fixmap(unsigned /* enum fixed_addresses */ idx,
 }
 
 #ifdef CONFIG_HAVE_ARCH_HUGE_VMAP
-#if CONFIG_PGTABLE_LEVELS > 4
+#ifdef CONFIG_X86_5LEVEL
 /**
- * p4d_set_huge - Set up kernel P4D mapping
- * @p4d: Pointer to the P4D entry
- * @addr: Virtual address associated with the P4D entry
- * @prot: Protection bits to use
+ * p4d_set_huge - setup kernel P4D mapping
  *
  * No 512GB pages yet -- always return 0
  */
@@ -607,10 +674,9 @@ int p4d_set_huge(p4d_t *p4d, phys_addr_t addr, pgprot_t prot)
 }
 
 /**
- * p4d_clear_huge - Clear kernel P4D mapping when it is set
- * @p4d: Pointer to the P4D entry to clear
+ * p4d_clear_huge - clear kernel P4D mapping when it is set
  *
- * No 512GB pages yet -- do nothing
+ * No 512GB pages yet -- always return 0
  */
 void p4d_clear_huge(p4d_t *p4d)
 {
@@ -618,10 +684,7 @@ void p4d_clear_huge(p4d_t *p4d)
 #endif
 
 /**
- * pud_set_huge - Set up kernel PUD mapping
- * @pud: Pointer to the PUD entry
- * @addr: Virtual address associated with the PUD entry
- * @prot: Protection bits to use
+ * pud_set_huge - setup kernel PUD mapping
  *
  * MTRRs can override PAT memory types with 4KiB granularity. Therefore, this
  * function sets up a huge page only if the complete range has the same MTRR
@@ -652,10 +715,7 @@ int pud_set_huge(pud_t *pud, phys_addr_t addr, pgprot_t prot)
 }
 
 /**
- * pmd_set_huge - Set up kernel PMD mapping
- * @pmd: Pointer to the PMD entry
- * @addr: Virtual address associated with the PMD entry
- * @prot: Protection bits to use
+ * pmd_set_huge - setup kernel PMD mapping
  *
  * See text over pud_set_huge() above.
  *
@@ -684,8 +744,7 @@ int pmd_set_huge(pmd_t *pmd, phys_addr_t addr, pgprot_t prot)
 }
 
 /**
- * pud_clear_huge - Clear kernel PUD mapping when it is set
- * @pud: Pointer to the PUD entry to clear.
+ * pud_clear_huge - clear kernel PUD mapping when it is set
  *
  * Returns 1 on success and 0 on failure (no PUD map is found).
  */
@@ -700,8 +759,7 @@ int pud_clear_huge(pud_t *pud)
 }
 
 /**
- * pmd_clear_huge - Clear kernel PMD mapping when it is set
- * @pmd: Pointer to the PMD entry to clear.
+ * pmd_clear_huge - clear kernel PMD mapping when it is set
  *
  * Returns 1 on success and 0 on failure (no PMD map is found).
  */
@@ -717,11 +775,11 @@ int pmd_clear_huge(pmd_t *pmd)
 
 #ifdef CONFIG_X86_64
 /**
- * pud_free_pmd_page - Clear PUD entry and free PMD page
- * @pud: Pointer to a PUD
- * @addr: Virtual address associated with PUD
+ * pud_free_pmd_page - Clear pud entry and free pmd page.
+ * @pud: Pointer to a PUD.
+ * @addr: Virtual address associated with pud.
  *
- * Context: The PUD range has been unmapped and TLB purged.
+ * Context: The pud range has been unmapped and TLB purged.
  * Return: 1 if clearing the entry succeeded. 0 otherwise.
  *
  * NOTE: Callers must allow a single page allocation.
@@ -751,23 +809,24 @@ int pud_free_pmd_page(pud_t *pud, unsigned long addr)
 	for (i = 0; i < PTRS_PER_PMD; i++) {
 		if (!pmd_none(pmd_sv[i])) {
 			pte = (pte_t *)pmd_page_vaddr(pmd_sv[i]);
-			pte_free_kernel(&init_mm, pte);
+			free_page((unsigned long)pte);
 		}
 	}
 
 	free_page((unsigned long)pmd_sv);
 
-	pmd_free(&init_mm, pmd);
+	pagetable_dtor(virt_to_ptdesc(pmd));
+	free_page((unsigned long)pmd);
 
 	return 1;
 }
 
 /**
- * pmd_free_pte_page - Clear PMD entry and free PTE page.
- * @pmd: Pointer to the PMD
- * @addr: Virtual address associated with PMD
+ * pmd_free_pte_page - Clear pmd entry and free pte page.
+ * @pmd: Pointer to a PMD.
+ * @addr: Virtual address associated with pmd.
  *
- * Context: The PMD range has been unmapped and TLB purged.
+ * Context: The pmd range has been unmapped and TLB purged.
  * Return: 1 if clearing the entry succeeded. 0 otherwise.
  */
 int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
@@ -780,7 +839,7 @@ int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
 	/* INVLPG to clear all paging-structure caches */
 	flush_tlb_kernel_range(addr, addr + PAGE_SIZE-1);
 
-	pte_free_kernel(&init_mm, pte);
+	free_page((unsigned long)pte);
 
 	return 1;
 }
@@ -789,7 +848,7 @@ int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
 
 /*
  * Disable free page handling on x86-PAE. This assures that ioremap()
- * does not update sync'd PMD entries. See vmalloc_sync_one().
+ * does not update sync'd pmd entries. See vmalloc_sync_one().
  */
 int pmd_free_pte_page(pmd_t *pmd, unsigned long addr)
 {

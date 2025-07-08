@@ -332,16 +332,13 @@ static bool intel_vsec_walk_vsec(struct pci_dev *pdev,
 	return have_devices;
 }
 
-int intel_vsec_register(struct pci_dev *pdev,
+void intel_vsec_register(struct pci_dev *pdev,
 			 struct intel_vsec_platform_info *info)
 {
 	if (!pdev || !info || !info->headers)
-		return -EINVAL;
+		return;
 
-	if (!intel_vsec_walk_header(pdev, info))
-		return -ENODEV;
-	else
-		return 0;
+	intel_vsec_walk_header(pdev, info);
 }
 EXPORT_SYMBOL_NS_GPL(intel_vsec_register, "INTEL_VSEC");
 

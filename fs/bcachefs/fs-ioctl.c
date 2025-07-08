@@ -172,10 +172,7 @@ static int bch2_ioc_goingdown(struct bch_fs *c, u32 __user *arg)
 	if (get_user(flags, arg))
 		return -EFAULT;
 
-	struct printbuf buf = PRINTBUF;
-	bch2_log_msg_start(c, &buf);
-
-	prt_printf(&buf, "shutdown by ioctl type %u", flags);
+	bch_notice(c, "shutdown by ioctl type %u", flags);
 
 	switch (flags) {
 	case FSOP_GOING_FLAGS_DEFAULT:
@@ -183,23 +180,20 @@ static int bch2_ioc_goingdown(struct bch_fs *c, u32 __user *arg)
 		if (ret)
 			break;
 		bch2_journal_flush(&c->journal);
-		bch2_fs_emergency_read_only2(c, &buf);
+		bch2_fs_emergency_read_only(c);
 		bdev_thaw(c->vfs_sb->s_bdev);
 		break;
 	case FSOP_GOING_FLAGS_LOGFLUSH:
 		bch2_journal_flush(&c->journal);
 		fallthrough;
 	case FSOP_GOING_FLAGS_NOLOGFLUSH:
-		bch2_fs_emergency_read_only2(c, &buf);
+		bch2_fs_emergency_read_only(c);
 		break;
 	default:
 		ret = -EINVAL;
-		goto noprint;
+		break;
 	}
 
-	bch2_print_str(c, KERN_ERR, buf.buf);
-noprint:
-	printbuf_exit(&buf);
 	return ret;
 }
 
@@ -268,13 +262,13 @@ static long bch2_ioctl_subvolume_create(struct bch_fs *c, struct file *filp,
 	}
 
 	if (dst_dentry->d_inode) {
-		error = bch_err_throw(c, EEXIST_subvolume_create);
+		error = -BCH_ERR_EEXIST_subvolume_create;
 		goto err3;
 	}
 
 	dir = dst_path.dentry->d_inode;
 	if (IS_DEADDIR(dir)) {
-		error = bch_err_throw(c, ENOENT_directory_dead);
+		error = -BCH_ERR_ENOENT_directory_dead;
 		goto err3;
 	}
 

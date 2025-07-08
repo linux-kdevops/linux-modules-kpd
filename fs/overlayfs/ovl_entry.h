@@ -51,7 +51,7 @@ struct ovl_path {
 
 struct ovl_entry {
 	unsigned int __numlower;
-	struct ovl_path __lowerstack[] __counted_by(__numlower);
+	struct ovl_path __lowerstack[];
 };
 
 /* private information held for overlayfs's superblock */

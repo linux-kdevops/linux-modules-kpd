@@ -480,10 +480,6 @@ enum sharpness_setting	{
 	SHARPNESS_ZERO,
 	SHARPNESS_CUSTOM
 };
-enum sharpness_range_source	{
-	SHARPNESS_RANGE_DCN = 0,
-	SHARPNESS_RANGE_DCN_OVERRIDE
-};
 struct spl_sharpness_range {
 	int sdr_rgb_min;
 	int sdr_rgb_max;

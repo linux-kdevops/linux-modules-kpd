@@ -19,7 +19,6 @@ Industrial I/O Kernel Drivers
 .. toctree::
    :maxdepth: 1
 
-   ad3552r
    ad4000
    ad4030
    ad4695

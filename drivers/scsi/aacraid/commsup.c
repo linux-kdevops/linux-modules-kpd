@@ -48,7 +48,15 @@
 
 static int fib_map_alloc(struct aac_dev *dev)
 {
-	dev->max_cmd_size = AAC_MAX_NATIVE_SIZE;
+	if (dev->max_fib_size > AAC_MAX_NATIVE_SIZE)
+		dev->max_cmd_size = AAC_MAX_NATIVE_SIZE;
+	else
+		dev->max_cmd_size = dev->max_fib_size;
+	if (dev->max_fib_size < AAC_MAX_NATIVE_SIZE) {
+		dev->max_cmd_size = AAC_MAX_NATIVE_SIZE;
+	} else {
+		dev->max_cmd_size = dev->max_fib_size;
+	}
 
 	dprintk((KERN_INFO
 	  "allocate hardware fibs dma_alloc_coherent(%p, %d * (%d + %d), %p)\n",

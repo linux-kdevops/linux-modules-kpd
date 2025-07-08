@@ -7,8 +7,8 @@
 
 static struct pci_dev *screen_info_lfb_pdev;
 static size_t screen_info_lfb_bar;
-static resource_size_t screen_info_lfb_res_start; // original start of resource
-static resource_size_t screen_info_lfb_offset; // framebuffer offset within resource
+static resource_size_t screen_info_lfb_offset;
+static struct resource screen_info_lfb_res = DEFINE_RES_MEM(0, 0);
 
 static bool __screen_info_relocation_is_valid(const struct screen_info *si, struct resource *pr)
 {
@@ -31,7 +31,7 @@ void screen_info_apply_fixups(void)
 	if (screen_info_lfb_pdev) {
 		struct resource *pr = &screen_info_lfb_pdev->resource[screen_info_lfb_bar];
 
-		if (pr->start != screen_info_lfb_res_start) {
+		if (pr->start != screen_info_lfb_res.start) {
 			if (__screen_info_relocation_is_valid(si, pr)) {
 				/*
 				 * Only update base if we have an actual
@@ -47,67 +47,46 @@ void screen_info_apply_fixups(void)
 	}
 }
 
-static int __screen_info_lfb_pci_bus_region(const struct screen_info *si, unsigned int type,
-					    struct pci_bus_region *r)
-{
-	u64 base, size;
-
-	base = __screen_info_lfb_base(si);
-	if (!base)
-		return -EINVAL;
-
-	size = __screen_info_lfb_size(si, type);
-	if (!size)
-		return -EINVAL;
-
-	r->start = base;
-	r->end = base + size - 1;
-
-	return 0;
-}
-
 static void screen_info_fixup_lfb(struct pci_dev *pdev)
 {
 	unsigned int type;
-	struct pci_bus_region bus_region;
+	struct resource res[SCREEN_INFO_MAX_RESOURCES];
+	size_t i, numres;
 	int ret;
-	struct resource r = {
-		.flags = IORESOURCE_MEM,
-	};
-	const struct resource *pr;
 	const struct screen_info *si = &screen_info;
 
 	if (screen_info_lfb_pdev)
 		return; // already found
 
 	type = screen_info_video_type(si);
-	if (!__screen_info_has_lfb(type))
-		return; // only applies to EFI; maybe VESA
+	if (type != VIDEO_TYPE_EFI)
+		return; // only applies to EFI
 
-	ret = __screen_info_lfb_pci_bus_region(si, type, &bus_region);
+	ret = screen_info_resources(si, res, ARRAY_SIZE(res));
 	if (ret < 0)
 		return;
+	numres = ret;
 
-	/*
-	 * Translate the PCI bus address to resource. Account
-	 * for an offset if the framebuffer is behind a PCI host
-	 * bridge.
-	 */
-	pcibios_bus_to_resource(pdev->bus, &r, &bus_region);
+	for (i = 0; i < numres; ++i) {
+		struct resource *r = &res[i];
+		const struct resource *pr;
 
-	pr = pci_find_resource(pdev, &r);
-	if (!pr)
-		return;
+		if (!(r->flags & IORESOURCE_MEM))
+			continue;
+		pr = pci_find_resource(pdev, r);
+		if (!pr)
+			continue;
 
-	/*
-	 * We've found a PCI device with the framebuffer
-	 * resource. Store away the parameters to track
-	 * relocation of the framebuffer aperture.
-	 */
-	screen_info_lfb_pdev = pdev;
-	screen_info_lfb_bar = pr - pdev->resource;
-	screen_info_lfb_offset = r.start - pr->start;
-	screen_info_lfb_res_start = bus_region.start;
+		/*
+		 * We've found a PCI device with the framebuffer
+		 * resource. Store away the parameters to track
+		 * relocation of the framebuffer aperture.
+		 */
+		screen_info_lfb_pdev = pdev;
+		screen_info_lfb_bar = pr - pdev->resource;
+		screen_info_lfb_offset = r->start - pr->start;
+		memcpy(&screen_info_lfb_res, r, sizeof(screen_info_lfb_res));
+	}
 }
 DECLARE_PCI_FIXUP_CLASS_HEADER(PCI_ANY_ID, PCI_ANY_ID, PCI_BASE_CLASS_DISPLAY, 16,
 			       screen_info_fixup_lfb);

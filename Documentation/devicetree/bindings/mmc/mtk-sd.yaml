@@ -32,7 +32,6 @@ properties:
           - const: mediatek,mt2701-mmc
       - items:
           - enum:
-              - mediatek,mt6893-mmc
               - mediatek,mt8186-mmc
               - mediatek,mt8188-mmc
               - mediatek,mt8192-mmc
@@ -300,7 +299,6 @@ allOf:
       properties:
         compatible:
           enum:
-            - mediatek,mt6893-mmc
             - mediatek,mt8186-mmc
             - mediatek,mt8188-mmc
             - mediatek,mt8195-mmc

@@ -7,7 +7,7 @@
 #ifndef _ASM_VDSO_VDSO_H
 #define _ASM_VDSO_VDSO_H
 
-#ifndef __ASSEMBLER__
+#ifndef __ASSEMBLY__
 
 #include <asm/asm.h>
 #include <asm/page.h>
@@ -16,6 +16,6 @@
 
 #define VVAR_SIZE (VDSO_NR_PAGES << PAGE_SHIFT)
 
-#endif /* __ASSEMBLER__ */
+#endif /* __ASSEMBLY__ */
 
 #endif

@@ -507,8 +507,7 @@ static int pm8xxx_gpio_get(struct gpio_chip *chip, unsigned offset)
 	return ret;
 }
 
-static int pm8xxx_gpio_set(struct gpio_chip *chip, unsigned int offset,
-			   int value)
+static void pm8xxx_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 {
 	struct pm8xxx_gpio *pctrl = gpiochip_get_data(chip);
 	struct pm8xxx_pin_data *pin = pctrl->desc.pins[offset].drv_data;
@@ -520,7 +519,7 @@ static int pm8xxx_gpio_set(struct gpio_chip *chip, unsigned int offset,
 	val |= pin->open_drain << 1;
 	val |= pin->output_value;
 
-	return pm8xxx_write_bank(pctrl, pin, 1, val);
+	pm8xxx_write_bank(pctrl, pin, 1, val);
 }
 
 static int pm8xxx_gpio_of_xlate(struct gpio_chip *chip,
@@ -597,7 +596,7 @@ static const struct gpio_chip pm8xxx_gpio_template = {
 	.direction_input = pm8xxx_gpio_direction_input,
 	.direction_output = pm8xxx_gpio_direction_output,
 	.get = pm8xxx_gpio_get,
-	.set_rv = pm8xxx_gpio_set,
+	.set = pm8xxx_gpio_set,
 	.of_xlate = pm8xxx_gpio_of_xlate,
 	.dbg_show = pm8xxx_gpio_dbg_show,
 	.owner = THIS_MODULE,

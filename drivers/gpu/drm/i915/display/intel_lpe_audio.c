@@ -179,7 +179,7 @@ static int lpe_audio_irq_init(struct intel_display *display)
 				handle_simple_irq,
 				"hdmi_lpe_audio_irq_handler");
 
-	return 0;
+	return irq_set_chip_data(irq, dev_priv);
 }
 
 static bool lpe_audio_detect(struct intel_display *display)

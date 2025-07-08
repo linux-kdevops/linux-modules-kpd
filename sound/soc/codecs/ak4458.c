@@ -586,9 +586,13 @@ static const struct snd_pcm_hw_constraint_list ak4458_rate_constraints = {
 static int ak4458_startup(struct snd_pcm_substream *substream,
 			  struct snd_soc_dai *dai)
 {
-	return snd_pcm_hw_constraint_list(substream->runtime, 0,
-					  SNDRV_PCM_HW_PARAM_RATE,
-					  &ak4458_rate_constraints);
+	int ret;
+
+	ret = snd_pcm_hw_constraint_list(substream->runtime, 0,
+					 SNDRV_PCM_HW_PARAM_RATE,
+					 &ak4458_rate_constraints);
+
+	return ret;
 }
 
 static const struct snd_soc_dai_ops ak4458_dai_ops = {

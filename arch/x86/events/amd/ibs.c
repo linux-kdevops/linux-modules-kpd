@@ -15,7 +15,6 @@
 #include <linux/sched/clock.h>
 
 #include <asm/apic.h>
-#include <asm/msr.h>
 
 #include "../perf_event.h"
 
@@ -27,7 +26,7 @@ static u32 ibs_caps;
 #include <linux/hardirq.h>
 
 #include <asm/nmi.h>
-#include <asm/amd/ibs.h>
+#include <asm/amd-ibs.h>
 
 /* attr.config2 */
 #define IBS_SW_FILTER_MASK	1
@@ -425,7 +424,7 @@ perf_ibs_event_update(struct perf_ibs *perf_ibs, struct perf_event *event,
 	 * prev count manually on overflow.
 	 */
 	while (!perf_event_try_update(event, count, 64)) {
-		rdmsrq(event->hw.config_base, *config);
+		rdmsrl(event->hw.config_base, *config);
 		count = perf_ibs->get_count(*config);
 	}
 }
@@ -436,9 +435,9 @@ static inline void perf_ibs_enable_event(struct perf_ibs *perf_ibs,
 	u64 tmp = hwc->config | config;
 
 	if (perf_ibs->fetch_count_reset_broken)
-		wrmsrq(hwc->config_base, tmp & ~perf_ibs->enable_mask);
+		wrmsrl(hwc->config_base, tmp & ~perf_ibs->enable_mask);
 
-	wrmsrq(hwc->config_base, tmp | perf_ibs->enable_mask);
+	wrmsrl(hwc->config_base, tmp | perf_ibs->enable_mask);
 }
 
 /*
@@ -453,9 +452,9 @@ static inline void perf_ibs_disable_event(struct perf_ibs *perf_ibs,
 {
 	config &= ~perf_ibs->cnt_mask;
 	if (boot_cpu_data.x86 == 0x10)
-		wrmsrq(hwc->config_base, config);
+		wrmsrl(hwc->config_base, config);
 	config &= ~perf_ibs->enable_mask;
-	wrmsrq(hwc->config_base, config);
+	wrmsrl(hwc->config_base, config);
 }
 
 /*
@@ -514,7 +513,7 @@ static void perf_ibs_stop(struct perf_event *event, int flags)
 	if (!stopping && (hwc->state & PERF_HES_UPTODATE))
 		return;
 
-	rdmsrq(hwc->config_base, config);
+	rdmsrl(hwc->config_base, config);
 
 	if (stopping) {
 		/*
@@ -1257,7 +1256,7 @@ fail:
 	hwc = &event->hw;
 	msr = hwc->config_base;
 	buf = ibs_data.regs;
-	rdmsrq(msr, *buf);
+	rdmsrl(msr, *buf);
 	if (!(*buf++ & perf_ibs->valid_mask))
 		goto fail;
 
@@ -1275,7 +1274,7 @@ fail:
 	offset_max = perf_ibs_get_offset_max(perf_ibs, event, check_rip);
 
 	do {
-		rdmsrq(msr + offset, *buf++);
+		rdmsrl(msr + offset, *buf++);
 		size++;
 		offset = find_next_bit(perf_ibs->offset_mask,
 				       perf_ibs->offset_max,
@@ -1305,17 +1304,17 @@ fail:
 	if (event->attr.sample_type & PERF_SAMPLE_RAW) {
 		if (perf_ibs == &perf_ibs_op) {
 			if (ibs_caps & IBS_CAPS_BRNTRGT) {
-				rdmsrq(MSR_AMD64_IBSBRTARGET, *buf++);
+				rdmsrl(MSR_AMD64_IBSBRTARGET, *buf++);
 				br_target_idx = size;
 				size++;
 			}
 			if (ibs_caps & IBS_CAPS_OPDATA4) {
-				rdmsrq(MSR_AMD64_IBSOPDATA4, *buf++);
+				rdmsrl(MSR_AMD64_IBSOPDATA4, *buf++);
 				size++;
 			}
 		}
 		if (perf_ibs == &perf_ibs_fetch && (ibs_caps & IBS_CAPS_FETCHCTLEXTD)) {
-			rdmsrq(MSR_AMD64_ICIBSEXTDCTL, *buf++);
+			rdmsrl(MSR_AMD64_ICIBSEXTDCTL, *buf++);
 			size++;
 		}
 	}
@@ -1374,7 +1373,9 @@ fail:
 		hwc->sample_period = perf_ibs->min_period;
 
 out:
-	if (!throttle) {
+	if (throttle) {
+		perf_ibs_stop(event, 0);
+	} else {
 		if (perf_ibs == &perf_ibs_op) {
 			if (ibs_caps & IBS_CAPS_OPCNTEXT) {
 				new_config = period & IBS_OP_MAX_CNT_EXT_MASK;
@@ -1564,7 +1565,7 @@ static inline int ibs_eilvt_valid(void)
 
 	preempt_disable();
 
-	rdmsrq(MSR_AMD64_IBSCTL, val);
+	rdmsrl(MSR_AMD64_IBSCTL, val);
 	offset = val & IBSCTL_LVT_OFFSET_MASK;
 
 	if (!(val & IBSCTL_LVT_OFFSET_VALID)) {
@@ -1679,7 +1680,7 @@ static inline int get_ibs_lvt_offset(void)
 {
 	u64 val;
 
-	rdmsrq(MSR_AMD64_IBSCTL, val);
+	rdmsrl(MSR_AMD64_IBSCTL, val);
 	if (!(val & IBSCTL_LVT_OFFSET_VALID))
 		return -EINVAL;
 

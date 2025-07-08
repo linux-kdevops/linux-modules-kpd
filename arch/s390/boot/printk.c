@@ -29,8 +29,7 @@ static void boot_rb_add(const char *str, size_t len)
 	/* store strings separated by '\0' */
 	if (len + 1 > avail)
 		boot_rb_off = 0;
-	avail = sizeof(boot_rb) - boot_rb_off - 1;
-	strscpy(boot_rb + boot_rb_off, str, avail);
+	strcpy(boot_rb + boot_rb_off, str);
 	boot_rb_off += len + 1;
 }
 
@@ -159,10 +158,10 @@ static noinline char *strsym(char *buf, void *ip)
 
 	p = findsym((unsigned long)ip, &off, &len);
 	if (p) {
-		strscpy(buf, p, MAX_SYMLEN);
+		strncpy(buf, p, MAX_SYMLEN);
 		/* reserve 15 bytes for offset/len in symbol+0x1234/0x1234 */
 		p = buf + strnlen(buf, MAX_SYMLEN - 15);
-		strscpy(p, "+0x", MAX_SYMLEN - (p - buf));
+		strcpy(p, "+0x");
 		as_hex(p + 3, off, 0);
 		strcat(p, "/0x");
 		as_hex(p + strlen(p), len, 0);

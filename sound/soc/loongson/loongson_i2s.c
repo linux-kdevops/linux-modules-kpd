@@ -9,7 +9,6 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
-#include <linux/export.h>
 #include <linux/pm_runtime.h>
 #include <linux/dma-mapping.h>
 #include <sound/soc.h>

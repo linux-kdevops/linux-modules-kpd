@@ -477,10 +477,10 @@ static int solo_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	pci_write_config_byte(pdev, 0x40, 0x00);
 	pci_write_config_byte(pdev, 0x41, 0x00);
 
-	solo_dev->reg_base = pcim_iomap_region(pdev, 0, SOLO6X10_NAME);
-	ret = PTR_ERR_OR_ZERO(solo_dev->reg_base);
+	ret = pcim_iomap_regions(pdev, BIT(0), SOLO6X10_NAME);
 	if (ret)
 		goto fail_probe;
+	solo_dev->reg_base = pcim_iomap_table(pdev)[0];
 
 	chip_id = solo_reg_read(solo_dev, SOLO_CHIP_OPTION) &
 				SOLO_CHIP_ID_MASK;

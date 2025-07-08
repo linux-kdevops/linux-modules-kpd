@@ -1486,6 +1486,7 @@ static struct platform_driver sar2130p_tlmm_driver = {
 		.of_match_table = sar2130p_tlmm_of_match,
 	},
 	.probe = sar2130p_tlmm_probe,
+	.remove = msm_pinctrl_remove,
 };
 
 static int __init sar2130p_tlmm_init(void)

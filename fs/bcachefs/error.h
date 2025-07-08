@@ -18,12 +18,7 @@ struct work_struct;
 
 /* Error messages: */
 
-void __bch2_log_msg_start(const char *, struct printbuf *);
-
-static inline void bch2_log_msg_start(struct bch_fs *c, struct printbuf *out)
-{
-	__bch2_log_msg_start(c->name, out);
-}
+void bch2_log_msg_start(struct bch_fs *, struct printbuf *);
 
 /*
  * Inconsistency errors: The on disk data is inconsistent. If these occur during
@@ -81,13 +76,11 @@ struct fsck_err_state {
 
 #define fsck_err_count(_c, _err)	bch2_sb_err_count(_c, BCH_FSCK_ERR_##_err)
 
-bool __bch2_count_fsck_err(struct bch_fs *, enum bch_sb_error_id, struct printbuf *);
+void __bch2_count_fsck_err(struct bch_fs *,
+			   enum bch_sb_error_id, const char *,
+			   bool *, bool *, bool *);
 #define bch2_count_fsck_err(_c, _err, ...)				\
 	__bch2_count_fsck_err(_c, BCH_FSCK_ERR_##_err, __VA_ARGS__)
-
-int bch2_fsck_err_opt(struct bch_fs *,
-		      enum bch_fsck_flags,
-		      enum bch_sb_error_id);
 
 __printf(5, 6) __cold
 int __bch2_fsck_err(struct bch_fs *, struct btree_trans *,
@@ -105,13 +98,13 @@ void bch2_free_fsck_errs(struct bch_fs *);
 #define fsck_err_wrap(_do)						\
 ({									\
 	int _ret = _do;							\
-	if (!bch2_err_matches(_ret, BCH_ERR_fsck_fix) &&		\
-	    !bch2_err_matches(_ret, BCH_ERR_fsck_ignore)) {		\
+	if (_ret != -BCH_ERR_fsck_fix &&				\
+	    _ret != -BCH_ERR_fsck_ignore) {				\
 		ret = _ret;						\
 		goto fsck_err;						\
 	}								\
 									\
-	bch2_err_matches(_ret, BCH_ERR_fsck_fix);			\
+	_ret == -BCH_ERR_fsck_fix;					\
 })
 
 #define __fsck_err(...)		fsck_err_wrap(bch2_fsck_err(__VA_ARGS__))
@@ -170,10 +163,10 @@ do {									\
 	int _ret = __bch2_bkey_fsck_err(c, k, from,			\
 				BCH_FSCK_ERR_##_err_type,		\
 				_err_msg, ##__VA_ARGS__);		\
-	if (!bch2_err_matches(_ret, BCH_ERR_fsck_fix) &&		\
-	    !bch2_err_matches(_ret, BCH_ERR_fsck_ignore))		\
+	if (_ret != -BCH_ERR_fsck_fix &&				\
+	    _ret != -BCH_ERR_fsck_ignore)				\
 		ret = _ret;						\
-	ret = bch_err_throw(c, fsck_delete_bkey);			\
+	ret = -BCH_ERR_fsck_delete_bkey;				\
 	goto fsck_err;							\
 } while (0)
 

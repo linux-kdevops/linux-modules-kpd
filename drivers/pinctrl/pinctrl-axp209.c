@@ -192,30 +192,34 @@ static int axp20x_gpio_get_direction(struct gpio_chip *chip,
 static int axp20x_gpio_output(struct gpio_chip *chip, unsigned int offset,
 			      int value)
 {
-	return chip->set_rv(chip, offset, value);
+	chip->set(chip, offset, value);
+
+	return 0;
 }
 
-static int axp20x_gpio_set(struct gpio_chip *chip, unsigned int offset,
-			   int value)
+static void axp20x_gpio_set(struct gpio_chip *chip, unsigned int offset,
+			    int value)
 {
 	struct axp20x_pctl *pctl = gpiochip_get_data(chip);
 	int reg;
 
 	/* AXP209 has GPIO3 status sharing the settings register */
-	if (offset == 3)
-		return regmap_update_bits(pctl->regmap, AXP20X_GPIO3_CTRL,
-					  AXP20X_GPIO3_FUNCTIONS,
-					  value ?
-						AXP20X_GPIO3_FUNCTION_OUT_HIGH :
-						AXP20X_GPIO3_FUNCTION_OUT_LOW);
+	if (offset == 3) {
+		regmap_update_bits(pctl->regmap, AXP20X_GPIO3_CTRL,
+				   AXP20X_GPIO3_FUNCTIONS,
+				   value ? AXP20X_GPIO3_FUNCTION_OUT_HIGH :
+				   AXP20X_GPIO3_FUNCTION_OUT_LOW);
+		return;
+	}
 
 	reg = axp20x_gpio_get_reg(offset);
 	if (reg < 0)
-		return reg;
+		return;
 
-	return regmap_update_bits(pctl->regmap, reg, AXP20X_GPIO_FUNCTIONS,
-				  value ? AXP20X_GPIO_FUNCTION_OUT_HIGH :
-					  AXP20X_GPIO_FUNCTION_OUT_LOW);
+	regmap_update_bits(pctl->regmap, reg,
+			   AXP20X_GPIO_FUNCTIONS,
+			   value ? AXP20X_GPIO_FUNCTION_OUT_HIGH :
+			   AXP20X_GPIO_FUNCTION_OUT_LOW);
 }
 
 static int axp20x_pmx_set(struct pinctrl_dev *pctldev, unsigned int offset,
@@ -225,11 +229,12 @@ static int axp20x_pmx_set(struct pinctrl_dev *pctldev, unsigned int offset,
 	int reg;
 
 	/* AXP209 GPIO3 settings have a different layout */
-	if (offset == 3)
+	if (offset == 3) {
 		return regmap_update_bits(pctl->regmap, AXP20X_GPIO3_CTRL,
 				   AXP20X_GPIO3_FUNCTIONS,
 				   config == AXP20X_MUX_GPIO_OUT ? AXP20X_GPIO3_FUNCTION_OUT_LOW :
 				   AXP20X_GPIO3_FUNCTION_INPUT);
+	}
 
 	reg = axp20x_gpio_get_reg(offset);
 	if (reg < 0)
@@ -463,7 +468,7 @@ static int axp20x_pctl_probe(struct platform_device *pdev)
 	pctl->chip.owner		= THIS_MODULE;
 	pctl->chip.get			= axp20x_gpio_get;
 	pctl->chip.get_direction	= axp20x_gpio_get_direction;
-	pctl->chip.set_rv		= axp20x_gpio_set;
+	pctl->chip.set			= axp20x_gpio_set;
 	pctl->chip.direction_input	= pinctrl_gpio_direction_input;
 	pctl->chip.direction_output	= axp20x_gpio_output;
 

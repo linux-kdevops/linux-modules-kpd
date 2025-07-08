@@ -181,8 +181,6 @@ struct gpio_desc *devm_fwnode_gpiod_get_index(struct device *dev,
 					      enum gpiod_flags flags,
 					      const char *label);
 
-bool gpiod_is_equal(struct gpio_desc *desc, struct gpio_desc *other);
-
 #else /* CONFIG_GPIOLIB */
 
 #include <linux/bug.h>
@@ -550,13 +548,6 @@ struct gpio_desc *devm_fwnode_gpiod_get_index(struct device *dev,
 	return ERR_PTR(-ENOSYS);
 }
 
-static inline bool
-gpiod_is_equal(struct gpio_desc *desc, struct gpio_desc *other)
-{
-	WARN_ON(desc || other);
-	return false;
-}
-
 #endif /* CONFIG_GPIOLIB */
 
 #if IS_ENABLED(CONFIG_GPIOLIB) && IS_ENABLED(CONFIG_HTE)
@@ -597,7 +588,7 @@ struct gpio_desc *devm_fwnode_gpiod_get(struct device *dev,
 
 struct acpi_gpio_params {
 	unsigned int crs_entry_index;
-	unsigned short line_index;
+	unsigned int line_index;
 	bool active_low;
 };
 

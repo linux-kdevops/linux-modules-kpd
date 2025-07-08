@@ -1,6 +1,5 @@
 # keeps printing vkms_vblank_simulate: vblank timer overrun and never ends
 kms_invalid_mode@int-max-clock
-kms_invalid_mode@overflow-vrefresh
 
 # kernel panic seen with kms_cursor_crc tests
 kms_cursor_crc.*
@@ -803,7 +802,6 @@ gem_.*
 i915_.*
 xe_.*
 tools_test.*
-kms_dp_link_training.*
 
 # IGT issue. is_joiner_mode() should return false for non-Intel hardware.
 # https://gitlab.freedesktop.org/drm/igt-gpu-tools/-/issues/162

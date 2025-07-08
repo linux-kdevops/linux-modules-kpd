@@ -405,7 +405,7 @@ static int stripe_end_io(struct dm_target *ti, struct bio *bio,
 		blk_status_t *error)
 {
 	unsigned int i;
-	char major_minor[22];
+	char major_minor[16];
 	struct stripe_c *sc = ti->private;
 
 	if (!*error)
@@ -417,7 +417,8 @@ static int stripe_end_io(struct dm_target *ti, struct bio *bio,
 	if (*error == BLK_STS_NOTSUPP)
 		return DM_ENDIO_DONE;
 
-	format_dev_t(major_minor, bio_dev(bio));
+	memset(major_minor, 0, sizeof(major_minor));
+	sprintf(major_minor, "%d:%d", MAJOR(bio_dev(bio)), MINOR(bio_dev(bio)));
 
 	/*
 	 * Test to see which stripe drive triggered the event

@@ -149,9 +149,21 @@ struct stmmac_channel {
 };
 
 struct stmmac_fpe_cfg {
-	struct ethtool_mmsv mmsv;
+	/* Serialize access to MAC Merge state between ethtool requests
+	 * and link state updates.
+	 */
+	spinlock_t lock;
+
 	const struct stmmac_fpe_reg *reg;
-	u32 fpe_csr;	/* MAC_FPE_CTRL_STS reg cache */
+	u32 fpe_csr;				/* MAC_FPE_CTRL_STS reg cache */
+
+	enum ethtool_mm_verify_status status;
+	struct timer_list verify_timer;
+	bool verify_enabled;
+	int verify_retries;
+	bool pmac_enabled;
+	u32 verify_time;
+	bool tx_enabled;
 };
 
 struct stmmac_tc_entry {
@@ -301,7 +313,7 @@ struct stmmac_priv {
 	unsigned int mode;
 	unsigned int chain_mode;
 	int extend_desc;
-	struct kernel_hwtstamp_config tstamp_config;
+	struct hwtstamp_config tstamp_config;
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_clock_ops;
 	unsigned int default_addend;

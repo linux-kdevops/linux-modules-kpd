@@ -98,87 +98,69 @@ struct ct_iter_state {
 	struct seq_net_private p;
 	struct hlist_nulls_head *hash;
 	unsigned int htable_size;
-	unsigned int skip_elems;
 	unsigned int bucket;
 	u_int64_t time_now;
 };
 
-static struct nf_conntrack_tuple_hash *ct_get_next(const struct net *net,
-						   struct ct_iter_state *st)
+static struct hlist_nulls_node *ct_get_first(struct seq_file *seq)
 {
-	struct nf_conntrack_tuple_hash *h;
+	struct ct_iter_state *st = seq->private;
 	struct hlist_nulls_node *n;
-	unsigned int i;
 
-	for (i = st->bucket; i < st->htable_size; i++) {
-		unsigned int skip = 0;
-
-restart:
-		hlist_nulls_for_each_entry_rcu(h, n, &st->hash[i], hnnode) {
-			struct nf_conn *ct = nf_ct_tuplehash_to_ctrack(h);
-			struct hlist_nulls_node *tmp = n;
-
-			if (!net_eq(net, nf_ct_net(ct)))
-				continue;
-
-			if (++skip <= st->skip_elems)
-				continue;
-
-			/* h should be returned, skip to nulls marker. */
-			while (!is_a_nulls(tmp))
-				tmp = rcu_dereference(hlist_nulls_next_rcu(tmp));
-
-			/* check if h is still linked to hash[i] */
-			if (get_nulls_value(tmp) != i) {
-				skip = 0;
-				goto restart;
-			}
-
-			st->skip_elems = skip;
-			st->bucket = i;
-			return h;
-		}
-
-		skip = 0;
-		if (get_nulls_value(n) != i)
-			goto restart;
-
-		st->skip_elems = 0;
+	for (st->bucket = 0;
+	     st->bucket < st->htable_size;
+	     st->bucket++) {
+		n = rcu_dereference(
+			hlist_nulls_first_rcu(&st->hash[st->bucket]));
+		if (!is_a_nulls(n))
+			return n;
 	}
-
-	st->bucket = i;
 	return NULL;
+}
+
+static struct hlist_nulls_node *ct_get_next(struct seq_file *seq,
+				      struct hlist_nulls_node *head)
+{
+	struct ct_iter_state *st = seq->private;
+
+	head = rcu_dereference(hlist_nulls_next_rcu(head));
+	while (is_a_nulls(head)) {
+		if (likely(get_nulls_value(head) == st->bucket)) {
+			if (++st->bucket >= st->htable_size)
+				return NULL;
+		}
+		head = rcu_dereference(
+			hlist_nulls_first_rcu(&st->hash[st->bucket]));
+	}
+	return head;
+}
+
+static struct hlist_nulls_node *ct_get_idx(struct seq_file *seq, loff_t pos)
+{
+	struct hlist_nulls_node *head = ct_get_first(seq);
+
+	if (head)
+		while (pos && (head = ct_get_next(seq, head)))
+			pos--;
+	return pos ? NULL : head;
 }
 
 static void *ct_seq_start(struct seq_file *seq, loff_t *pos)
 	__acquires(RCU)
 {
 	struct ct_iter_state *st = seq->private;
-	struct net *net = seq_file_net(seq);
 
 	st->time_now = ktime_get_real_ns();
 	rcu_read_lock();
 
 	nf_conntrack_get_ht(&st->hash, &st->htable_size);
-
-	if (*pos == 0) {
-		st->skip_elems = 0;
-		st->bucket = 0;
-	} else if (st->skip_elems) {
-		/* resume from last dumped entry */
-		st->skip_elems--;
-	}
-
-	return ct_get_next(net, st);
+	return ct_get_idx(seq, *pos);
 }
 
 static void *ct_seq_next(struct seq_file *s, void *v, loff_t *pos)
 {
-	struct ct_iter_state *st = s->private;
-	struct net *net = seq_file_net(s);
-
 	(*pos)++;
-	return ct_get_next(net, st);
+	return ct_get_next(s, v);
 }
 
 static void ct_seq_stop(struct seq_file *s, void *v)

@@ -391,8 +391,7 @@ enum e1000_ring_flags_t {
 	IGB_RING_FLAG_RX_LB_VLAN_BSWAP,
 	IGB_RING_FLAG_TX_CTX_IDX,
 	IGB_RING_FLAG_TX_DETECT_HANG,
-	IGB_RING_FLAG_TX_DISABLED,
-	IGB_RING_FLAG_RX_ALLOC_FAILED,
+	IGB_RING_FLAG_TX_DISABLED
 };
 
 #define ring_uses_large_buffer(ring) \
@@ -723,8 +722,6 @@ enum igb_boards {
 
 extern char igb_driver_name[];
 
-void igb_set_queue_napi(struct igb_adapter *adapter, int q_idx,
-			struct napi_struct *napi);
 int igb_xmit_xdp_ring(struct igb_adapter *adapter,
 		      struct igb_ring *ring,
 		      struct xdp_frame *xdpf);

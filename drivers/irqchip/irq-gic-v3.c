@@ -1826,7 +1826,7 @@ static int partition_domain_translate(struct irq_domain *d,
 
 	ppi_idx = __gic_get_ppi_index(ppi_intid);
 	ret = partition_translate_id(gic_data.ppi_descs[ppi_idx],
-				     of_fwnode_handle(np));
+				     of_node_to_fwnode(np));
 	if (ret < 0)
 		return ret;
 
@@ -2192,7 +2192,7 @@ static void __init gic_populate_ppi_partitions(struct device_node *gic_node)
 
 		part = &parts[part_idx];
 
-		part->partition_id = of_fwnode_handle(child_part);
+		part->partition_id = of_node_to_fwnode(child_part);
 
 		pr_info("GIC: PPI partition %pOFn[%d] { ",
 			child_part, part_idx);

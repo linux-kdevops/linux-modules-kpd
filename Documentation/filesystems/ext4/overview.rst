@@ -25,4 +25,3 @@ order.
 .. include:: inlinedata.rst
 .. include:: eainode.rst
 .. include:: verity.rst
-.. include:: atomic_writes.rst

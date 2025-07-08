@@ -56,8 +56,7 @@ static int nfs_return_empty_folio(struct folio *folio)
 {
 	folio_zero_segment(folio, 0, folio_size(folio));
 	folio_mark_uptodate(folio);
-	if (nfs_netfs_folio_unlock(folio))
-		folio_unlock(folio);
+	folio_unlock(folio);
 	return 0;
 }
 

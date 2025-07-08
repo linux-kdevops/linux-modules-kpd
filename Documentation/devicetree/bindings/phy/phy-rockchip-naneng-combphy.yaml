@@ -42,9 +42,6 @@ properties:
       - const: phy
       - const: apb
 
-  phy-supply:
-    description: Single PHY regulator
-
   rockchip,enable-ssc:
     type: boolean
     description:

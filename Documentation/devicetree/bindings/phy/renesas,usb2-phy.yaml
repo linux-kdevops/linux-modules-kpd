@@ -16,7 +16,6 @@ properties:
           - enum:
               - renesas,usb2-phy-r8a77470  # RZ/G1C
               - renesas,usb2-phy-r9a08g045 # RZ/G3S
-              - renesas,usb2-phy-r9a09g057 # RZ/V2H(P)
 
       - items:
           - enum:
@@ -106,13 +105,8 @@ allOf:
       properties:
         compatible:
           contains:
-            enum:
-              - renesas,usb2-phy-r9a09g057
-              - renesas,rzg2l-usb2-phy
+            const: renesas,rzg2l-usb2-phy
     then:
-      properties:
-        clocks:
-          minItems: 2
       required:
         - resets
 

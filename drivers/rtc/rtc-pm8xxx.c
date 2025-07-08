@@ -576,20 +576,13 @@ static int pm8xxx_rtc_probe_offset(struct pm8xxx_rtc *rtc_dd)
 	}
 
 	/* Use UEFI storage as fallback if available */
-	rtc_dd->use_uefi = of_property_read_bool(rtc_dd->dev->of_node,
-						 "qcom,uefi-rtc-info");
-	if (!rtc_dd->use_uefi)
-		return 0;
-
-	if (!efivar_is_available()) {
-		if (IS_ENABLED(CONFIG_EFI))
-			return -EPROBE_DEFER;
-
-		dev_warn(rtc_dd->dev, "efivars not available\n");
-		rtc_dd->use_uefi = false;
+	if (efivar_is_available()) {
+		rc = pm8xxx_rtc_read_uefi_offset(rtc_dd);
+		if (rc == 0)
+			rtc_dd->use_uefi = true;
 	}
 
-	return pm8xxx_rtc_read_uefi_offset(rtc_dd);
+	return 0;
 }
 
 static int pm8xxx_rtc_probe(struct platform_device *pdev)
@@ -683,6 +676,7 @@ static struct platform_driver pm8xxx_rtc_driver = {
 
 module_platform_driver(pm8xxx_rtc_driver);
 
+MODULE_ALIAS("platform:rtc-pm8xxx");
 MODULE_DESCRIPTION("PMIC8xxx RTC driver");
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Anirudh Ghayal <aghayal@codeaurora.org>");

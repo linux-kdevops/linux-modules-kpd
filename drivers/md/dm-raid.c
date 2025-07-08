@@ -14,7 +14,6 @@
 #include "raid5.h"
 #include "raid10.h"
 #include "md-bitmap.h"
-#include "dm-core.h"
 
 #include <linux/device-mapper.h>
 
@@ -1356,7 +1355,11 @@ static int parse_raid_params(struct raid_set *rs, struct dm_arg_set *as,
 				return -EINVAL;
 			}
 
-			if (value < 0) {
+			/*
+			 * In device-mapper, we specify things in sectors, but
+			 * MD records this value in kB
+			 */
+			if (value < 0 || value / 2 > COUNTER_MAX) {
 				rs->ti->error = "Max write-behind limit out of range";
 				return -EINVAL;
 			}
@@ -2407,7 +2410,7 @@ static int super_init_validation(struct raid_set *rs, struct md_rdev *rdev)
 	 */
 	sb_retrieve_failed_devices(sb, failed_devices);
 	rdev_for_each(r, mddev) {
-		if (test_bit(Journal, &r->flags) ||
+		if (test_bit(Journal, &rdev->flags) ||
 		    !r->sb_page)
 			continue;
 		sb2 = page_address(r->sb_page);
@@ -3305,7 +3308,6 @@ size_check:
 
 	/* Disable/enable discard support on raid set. */
 	configure_discard_support(rs);
-	rs->md.dm_gendisk = ti->table->md->disk;
 
 	mddev_unlock(&rs->md);
 	return 0;
@@ -3325,7 +3327,6 @@ static void raid_dtr(struct dm_target *ti)
 
 	mddev_lock_nointr(&rs->md);
 	md_stop(&rs->md);
-	rs->md.dm_gendisk = NULL;
 	mddev_unlock(&rs->md);
 
 	if (work_pending(&rs->md.event_work))

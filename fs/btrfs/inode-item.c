@@ -109,7 +109,7 @@ static int btrfs_del_inode_extref(struct btrfs_trans_handle *trans,
 				  u64 inode_objectid, u64 ref_objectid,
 				  u64 *index)
 {
-	BTRFS_PATH_AUTO_FREE(path);
+	struct btrfs_path *path;
 	struct btrfs_key key;
 	struct btrfs_inode_extref *extref;
 	struct extent_buffer *leaf;
@@ -129,9 +129,9 @@ static int btrfs_del_inode_extref(struct btrfs_trans_handle *trans,
 
 	ret = btrfs_search_slot(trans, root, &key, path, -1, 1);
 	if (ret > 0)
-		return -ENOENT;
+		ret = -ENOENT;
 	if (ret < 0)
-		return ret;
+		goto out;
 
 	/*
 	 * Sanity check - did we find the right item for this name?
@@ -142,7 +142,8 @@ static int btrfs_del_inode_extref(struct btrfs_trans_handle *trans,
 						ref_objectid, name);
 	if (!extref) {
 		btrfs_abort_transaction(trans, -ENOENT);
-		return -ENOENT;
+		ret = -ENOENT;
+		goto out;
 	}
 
 	leaf = path->nodes[0];
@@ -151,8 +152,12 @@ static int btrfs_del_inode_extref(struct btrfs_trans_handle *trans,
 		*index = btrfs_inode_extref_index(leaf, extref);
 
 	if (del_len == item_size) {
-		/* Common case only one ref in the item, remove the whole item. */
-		return btrfs_del_item(trans, root, path);
+		/*
+		 * Common case only one ref in the item, remove the
+		 * whole item.
+		 */
+		ret = btrfs_del_item(trans, root, path);
+		goto out;
 	}
 
 	ptr = (unsigned long)extref;
@@ -162,6 +167,9 @@ static int btrfs_del_inode_extref(struct btrfs_trans_handle *trans,
 			      item_size - (ptr + del_len - item_start));
 
 	btrfs_truncate_item(trans, path, item_size - del_len, 1);
+
+out:
+	btrfs_free_path(path);
 
 	return ret;
 }
@@ -252,7 +260,7 @@ static int btrfs_insert_inode_extref(struct btrfs_trans_handle *trans,
 	int ret;
 	int ins_len = name->len + sizeof(*extref);
 	unsigned long ptr;
-	BTRFS_PATH_AUTO_FREE(path);
+	struct btrfs_path *path;
 	struct btrfs_key key;
 	struct extent_buffer *leaf;
 
@@ -271,13 +279,13 @@ static int btrfs_insert_inode_extref(struct btrfs_trans_handle *trans,
 						   path->slots[0],
 						   ref_objectid,
 						   name))
-			return ret;
+			goto out;
 
 		btrfs_extend_item(trans, path, ins_len);
 		ret = 0;
 	}
 	if (ret < 0)
-		return ret;
+		goto out;
 
 	leaf = path->nodes[0];
 	ptr = (unsigned long)btrfs_item_ptr(leaf, path->slots[0], char);
@@ -290,8 +298,9 @@ static int btrfs_insert_inode_extref(struct btrfs_trans_handle *trans,
 
 	ptr = (unsigned long)&extref->name;
 	write_extent_buffer(path->nodes[0], name->name, ptr, name->len);
-
-	return 0;
+out:
+	btrfs_free_path(path);
+	return ret;
 }
 
 /* Will return 0, -ENOMEM, -EMLINK, or -EEXIST or anything from the CoW path */

@@ -195,6 +195,7 @@ struct vfsmount *nfs_d_automount(struct path *path)
 	if (IS_ERR(mnt))
 		goto out_fc;
 
+	mntget(mnt); /* prevent immediate expiration */
 	if (timeout <= 0)
 		goto out_fc;
 

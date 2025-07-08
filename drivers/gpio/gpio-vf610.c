@@ -345,6 +345,4 @@ static struct platform_driver vf610_gpio_driver = {
 	.probe		= vf610_gpio_probe,
 };
 
-module_platform_driver(vf610_gpio_driver);
-MODULE_DESCRIPTION("VF610 GPIO driver");
-MODULE_LICENSE("GPL");
+builtin_platform_driver(vf610_gpio_driver);

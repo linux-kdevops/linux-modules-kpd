@@ -63,6 +63,9 @@ struct kvm_vcpu_aia {
 	/* CPU AIA CSR context of Guest VCPU */
 	struct kvm_vcpu_aia_csr guest_csr;
 
+	/* CPU AIA CSR context upon Guest VCPU reset */
+	struct kvm_vcpu_aia_csr guest_reset_csr;
+
 	/* Guest physical address of IMSIC for this VCPU */
 	gpa_t		imsic_addr;
 

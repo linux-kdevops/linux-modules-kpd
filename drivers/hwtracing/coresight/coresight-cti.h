@@ -9,14 +9,13 @@
 
 #include <linux/coresight.h>
 #include <linux/device.h>
+#include <linux/fwnode.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/sysfs.h>
 #include <linux/types.h>
 
 #include "coresight-priv.h"
-
-struct fwnode_handle;
 
 /*
  * Device registers

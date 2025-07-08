@@ -68,5 +68,5 @@ done:
 	if (ret < 0)
 		req_set_fail(req);
 	io_req_set_res(req, nop->result, 0);
-	return IOU_COMPLETE;
+	return IOU_OK;
 }

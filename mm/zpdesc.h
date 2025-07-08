@@ -7,9 +7,6 @@
 #ifndef __MM_ZPDESC_H__
 #define __MM_ZPDESC_H__
 
-#include <linux/migrate.h>
-#include <linux/pagemap.h>
-
 /*
  * struct zpdesc -	Memory descriptor for zpool memory.
  * @flags:		Page flags, mostly unused by zsmalloc.
@@ -54,8 +51,8 @@ struct zpdesc {
 ZPDESC_MATCH(flags, flags);
 ZPDESC_MATCH(lru, lru);
 ZPDESC_MATCH(mapping, movable_ops);
-ZPDESC_MATCH(__folio_index, next);
-ZPDESC_MATCH(__folio_index, handle);
+ZPDESC_MATCH(index, next);
+ZPDESC_MATCH(index, handle);
 ZPDESC_MATCH(private, zspage);
 ZPDESC_MATCH(page_type, first_obj_offset);
 ZPDESC_MATCH(_refcount, _refcount);

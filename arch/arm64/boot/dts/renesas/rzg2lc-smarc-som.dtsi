@@ -246,7 +246,7 @@
 	status = "okay";
 
 	flash@0 {
-		compatible = "jedec,spi-nor";
+		compatible = "micron,mt25qu512a", "jedec,spi-nor";
 		reg = <0>;
 		m25p,fast-read;
 		spi-max-frequency = <50000000>;

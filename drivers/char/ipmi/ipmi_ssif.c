@@ -481,6 +481,8 @@ static int ipmi_ssif_thread(void *data)
 		/* Wait for something to do */
 		result = wait_for_completion_interruptible(
 						&ssif_info->wake_thread);
+		if (ssif_info->stopping)
+			break;
 		if (result == -ERESTARTSYS)
 			continue;
 		init_completion(&ssif_info->wake_thread);
@@ -539,8 +541,7 @@ static void start_resend(struct ssif_info *ssif_info);
 
 static void retry_timeout(struct timer_list *t)
 {
-	struct ssif_info *ssif_info = timer_container_of(ssif_info, t,
-							 retry_timer);
+	struct ssif_info *ssif_info = from_timer(ssif_info, t, retry_timer);
 	unsigned long oflags, *flags;
 	bool waiting, resend;
 
@@ -564,8 +565,7 @@ static void retry_timeout(struct timer_list *t)
 
 static void watch_timeout(struct timer_list *t)
 {
-	struct ssif_info *ssif_info = timer_container_of(ssif_info, t,
-							 watch_timer);
+	struct ssif_info *ssif_info = from_timer(ssif_info, t, watch_timer);
 	unsigned long oflags, *flags;
 
 	if (ssif_info->stopping)
@@ -1270,8 +1270,10 @@ static void shutdown_ssif(void *send_info)
 	ssif_info->stopping = true;
 	timer_delete_sync(&ssif_info->watch_timer);
 	timer_delete_sync(&ssif_info->retry_timer);
-	if (ssif_info->thread)
+	if (ssif_info->thread) {
+		complete(&ssif_info->wake_thread);
 		kthread_stop(ssif_info->thread);
+	}
 }
 
 static void ssif_remove(struct i2c_client *client)

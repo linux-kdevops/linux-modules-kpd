@@ -30,6 +30,7 @@
  * vmscan's shrink_folio_list.
  */
 static const struct address_space_operations swap_aops = {
+	.writepage	= swap_writepage,
 	.dirty_folio	= noop_dirty_folio,
 #ifdef CONFIG_MIGRATION
 	.migrate_folio	= migrate_folio,
@@ -231,11 +232,13 @@ void free_swap_cache(struct folio *folio)
 }
 
 /*
- * Freeing a folio and also freeing any swap cache associated with
- * this folio if it is the last user.
+ * Perform a free_page(), also freeing any swap cache associated with
+ * this page if it is the last user of the page.
  */
-void free_folio_and_swap_cache(struct folio *folio)
+void free_page_and_swap_cache(struct page *page)
 {
+	struct folio *folio = page_folio(page);
+
 	free_swap_cache(folio);
 	if (!is_huge_zero_folio(folio))
 		folio_put(folio);

@@ -1173,6 +1173,16 @@ static int omap_8250_tx_dma(struct uart_8250_port *p)
 		return 0;
 	}
 
+	sg_init_table(&sg, 1);
+	ret = kfifo_dma_out_prepare_mapped(&tport->xmit_fifo, &sg, 1,
+					   UART_XMIT_SIZE, dma->tx_addr);
+	if (ret != 1) {
+		serial8250_clear_THRI(p);
+		return 0;
+	}
+
+	dma->tx_size = sg_dma_len(&sg);
+
 	if (priv->habit & OMAP_DMA_TX_KICK) {
 		unsigned char c;
 		u8 tx_lvl;
@@ -1197,22 +1207,18 @@ static int omap_8250_tx_dma(struct uart_8250_port *p)
 			ret = -EBUSY;
 			goto err;
 		}
-		if (kfifo_len(&tport->xmit_fifo) < 4) {
+		if (dma->tx_size < 4) {
 			ret = -EINVAL;
 			goto err;
 		}
-		if (!uart_fifo_out(&p->port, &c, 1)) {
+		if (!kfifo_get(&tport->xmit_fifo, &c)) {
 			ret = -EINVAL;
 			goto err;
 		}
 		skip_byte = c;
-	}
-
-	sg_init_table(&sg, 1);
-	ret = kfifo_dma_out_prepare_mapped(&tport->xmit_fifo, &sg, 1, UART_XMIT_SIZE, dma->tx_addr);
-	if (ret != 1) {
-		ret = -EINVAL;
-		goto err;
+		/* now we need to recompute due to kfifo_get */
+		kfifo_dma_out_prepare_mapped(&tport->xmit_fifo, &sg, 1,
+				UART_XMIT_SIZE, dma->tx_addr);
 	}
 
 	desc = dmaengine_prep_slave_sg(dma->txchan, &sg, 1, DMA_MEM_TO_DEV,
@@ -1222,7 +1228,6 @@ static int omap_8250_tx_dma(struct uart_8250_port *p)
 		goto err;
 	}
 
-	dma->tx_size = sg_dma_len(&sg);
 	dma->tx_running = 1;
 
 	desc->callback = omap_8250_dma_tx_complete;

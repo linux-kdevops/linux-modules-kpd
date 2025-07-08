@@ -40,7 +40,6 @@ struct dc_sink;
 struct dc_stream_state;
 struct resource_context;
 struct display_stream_compressor;
-struct dc_mcache_params;
 
 // Configuration of the MALL on the SoC
 struct dml2_soc_mall_info {
@@ -108,7 +107,6 @@ struct dml2_dc_callbacks {
 	unsigned int (*get_max_flickerless_instant_vtotal_increase)(
 			struct dc_stream_state *stream,
 			bool is_gaming);
-	bool (*allocate_mcache)(struct dc_state *context, const struct dc_mcache_params *mcache_params);
 };
 
 struct dml2_dc_svp_callbacks {

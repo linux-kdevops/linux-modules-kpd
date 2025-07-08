@@ -62,6 +62,7 @@
 #include "display/intel_pch_refclk.h"
 #include "display/intel_pps.h"
 #include "display/intel_sprite_uapi.h"
+#include "display/intel_vga.h"
 #include "display/skl_watermark.h"
 
 #include "gem/i915_gem_context.h"
@@ -234,6 +235,7 @@ static int i915_driver_early_probe(struct drm_i915_private *dev_priv)
 
 	intel_uncore_mmio_debug_init_early(dev_priv);
 
+	spin_lock_init(&dev_priv->irq_lock);
 	spin_lock_init(&dev_priv->gpu_error.lock);
 
 	intel_sbi_init(dev_priv);
@@ -260,6 +262,9 @@ static int i915_driver_early_probe(struct drm_i915_private *dev_priv)
 		goto err_rootgt;
 
 	i915_gem_init_early(dev_priv);
+
+	/* This must be called before any calls to HAS_PCH_* */
+	intel_detect_pch(dev_priv);
 
 	intel_irq_init(dev_priv);
 	intel_display_driver_early_probe(display);
@@ -573,7 +578,7 @@ static int i915_driver_hw_probe(struct drm_i915_private *dev_priv)
 	 */
 	intel_dram_detect(dev_priv);
 
-	intel_bw_init_hw(display);
+	intel_bw_init_hw(dev_priv);
 
 	return 0;
 
@@ -617,12 +622,11 @@ static void i915_driver_hw_remove(struct drm_i915_private *dev_priv)
  * Perform any steps necessary to make the driver available via kernel
  * internal or userspace interfaces.
  */
-static int i915_driver_register(struct drm_i915_private *dev_priv)
+static void i915_driver_register(struct drm_i915_private *dev_priv)
 {
 	struct intel_display *display = &dev_priv->display;
 	struct intel_gt *gt;
 	unsigned int i;
-	int ret;
 
 	i915_gem_driver_register(dev_priv);
 	i915_pmu_register(dev_priv);
@@ -630,14 +634,10 @@ static int i915_driver_register(struct drm_i915_private *dev_priv)
 	intel_vgpu_register(dev_priv);
 
 	/* Reveal our presence to userspace */
-	ret = drm_dev_register(&dev_priv->drm, 0);
-	if (ret) {
-		i915_probe_error(dev_priv,
-				 "Failed to register driver for userspace access!\n");
-		drm_dev_unregister(&dev_priv->drm);
-		i915_pmu_unregister(dev_priv);
-		i915_gem_driver_unregister(dev_priv);
-		return ret;
+	if (drm_dev_register(&dev_priv->drm, 0)) {
+		drm_err(&dev_priv->drm,
+			"Failed to register driver for userspace access!\n");
+		return;
 	}
 
 	i915_debugfs_register(dev_priv);
@@ -660,8 +660,6 @@ static int i915_driver_register(struct drm_i915_private *dev_priv)
 
 	if (i915_switcheroo_register(dev_priv))
 		drm_err(&dev_priv->drm, "Failed to register vga switcheroo!\n");
-
-	return 0;
 }
 
 /**
@@ -836,9 +834,7 @@ int i915_driver_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (ret)
 		goto out_cleanup_gem;
 
-	ret = i915_driver_register(i915);
-	if (ret)
-		goto out_cleanup_gem;
+	i915_driver_register(i915);
 
 	enable_rpm_wakeref_asserts(&i915->runtime_pm);
 
@@ -849,7 +845,6 @@ int i915_driver_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	return 0;
 
 out_cleanup_gem:
-	intel_pxp_fini(i915);
 	i915_gem_suspend(i915);
 	i915_gem_driver_remove(i915);
 	i915_gem_driver_release(i915);
@@ -986,7 +981,7 @@ void i915_driver_shutdown(struct drm_i915_private *i915)
 	intel_dp_mst_suspend(display);
 
 	intel_irq_suspend(i915);
-	intel_hpd_cancel_work(display);
+	intel_hpd_cancel_work(i915);
 
 	if (HAS_DISPLAY(i915))
 		intel_display_driver_suspend_access(display);
@@ -1069,7 +1064,7 @@ static int i915_drm_suspend(struct drm_device *dev)
 	intel_display_driver_suspend(display);
 
 	intel_irq_suspend(dev_priv);
-	intel_hpd_cancel_work(display);
+	intel_hpd_cancel_work(dev_priv);
 
 	if (HAS_DISPLAY(dev_priv))
 		intel_display_driver_suspend_access(display);
@@ -1200,11 +1195,13 @@ static int i915_drm_resume(struct drm_device *dev)
 
 	i9xx_display_sr_restore(display);
 
+	intel_vga_redisable(display);
+
 	intel_gmbus_reset(display);
 
 	intel_pps_unlock_regs_wa(display);
 
-	intel_init_pch_refclk(display);
+	intel_init_pch_refclk(dev_priv);
 
 	/*
 	 * Interrupts have to be enabled before any batches are run. If not the
@@ -1230,7 +1227,7 @@ static int i915_drm_resume(struct drm_device *dev)
 	if (HAS_DISPLAY(dev_priv))
 		intel_display_driver_resume_access(display);
 
-	intel_hpd_init(display);
+	intel_hpd_init(dev_priv);
 
 	intel_display_driver_resume(display);
 
@@ -1238,7 +1235,7 @@ static int i915_drm_resume(struct drm_device *dev)
 		intel_display_driver_enable_user_access(display);
 		drm_kms_helper_poll_enable(dev);
 	}
-	intel_hpd_poll_disable(display);
+	intel_hpd_poll_disable(dev_priv);
 
 	intel_opregion_resume(display);
 
@@ -1578,7 +1575,7 @@ static int intel_runtime_suspend(struct device *kdev)
 	assert_forcewakes_inactive(&dev_priv->uncore);
 
 	if (!IS_VALLEYVIEW(dev_priv) && !IS_CHERRYVIEW(dev_priv))
-		intel_hpd_poll_enable(display);
+		intel_hpd_poll_enable(dev_priv);
 
 	drm_dbg(&dev_priv->drm, "Device suspended\n");
 	return 0;
@@ -1636,11 +1633,11 @@ static int intel_runtime_resume(struct device *kdev)
 	 * everyone else do it here.
 	 */
 	if (!IS_VALLEYVIEW(dev_priv) && !IS_CHERRYVIEW(dev_priv)) {
-		intel_hpd_init(display);
-		intel_hpd_poll_disable(display);
+		intel_hpd_init(dev_priv);
+		intel_hpd_poll_disable(dev_priv);
 	}
 
-	skl_watermark_ipc_update(display);
+	skl_watermark_ipc_update(dev_priv);
 
 	enable_rpm_wakeref_asserts(rpm);
 

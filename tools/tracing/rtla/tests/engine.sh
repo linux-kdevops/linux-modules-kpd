@@ -39,7 +39,6 @@ reset_osnoise() {
 }
 
 check() {
-	expected_exitcode=${3:-0}
 	# Simple check: run rtla with given arguments and test exit code.
 	# If TEST_COUNT is set, run the test. Otherwise, just count.
 	ctr=$(($ctr + 1))
@@ -50,7 +49,7 @@ check() {
 		# Run rtla; in case of failure, include its output as comment
 		# in the test results.
 		result=$(stdbuf -oL $TIMEOUT "$RTLA" $2 2>&1); exitcode=$?
-		if [ $exitcode -eq $expected_exitcode ]
+		if [ $exitcode -eq 0 ]
 		then
 			echo "ok $ctr - $1"
 		else
@@ -69,13 +68,11 @@ check_with_osnoise_options() {
 	# Save original arguments
 	arg1=$1
 	arg2=$2
-	arg3=$3
 
 	# Apply osnoise options (if not dry run)
 	if [ -n "$TEST_COUNT" ]
 	then
 		[ "$NO_RESET_OSNOISE" == 1 ] || reset_osnoise
-		shift
 		shift
 		while shift
 		do
@@ -87,7 +84,7 @@ check_with_osnoise_options() {
 		done
 	fi
 
-	NO_RESET_OSNOISE=1 check "$arg1" "$arg2" "$arg3"
+	NO_RESET_OSNOISE=1 check "$arg1" "$arg2"
 }
 
 set_timeout() {

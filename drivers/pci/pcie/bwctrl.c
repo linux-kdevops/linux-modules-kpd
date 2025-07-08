@@ -38,14 +38,24 @@
 /**
  * struct pcie_bwctrl_data - PCIe bandwidth controller
  * @set_speed_mutex:	Serializes link speed changes
+ * @lbms_count:		Count for LBMS (since last reset)
  * @cdev:		Thermal cooling device associated with the port
  */
 struct pcie_bwctrl_data {
 	struct mutex set_speed_mutex;
+	atomic_t lbms_count;
 	struct thermal_cooling_device *cdev;
 };
 
-/* Prevent port removal during Link Speed changes. */
+/*
+ * Prevent port removal during LBMS count accessors and Link Speed changes.
+ *
+ * These have to be differentiated because pcie_bwctrl_change_speed() calls
+ * pcie_retrain_link() which uses LBMS count reset accessor on success
+ * (using just one rwsem triggers "possible recursive locking detected"
+ * warning).
+ */
+static DECLARE_RWSEM(pcie_bwctrl_lbms_rwsem);
 static DECLARE_RWSEM(pcie_bwctrl_setspeed_rwsem);
 
 static bool pcie_valid_speed(enum pci_bus_speed speed)
@@ -117,7 +127,18 @@ static int pcie_bwctrl_change_speed(struct pci_dev *port, u16 target_speed, bool
 	if (ret != PCIBIOS_SUCCESSFUL)
 		return pcibios_err_to_errno(ret);
 
-	return pcie_retrain_link(port, use_lt);
+	ret = pcie_retrain_link(port, use_lt);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * Ensure link speed updates also with platforms that have problems
+	 * with notifications.
+	 */
+	if (port->subordinate)
+		pcie_update_link_speed(port->subordinate);
+
+	return 0;
 }
 
 /**
@@ -181,14 +202,15 @@ int pcie_set_target_speed(struct pci_dev *port, enum pci_bus_speed speed_req,
 
 static void pcie_bwnotif_enable(struct pcie_device *srv)
 {
+	struct pcie_bwctrl_data *data = srv->port->link_bwctrl;
 	struct pci_dev *port = srv->port;
 	u16 link_status;
 	int ret;
 
-	/* Note if LBMS has been seen so far */
+	/* Count LBMS seen so far as one */
 	ret = pcie_capability_read_word(port, PCI_EXP_LNKSTA, &link_status);
 	if (ret == PCIBIOS_SUCCESSFUL && link_status & PCI_EXP_LNKSTA_LBMS)
-		set_bit(PCI_LINK_LBMS_SEEN, &port->priv_flags);
+		atomic_inc(&data->lbms_count);
 
 	pcie_capability_set_word(port, PCI_EXP_LNKCTL,
 				 PCI_EXP_LNKCTL_LBMIE | PCI_EXP_LNKCTL_LABIE);
@@ -211,6 +233,7 @@ static void pcie_bwnotif_disable(struct pci_dev *port)
 static irqreturn_t pcie_bwnotif_irq(int irq, void *context)
 {
 	struct pcie_device *srv = context;
+	struct pcie_bwctrl_data *data = srv->port->link_bwctrl;
 	struct pci_dev *port = srv->port;
 	u16 link_status, events;
 	int ret;
@@ -224,7 +247,7 @@ static irqreturn_t pcie_bwnotif_irq(int irq, void *context)
 		return IRQ_NONE;
 
 	if (events & PCI_EXP_LNKSTA_LBMS)
-		set_bit(PCI_LINK_LBMS_SEEN, &port->priv_flags);
+		atomic_inc(&data->lbms_count);
 
 	pcie_capability_write_word(port, PCI_EXP_LNKSTA, events);
 
@@ -239,10 +262,31 @@ static irqreturn_t pcie_bwnotif_irq(int irq, void *context)
 	return IRQ_HANDLED;
 }
 
-void pcie_reset_lbms(struct pci_dev *port)
+void pcie_reset_lbms_count(struct pci_dev *port)
 {
-	clear_bit(PCI_LINK_LBMS_SEEN, &port->priv_flags);
-	pcie_capability_write_word(port, PCI_EXP_LNKSTA, PCI_EXP_LNKSTA_LBMS);
+	struct pcie_bwctrl_data *data;
+
+	guard(rwsem_read)(&pcie_bwctrl_lbms_rwsem);
+	data = port->link_bwctrl;
+	if (data)
+		atomic_set(&data->lbms_count, 0);
+	else
+		pcie_capability_write_word(port, PCI_EXP_LNKSTA,
+					   PCI_EXP_LNKSTA_LBMS);
+}
+
+int pcie_lbms_count(struct pci_dev *port, unsigned long *val)
+{
+	struct pcie_bwctrl_data *data;
+
+	guard(rwsem_read)(&pcie_bwctrl_lbms_rwsem);
+	data = port->link_bwctrl;
+	if (!data)
+		return -ENOTTY;
+
+	*val = atomic_read(&data->lbms_count);
+
+	return 0;
 }
 
 static int pcie_bwnotif_probe(struct pcie_device *srv)
@@ -264,16 +308,18 @@ static int pcie_bwnotif_probe(struct pcie_device *srv)
 		return ret;
 
 	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem) {
-		port->link_bwctrl = data;
+		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem) {
+			port->link_bwctrl = data;
 
-		ret = request_irq(srv->irq, pcie_bwnotif_irq,
-				  IRQF_SHARED, "PCIe bwctrl", srv);
-		if (ret) {
-			port->link_bwctrl = NULL;
-			return ret;
+			ret = request_irq(srv->irq, pcie_bwnotif_irq,
+					  IRQF_SHARED, "PCIe bwctrl", srv);
+			if (ret) {
+				port->link_bwctrl = NULL;
+				return ret;
+			}
+
+			pcie_bwnotif_enable(srv);
 		}
-
-		pcie_bwnotif_enable(srv);
 	}
 
 	pci_dbg(port, "enabled with IRQ %d\n", srv->irq);
@@ -293,11 +339,13 @@ static void pcie_bwnotif_remove(struct pcie_device *srv)
 	pcie_cooling_device_unregister(data->cdev);
 
 	scoped_guard(rwsem_write, &pcie_bwctrl_setspeed_rwsem) {
-		pcie_bwnotif_disable(srv->port);
+		scoped_guard(rwsem_write, &pcie_bwctrl_lbms_rwsem) {
+			pcie_bwnotif_disable(srv->port);
 
-		free_irq(srv->irq, srv);
+			free_irq(srv->irq, srv);
 
-		srv->port->link_bwctrl = NULL;
+			srv->port->link_bwctrl = NULL;
+		}
 	}
 }
 

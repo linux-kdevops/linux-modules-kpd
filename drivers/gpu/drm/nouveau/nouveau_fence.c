@@ -184,10 +184,10 @@ nouveau_fence_context_new(struct nouveau_channel *chan, struct nouveau_fence_cha
 	struct nouveau_cli *cli = chan->cli;
 	struct nouveau_drm *drm = cli->drm;
 	struct nouveau_fence_priv *priv = (void*)drm->fence;
-	DEFINE_RAW_FLEX(struct nvif_event_v0, args, data,
-			sizeof(struct nvif_chan_event_v0));
-	struct nvif_chan_event_v0 *host =
-				(struct nvif_chan_event_v0 *)args->data;
+	struct {
+		struct nvif_event_v0 base;
+		struct nvif_chan_event_v0 host;
+	} args;
 	int ret;
 
 	INIT_WORK(&fctx->uevent_work, nouveau_fence_uevent_work);
@@ -207,12 +207,12 @@ nouveau_fence_context_new(struct nouveau_channel *chan, struct nouveau_fence_cha
 	if (!priv->uevent)
 		return;
 
-	host->version = 0;
-	host->type = NVIF_CHAN_EVENT_V0_NON_STALL_INTR;
+	args.host.version = 0;
+	args.host.type = NVIF_CHAN_EVENT_V0_NON_STALL_INTR;
 
 	ret = nvif_event_ctor(&chan->user, "fenceNonStallIntr", (chan->runlist << 16) | chan->chid,
 			      nouveau_fence_wait_uevent_handler, false,
-			      args, __struct_size(args), &fctx->event);
+			      &args.base, sizeof(args), &fctx->event);
 
 	WARN_ON(ret);
 }

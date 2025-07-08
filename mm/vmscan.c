@@ -342,22 +342,16 @@ static void flush_reclaim_state(struct scan_control *sc)
 	}
 }
 
-static bool can_demote(int nid, struct scan_control *sc,
-		       struct mem_cgroup *memcg)
+static bool can_demote(int nid, struct scan_control *sc)
 {
-	int demotion_nid;
-
 	if (!numa_demotion_enabled)
 		return false;
 	if (sc && sc->no_demotion)
 		return false;
-
-	demotion_nid = next_demotion_node(nid);
-	if (demotion_nid == NUMA_NO_NODE)
+	if (next_demotion_node(nid) == NUMA_NO_NODE)
 		return false;
 
-	/* If demotion node isn't in the cgroup's mems_allowed, fall back */
-	return mem_cgroup_node_allowed(memcg, demotion_nid);
+	return true;
 }
 
 static inline bool can_reclaim_anon_pages(struct mem_cgroup *memcg,
@@ -382,7 +376,7 @@ static inline bool can_reclaim_anon_pages(struct mem_cgroup *memcg,
 	 *
 	 * Can it be reclaimed from this node via demotion?
 	 */
-	return can_demote(nid, sc, memcg);
+	return can_demote(nid, sc);
 }
 
 /*
@@ -654,20 +648,21 @@ typedef enum {
 
 /*
  * pageout is called by shrink_folio_list() for each dirty folio.
+ * Calls ->writepage().
  */
 static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			 struct swap_iocb **plug, struct list_head *folio_list)
 {
-	int (*writeout)(struct folio *, struct writeback_control *);
-
 	/*
-	 * We no longer attempt to writeback filesystem folios here, other
-	 * than tmpfs/shmem.  That's taken care of in page-writeback.
-	 * If we find a dirty filesystem folio at the end of the LRU list,
-	 * typically that means the filesystem is saturating the storage
-	 * with contiguous writes and telling it to write a folio here
-	 * would only make the situation worse by injecting an element
-	 * of random access.
+	 * If the folio is dirty, only perform writeback if that write
+	 * will be non-blocking.  To prevent this allocation from being
+	 * stalled by pagecache activity.  But note that there may be
+	 * stalls if we need to run get_block().  We could test
+	 * PagePrivate for that.
+	 *
+	 * If this process is currently in __generic_file_write_iter() against
+	 * this folio's queue, we can perform writeback even if that
+	 * will block.
 	 *
 	 * If the folio is swapcache, write it back even if that would
 	 * block, for some throttling. This happens by accident, because
@@ -690,11 +685,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 		}
 		return PAGE_KEEP;
 	}
-	if (shmem_mapping(mapping))
-		writeout = shmem_writeout;
-	else if (folio_test_anon(folio))
-		writeout = swap_writeout;
-	else
+	if (mapping->a_ops->writepage == NULL)
 		return PAGE_ACTIVATE;
 
 	if (folio_clear_dirty_for_io(folio)) {
@@ -717,7 +708,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 			wbc.list = folio_list;
 
 		folio_set_reclaim(folio);
-		res = writeout(folio, &wbc);
+		res = mapping->a_ops->writepage(&folio->page, &wbc);
 		if (res < 0)
 			handle_write_error(mapping, folio, res);
 		if (res == AOP_WRITEPAGE_ACTIVATE) {
@@ -726,7 +717,7 @@ static pageout_t pageout(struct folio *folio, struct address_space *mapping,
 		}
 
 		if (!folio_test_writeback(folio)) {
-			/* synchronous write? */
+			/* synchronous write or broken a_ops? */
 			folio_clear_reclaim(folio);
 		}
 		trace_mm_vmscan_write_folio(folio);
@@ -1105,8 +1096,7 @@ static bool may_enter_fs(struct folio *folio, gfp_t gfp_mask)
  */
 static unsigned int shrink_folio_list(struct list_head *folio_list,
 		struct pglist_data *pgdat, struct scan_control *sc,
-		struct reclaim_stat *stat, bool ignore_references,
-		struct mem_cgroup *memcg)
+		struct reclaim_stat *stat, bool ignore_references)
 {
 	struct folio_batch free_folios;
 	LIST_HEAD(ret_folios);
@@ -1119,7 +1109,7 @@ static unsigned int shrink_folio_list(struct list_head *folio_list,
 	folio_batch_init(&free_folios);
 	memset(stat, 0, sizeof(*stat));
 	cond_resched();
-	do_demote_pass = can_demote(pgdat->node_id, sc, memcg);
+	do_demote_pass = can_demote(pgdat->node_id, sc);
 
 retry:
 	while (!list_empty(folio_list)) {
@@ -1197,10 +1187,8 @@ retry:
 		 * 2) Global or new memcg reclaim encounters a folio that is
 		 *    not marked for immediate reclaim, or the caller does not
 		 *    have __GFP_FS (or __GFP_IO if it's simply going to swap,
-		 *    not to fs), or the folio belongs to a mapping where
-		 *    waiting on writeback during reclaim may lead to a deadlock.
-		 *    In this case mark the folio for immediate reclaim and
-		 *    continue scanning.
+		 *    not to fs). In this case mark the folio for immediate
+		 *    reclaim and continue scanning.
 		 *
 		 *    Require may_enter_fs() because we would wait on fs, which
 		 *    may not have submitted I/O yet. And the loop driver might
@@ -1225,8 +1213,6 @@ retry:
 		 * takes to write them to disk.
 		 */
 		if (folio_test_writeback(folio)) {
-			mapping = folio_mapping(folio);
-
 			/* Case 1 above */
 			if (current_is_kswapd() &&
 			    folio_test_reclaim(folio) &&
@@ -1237,9 +1223,7 @@ retry:
 			/* Case 2 above */
 			} else if (writeback_throttling_sane(sc) ||
 			    !folio_test_reclaim(folio) ||
-			    !may_enter_fs(folio, sc->gfp_mask) ||
-			    (mapping &&
-			     mapping_writeback_may_deadlock_on_reclaim(mapping))) {
+			    !may_enter_fs(folio, sc->gfp_mask)) {
 				/*
 				 * This is slightly racy -
 				 * folio_end_writeback() might have
@@ -1674,7 +1658,7 @@ unsigned int reclaim_clean_pages_from_list(struct zone *zone,
 	 */
 	noreclaim_flag = memalloc_noreclaim_save();
 	nr_reclaimed = shrink_folio_list(&clean_folios, zone->zone_pgdat, &sc,
-					&stat, true, NULL);
+					&stat, true);
 	memalloc_noreclaim_restore(noreclaim_flag);
 
 	list_splice(&clean_folios, folio_list);
@@ -1741,11 +1725,13 @@ static unsigned long isolate_lru_folios(unsigned long nr_to_scan,
 	unsigned long nr_taken = 0;
 	unsigned long nr_zone_taken[MAX_NR_ZONES] = { 0 };
 	unsigned long nr_skipped[MAX_NR_ZONES] = { 0, };
-	unsigned long skipped = 0, total_scan = 0, scan = 0;
-	unsigned long nr_pages;
+	unsigned long skipped = 0;
+	unsigned long scan, total_scan, nr_pages;
 	unsigned long max_nr_skipped = 0;
 	LIST_HEAD(folios_skipped);
 
+	total_scan = 0;
+	scan = 0;
 	while (scan < nr_to_scan && !list_empty(src)) {
 		struct list_head *move_to = src;
 		struct folio *folio;
@@ -2037,7 +2023,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 	item = PGSCAN_KSWAPD + reclaimer_offset(sc);
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(item, nr_scanned);
-	count_memcg_events(lruvec_memcg(lruvec), item, nr_scanned);
+	__count_memcg_events(lruvec_memcg(lruvec), item, nr_scanned);
 	__count_vm_events(PGSCAN_ANON + file, nr_scanned);
 
 	spin_unlock_irq(&lruvec->lru_lock);
@@ -2045,8 +2031,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 	if (nr_taken == 0)
 		return 0;
 
-	nr_reclaimed = shrink_folio_list(&folio_list, pgdat, sc, &stat, false,
-					 lruvec_memcg(lruvec));
+	nr_reclaimed = shrink_folio_list(&folio_list, pgdat, sc, &stat, false);
 
 	spin_lock_irq(&lruvec->lru_lock);
 	move_folios_to_lru(lruvec, &folio_list);
@@ -2057,7 +2042,7 @@ static unsigned long shrink_inactive_list(unsigned long nr_to_scan,
 	item = PGSTEAL_KSWAPD + reclaimer_offset(sc);
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(item, nr_reclaimed);
-	count_memcg_events(lruvec_memcg(lruvec), item, nr_reclaimed);
+	__count_memcg_events(lruvec_memcg(lruvec), item, nr_reclaimed);
 	__count_vm_events(PGSTEAL_ANON + file, nr_reclaimed);
 	spin_unlock_irq(&lruvec->lru_lock);
 
@@ -2147,7 +2132,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(PGREFILL, nr_scanned);
-	count_memcg_events(lruvec_memcg(lruvec), PGREFILL, nr_scanned);
+	__count_memcg_events(lruvec_memcg(lruvec), PGREFILL, nr_scanned);
 
 	spin_unlock_irq(&lruvec->lru_lock);
 
@@ -2204,7 +2189,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	nr_deactivate = move_folios_to_lru(lruvec, &l_inactive);
 
 	__count_vm_events(PGDEACTIVATE, nr_deactivate);
-	count_memcg_events(lruvec_memcg(lruvec), PGDEACTIVATE, nr_deactivate);
+	__count_memcg_events(lruvec_memcg(lruvec), PGDEACTIVATE, nr_deactivate);
 
 	__mod_node_page_state(pgdat, NR_ISOLATED_ANON + file, -nr_taken);
 	spin_unlock_irq(&lruvec->lru_lock);
@@ -2229,7 +2214,7 @@ static unsigned int reclaim_folio_list(struct list_head *folio_list,
 		.no_demotion = 1,
 	};
 
-	nr_reclaimed = shrink_folio_list(folio_list, pgdat, &sc, &stat, true, NULL);
+	nr_reclaimed = shrink_folio_list(folio_list, pgdat, &sc, &stat, true);
 	while (!list_empty(folio_list)) {
 		folio = lru_to_folio(folio_list);
 		list_del(&folio->lru);
@@ -2518,13 +2503,6 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 		goto out;
 	}
 
-	/* Proactive reclaim initiated by userspace for anonymous memory only */
-	if (swappiness == SWAPPINESS_ANON_ONLY) {
-		WARN_ON_ONCE(!sc->proactive);
-		scan_balance = SCAN_ANON;
-		goto out;
-	}
-
 	/*
 	 * Do not apply any pressure balancing cleverness when the
 	 * system is close to OOM, scan both anon and file equally
@@ -2545,8 +2523,7 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 
 	/*
 	 * If there is enough inactive page cache, we do not reclaim
-	 * anything from the anonymous working right now to make sure
-         * a streaming file access pattern doesn't cause swapping.
+	 * anything from the anonymous working right now.
 	 */
 	if (sc->cache_trim_mode) {
 		scan_balance = SCAN_FILE;
@@ -2669,7 +2646,7 @@ out:
  * Anonymous LRU management is a waste if there is
  * ultimately no way to reclaim the memory.
  */
-static bool can_age_anon_pages(struct lruvec *lruvec,
+static bool can_age_anon_pages(struct pglist_data *pgdat,
 			       struct scan_control *sc)
 {
 	/* Aging the anon LRU is valuable if swap is present: */
@@ -2677,8 +2654,7 @@ static bool can_age_anon_pages(struct lruvec *lruvec,
 		return true;
 
 	/* Also valuable if anon pages can be demoted: */
-	return can_demote(lruvec_pgdat(lruvec)->node_id, sc,
-			  lruvec_memcg(lruvec));
+	return can_demote(pgdat->node_id, sc);
 }
 
 #ifdef CONFIG_LRU_GEN
@@ -2714,12 +2690,8 @@ static bool should_clear_pmd_young(void)
 		READ_ONCE((lruvec)->lrugen.min_seq[LRU_GEN_FILE]),	\
 	}
 
-/* Get the min/max evictable type based on swappiness */
-#define min_type(swappiness) (!(swappiness))
-#define max_type(swappiness) ((swappiness) < SWAPPINESS_ANON_ONLY)
-
 #define evictable_min_seq(min_seq, swappiness)				\
-	min((min_seq)[min_type(swappiness)], (min_seq)[max_type(swappiness)])
+	min((min_seq)[!(swappiness)], (min_seq)[(swappiness) <= MAX_SWAPPINESS])
 
 #define for_each_gen_type_zone(gen, type, zone)				\
 	for ((gen) = 0; (gen) < MAX_NR_GENS; (gen)++)			\
@@ -2727,7 +2699,7 @@ static bool should_clear_pmd_young(void)
 			for ((zone) = 0; (zone) < MAX_NR_ZONES; (zone)++)
 
 #define for_each_evictable_type(type, swappiness)			\
-	for ((type) = min_type(swappiness); (type) <= max_type(swappiness); (type)++)
+	for ((type) = !(swappiness); (type) <= ((swappiness) <= MAX_SWAPPINESS); (type)++)
 
 #define get_memcg_gen(seq)	((seq) % MEMCG_NR_GENS)
 #define get_memcg_bin(bin)	((bin) % MEMCG_NR_BINS)
@@ -2760,7 +2732,7 @@ static int get_swappiness(struct lruvec *lruvec, struct scan_control *sc)
 	if (!sc->may_swap)
 		return 0;
 
-	if (!can_demote(pgdat->node_id, sc, memcg) &&
+	if (!can_demote(pgdat->node_id, sc) &&
 	    mem_cgroup_get_nr_swap_pages(memcg) < MIN_LRU_BATCH)
 		return 0;
 
@@ -3878,12 +3850,7 @@ static bool inc_min_seq(struct lruvec *lruvec, int type, int swappiness)
 	int hist = lru_hist_from_seq(lrugen->min_seq[type]);
 	int new_gen, old_gen = lru_gen_from_seq(lrugen->min_seq[type]);
 
-	/* For file type, skip the check if swappiness is anon only */
-	if (type && (swappiness == SWAPPINESS_ANON_ONLY))
-		goto done;
-
-	/* For anon type, skip the check if swappiness is zero (file only) */
-	if (!type && !swappiness)
+	if (type ? swappiness > MAX_SWAPPINESS : !swappiness)
 		goto done;
 
 	/* prevent cold/hot inversion if the type is evictable */
@@ -4621,8 +4588,8 @@ static int scan_folios(struct lruvec *lruvec, struct scan_control *sc,
 		__count_vm_events(item, isolated);
 		__count_vm_events(PGREFILL, sorted);
 	}
-	count_memcg_events(memcg, item, isolated);
-	count_memcg_events(memcg, PGREFILL, sorted);
+	__count_memcg_events(memcg, item, isolated);
+	__count_memcg_events(memcg, PGREFILL, sorted);
 	__count_vm_events(PGSCAN_ANON + type, isolated);
 	trace_mm_vmscan_lru_isolate(sc->reclaim_idx, sc->order, MAX_LRU_BATCH,
 				scanned, skipped, isolated,
@@ -4728,7 +4695,7 @@ static int evict_folios(struct lruvec *lruvec, struct scan_control *sc, int swap
 	if (list_empty(&list))
 		return scanned;
 retry:
-	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false, memcg);
+	reclaimed = shrink_folio_list(&list, pgdat, sc, &stat, false);
 	sc->nr.unqueued_dirty += stat.nr_unqueued_dirty;
 	sc->nr_reclaimed += reclaimed;
 	trace_mm_vmscan_lru_shrink_inactive(pgdat->node_id,
@@ -4772,7 +4739,7 @@ retry:
 	item = PGSTEAL_KSWAPD + reclaimer_offset(sc);
 	if (!cgroup_reclaim(sc))
 		__count_vm_events(item, reclaimed);
-	count_memcg_events(memcg, item, reclaimed);
+	__count_memcg_events(memcg, item, reclaimed);
 	__count_vm_events(PGSTEAL_ANON + type, reclaimed);
 
 	spin_unlock_irq(&lruvec->lru_lock);
@@ -5549,7 +5516,7 @@ static int run_cmd(char cmd, int memcg_id, int nid, unsigned long seq,
 
 	if (swappiness < MIN_SWAPPINESS)
 		swappiness = get_swappiness(lruvec, sc);
-	else if (swappiness > SWAPPINESS_ANON_ONLY)
+	else if (swappiness > MAX_SWAPPINESS + 1)
 		goto done;
 
 	switch (cmd) {
@@ -5606,33 +5573,22 @@ static ssize_t lru_gen_seq_write(struct file *file, const char __user *src,
 	while ((cur = strsep(&next, ",;\n"))) {
 		int n;
 		int end;
-		char cmd, swap_string[5];
+		char cmd;
 		unsigned int memcg_id;
 		unsigned int nid;
 		unsigned long seq;
-		unsigned int swappiness;
+		unsigned int swappiness = -1;
 		unsigned long opt = -1;
 
 		cur = skip_spaces(cur);
 		if (!*cur)
 			continue;
 
-		n = sscanf(cur, "%c %u %u %lu %n %4s %n %lu %n", &cmd, &memcg_id, &nid,
-			   &seq, &end, swap_string, &end, &opt, &end);
+		n = sscanf(cur, "%c %u %u %lu %n %u %n %lu %n", &cmd, &memcg_id, &nid,
+			   &seq, &end, &swappiness, &end, &opt, &end);
 		if (n < 4 || cur[end]) {
 			err = -EINVAL;
 			break;
-		}
-
-		if (n == 4) {
-			swappiness = -1;
-		} else if (!strcmp("max", swap_string)) {
-			/* set by userspace for anonymous memory only */
-			swappiness = SWAPPINESS_ANON_ONLY;
-		} else {
-			err = kstrtouint(swap_string, 0, &swappiness);
-			if (err)
-				break;
 		}
 
 		err = run_cmd(cmd, memcg_id, nid, seq, &sc, swappiness, opt);
@@ -5894,7 +5850,7 @@ static void shrink_lruvec(struct lruvec *lruvec, struct scan_control *sc)
 	 * Even if we did not try to evict anon pages at all, we want to
 	 * rebalance the anon lru active/inactive ratio.
 	 */
-	if (can_age_anon_pages(lruvec, sc) &&
+	if (can_age_anon_pages(lruvec_pgdat(lruvec), sc) &&
 	    inactive_is_low(lruvec, LRU_INACTIVE_ANON))
 		shrink_active_list(SWAP_CLUSTER_MAX, lruvec,
 				   sc, LRU_ACTIVE_ANON);
@@ -6725,10 +6681,10 @@ static void kswapd_age_node(struct pglist_data *pgdat, struct scan_control *sc)
 		return;
 	}
 
-	lruvec = mem_cgroup_lruvec(NULL, pgdat);
-	if (!can_age_anon_pages(lruvec, sc))
+	if (!can_age_anon_pages(pgdat, sc))
 		return;
 
+	lruvec = mem_cgroup_lruvec(NULL, pgdat);
 	if (!inactive_is_low(lruvec, LRU_INACTIVE_ANON))
 		return;
 

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Nehalem/SandBridge/Haswell/Broadwell/Skylake uncore support */
-#include <asm/msr.h>
 #include "uncore.h"
 #include "uncore_discovery.h"
 
@@ -261,34 +260,34 @@ static void snb_uncore_msr_enable_event(struct intel_uncore_box *box, struct per
 	struct hw_perf_event *hwc = &event->hw;
 
 	if (hwc->idx < UNCORE_PMC_IDX_FIXED)
-		wrmsrq(hwc->config_base, hwc->config | SNB_UNC_CTL_EN);
+		wrmsrl(hwc->config_base, hwc->config | SNB_UNC_CTL_EN);
 	else
-		wrmsrq(hwc->config_base, SNB_UNC_CTL_EN);
+		wrmsrl(hwc->config_base, SNB_UNC_CTL_EN);
 }
 
 static void snb_uncore_msr_disable_event(struct intel_uncore_box *box, struct perf_event *event)
 {
-	wrmsrq(event->hw.config_base, 0);
+	wrmsrl(event->hw.config_base, 0);
 }
 
 static void snb_uncore_msr_init_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0) {
-		wrmsrq(SNB_UNC_PERF_GLOBAL_CTL,
+		wrmsrl(SNB_UNC_PERF_GLOBAL_CTL,
 			SNB_UNC_GLOBAL_CTL_EN | SNB_UNC_GLOBAL_CTL_CORE_ALL);
 	}
 }
 
 static void snb_uncore_msr_enable_box(struct intel_uncore_box *box)
 {
-	wrmsrq(SNB_UNC_PERF_GLOBAL_CTL,
+	wrmsrl(SNB_UNC_PERF_GLOBAL_CTL,
 		SNB_UNC_GLOBAL_CTL_EN | SNB_UNC_GLOBAL_CTL_CORE_ALL);
 }
 
 static void snb_uncore_msr_exit_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0)
-		wrmsrq(SNB_UNC_PERF_GLOBAL_CTL, 0);
+		wrmsrl(SNB_UNC_PERF_GLOBAL_CTL, 0);
 }
 
 static struct uncore_event_desc snb_uncore_events[] = {
@@ -373,7 +372,7 @@ void snb_uncore_cpu_init(void)
 static void skl_uncore_msr_init_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0) {
-		wrmsrq(SKL_UNC_PERF_GLOBAL_CTL,
+		wrmsrl(SKL_UNC_PERF_GLOBAL_CTL,
 			SNB_UNC_GLOBAL_CTL_EN | SKL_UNC_GLOBAL_CTL_CORE_ALL);
 	}
 
@@ -384,14 +383,14 @@ static void skl_uncore_msr_init_box(struct intel_uncore_box *box)
 
 static void skl_uncore_msr_enable_box(struct intel_uncore_box *box)
 {
-	wrmsrq(SKL_UNC_PERF_GLOBAL_CTL,
+	wrmsrl(SKL_UNC_PERF_GLOBAL_CTL,
 		SNB_UNC_GLOBAL_CTL_EN | SKL_UNC_GLOBAL_CTL_CORE_ALL);
 }
 
 static void skl_uncore_msr_exit_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0)
-		wrmsrq(SKL_UNC_PERF_GLOBAL_CTL, 0);
+		wrmsrl(SKL_UNC_PERF_GLOBAL_CTL, 0);
 }
 
 static struct intel_uncore_ops skl_uncore_msr_ops = {
@@ -505,7 +504,7 @@ static int icl_get_cbox_num(void)
 {
 	u64 num_boxes;
 
-	rdmsrq(ICL_UNC_CBO_CONFIG, num_boxes);
+	rdmsrl(ICL_UNC_CBO_CONFIG, num_boxes);
 
 	return num_boxes & ICL_UNC_NUM_CBO_MASK;
 }
@@ -526,7 +525,7 @@ static struct intel_uncore_type *tgl_msr_uncores[] = {
 static void rkl_uncore_msr_init_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0)
-		wrmsrq(SKL_UNC_PERF_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
+		wrmsrl(SKL_UNC_PERF_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
 }
 
 void tgl_uncore_cpu_init(void)
@@ -542,24 +541,24 @@ void tgl_uncore_cpu_init(void)
 static void adl_uncore_msr_init_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0)
-		wrmsrq(ADL_UNC_PERF_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
+		wrmsrl(ADL_UNC_PERF_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
 }
 
 static void adl_uncore_msr_enable_box(struct intel_uncore_box *box)
 {
-	wrmsrq(ADL_UNC_PERF_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
+	wrmsrl(ADL_UNC_PERF_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
 }
 
 static void adl_uncore_msr_disable_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0)
-		wrmsrq(ADL_UNC_PERF_GLOBAL_CTL, 0);
+		wrmsrl(ADL_UNC_PERF_GLOBAL_CTL, 0);
 }
 
 static void adl_uncore_msr_exit_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0)
-		wrmsrq(ADL_UNC_PERF_GLOBAL_CTL, 0);
+		wrmsrl(ADL_UNC_PERF_GLOBAL_CTL, 0);
 }
 
 static struct intel_uncore_ops adl_uncore_msr_ops = {
@@ -692,7 +691,7 @@ static struct intel_uncore_type mtl_uncore_hac_cbox = {
 
 static void mtl_uncore_msr_init_box(struct intel_uncore_box *box)
 {
-	wrmsrq(uncore_msr_box_ctl(box), SNB_UNC_GLOBAL_CTL_EN);
+	wrmsrl(uncore_msr_box_ctl(box), SNB_UNC_GLOBAL_CTL_EN);
 }
 
 static struct intel_uncore_ops mtl_uncore_msr_ops = {
@@ -759,7 +758,7 @@ static struct intel_uncore_type *lnl_msr_uncores[] = {
 static void lnl_uncore_msr_init_box(struct intel_uncore_box *box)
 {
 	if (box->pmu->pmu_idx == 0)
-		wrmsrq(LNL_UNC_MSR_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
+		wrmsrl(LNL_UNC_MSR_GLOBAL_CTL, SNB_UNC_GLOBAL_CTL_EN);
 }
 
 static struct intel_uncore_ops lnl_uncore_msr_ops = {
@@ -1307,12 +1306,12 @@ int skl_uncore_pci_init(void)
 /* Nehalem uncore support */
 static void nhm_uncore_msr_disable_box(struct intel_uncore_box *box)
 {
-	wrmsrq(NHM_UNC_PERF_GLOBAL_CTL, 0);
+	wrmsrl(NHM_UNC_PERF_GLOBAL_CTL, 0);
 }
 
 static void nhm_uncore_msr_enable_box(struct intel_uncore_box *box)
 {
-	wrmsrq(NHM_UNC_PERF_GLOBAL_CTL, NHM_UNC_GLOBAL_CTL_EN_PC_ALL | NHM_UNC_GLOBAL_CTL_EN_FC);
+	wrmsrl(NHM_UNC_PERF_GLOBAL_CTL, NHM_UNC_GLOBAL_CTL_EN_PC_ALL | NHM_UNC_GLOBAL_CTL_EN_FC);
 }
 
 static void nhm_uncore_msr_enable_event(struct intel_uncore_box *box, struct perf_event *event)
@@ -1320,9 +1319,9 @@ static void nhm_uncore_msr_enable_event(struct intel_uncore_box *box, struct per
 	struct hw_perf_event *hwc = &event->hw;
 
 	if (hwc->idx < UNCORE_PMC_IDX_FIXED)
-		wrmsrq(hwc->config_base, hwc->config | SNB_UNC_CTL_EN);
+		wrmsrl(hwc->config_base, hwc->config | SNB_UNC_CTL_EN);
 	else
-		wrmsrq(hwc->config_base, NHM_UNC_FIXED_CTR_CTL_EN);
+		wrmsrl(hwc->config_base, NHM_UNC_FIXED_CTR_CTL_EN);
 }
 
 static struct attribute *nhm_uncore_formats_attr[] = {

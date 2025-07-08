@@ -14,13 +14,15 @@ fi
 
 case "$1" in
 binutils)
-	echo 2.30.0
+	echo 2.25.0
 	;;
 gcc)
 	if [ "$ARCH" = parisc64 ]; then
 		echo 12.0.0
-	else
+	elif [ "$SRCARCH" = x86 ]; then
 		echo 8.1.0
+	else
+		echo 5.1.0
 	fi
 	;;
 llvm)

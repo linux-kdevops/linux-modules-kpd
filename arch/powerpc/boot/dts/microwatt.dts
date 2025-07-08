@@ -4,7 +4,7 @@
 / {
 	#size-cells = <0x02>;
 	#address-cells = <0x02>;
-	model = "microwatt";
+	model-name = "microwatt";
 	compatible = "microwatt-soc";
 
 	aliases {

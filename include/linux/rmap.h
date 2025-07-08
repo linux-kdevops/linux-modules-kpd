@@ -223,7 +223,7 @@ static inline void __folio_large_mapcount_sanity_checks(const struct folio *foli
 	VM_WARN_ON_ONCE(folio_mm_id(folio, 1) != MM_ID_DUMMY &&
 			folio->_mm_id_mapcount[1] < 0);
 	VM_WARN_ON_ONCE(!folio_mapped(folio) &&
-			test_bit(FOLIO_MM_IDS_SHARED_BITNUM, &folio->_mm_ids));
+			folio_test_large_maybe_mapped_shared(folio));
 }
 
 static __always_inline void folio_set_large_mapcount(struct folio *folio,

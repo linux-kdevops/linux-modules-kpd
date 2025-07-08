@@ -682,7 +682,7 @@ int do_uring(unsigned long lam)
 		return 1;
 
 	if (fstat(file_fd, &st) < 0)
-		goto cleanup;
+		return 1;
 
 	off_t file_sz = st.st_size;
 
@@ -690,7 +690,7 @@ int do_uring(unsigned long lam)
 
 	fi = malloc(sizeof(*fi) + sizeof(struct iovec) * blocks);
 	if (!fi)
-		goto cleanup;
+		return 1;
 
 	fi->file_sz = file_sz;
 	fi->file_fd = file_fd;
@@ -698,7 +698,7 @@ int do_uring(unsigned long lam)
 	ring = malloc(sizeof(*ring));
 	if (!ring) {
 		free(fi);
-		goto cleanup;
+		return 1;
 	}
 
 	memset(ring, 0, sizeof(struct io_ring));
@@ -729,8 +729,6 @@ out:
 	}
 
 	free(fi);
-cleanup:
-	close(file_fd);
 
 	return ret;
 }
@@ -1191,7 +1189,6 @@ void *allocate_dsa_pasid(void)
 
 	wq = mmap(NULL, 0x1000, PROT_WRITE,
 			   MAP_SHARED | MAP_POPULATE, fd, 0);
-	close(fd);
 	if (wq == MAP_FAILED)
 		perror("mmap");
 

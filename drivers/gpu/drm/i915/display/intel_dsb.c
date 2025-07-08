@@ -4,15 +4,13 @@
  *
  */
 
-#include <drm/drm_print.h>
 #include <drm/drm_vblank.h>
 
+#include "i915_drv.h"
 #include "i915_irq.h"
 #include "i915_reg.h"
-#include "i915_utils.h"
 #include "intel_crtc.h"
 #include "intel_de.h"
-#include "intel_display_rpm.h"
 #include "intel_display_types.h"
 #include "intel_dsb.h"
 #include "intel_dsb_buffer.h"
@@ -144,10 +142,10 @@ static int dsb_vtotal(struct intel_atomic_state *state,
 static int dsb_dewake_scanline_start(struct intel_atomic_state *state,
 				     struct intel_crtc *crtc)
 {
-	struct intel_display *display = to_intel_display(state);
 	const struct intel_crtc_state *crtc_state =
 		intel_pre_commit_crtc_state(state, crtc);
-	unsigned int latency = skl_watermark_max_latency(display, 0);
+	struct drm_i915_private *i915 = to_i915(state->base.dev);
+	unsigned int latency = skl_watermark_max_latency(i915, 0);
 
 	return intel_mode_vdisplay(&crtc_state->hw.adjusted_mode) -
 		intel_usecs_to_scanlines(&crtc_state->hw.adjusted_mode, latency);
@@ -797,22 +795,22 @@ struct intel_dsb *intel_dsb_prepare(struct intel_atomic_state *state,
 				    enum intel_dsb_id dsb_id,
 				    unsigned int max_cmds)
 {
-	struct intel_display *display = to_intel_display(state);
-	struct ref_tracker *wakeref;
+	struct drm_i915_private *i915 = to_i915(state->base.dev);
+	intel_wakeref_t wakeref;
 	struct intel_dsb *dsb;
 	unsigned int size;
 
-	if (!HAS_DSB(display))
+	if (!HAS_DSB(i915))
 		return NULL;
 
-	if (!display->params.enable_dsb)
+	if (!i915->display.params.enable_dsb)
 		return NULL;
 
 	dsb = kzalloc(sizeof(*dsb), GFP_KERNEL);
 	if (!dsb)
 		goto out;
 
-	wakeref = intel_display_rpm_get(display);
+	wakeref = intel_runtime_pm_get(&i915->runtime_pm);
 
 	/* ~1 qword per instruction, full cachelines */
 	size = ALIGN(max_cmds * 8, CACHELINE_BYTES);
@@ -820,7 +818,7 @@ struct intel_dsb *intel_dsb_prepare(struct intel_atomic_state *state,
 	if (!intel_dsb_buffer_create(crtc, &dsb->dsb_buf, size))
 		goto out_put_rpm;
 
-	intel_display_rpm_put(display, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 
 	dsb->id = dsb_id;
 	dsb->crtc = crtc;
@@ -833,10 +831,10 @@ struct intel_dsb *intel_dsb_prepare(struct intel_atomic_state *state,
 	return dsb;
 
 out_put_rpm:
-	intel_display_rpm_put(display, wakeref);
+	intel_runtime_pm_put(&i915->runtime_pm, wakeref);
 	kfree(dsb);
 out:
-	drm_info_once(display->drm,
+	drm_info_once(&i915->drm,
 		      "[CRTC:%d:%s] DSB %d queue setup failed, will fallback to MMIO for display HW programming\n",
 		      crtc->base.base.id, crtc->base.name, dsb_id);
 

@@ -2,7 +2,7 @@
 /*
  * Slab allocator functions that are independent of the allocator strategy
  *
- * (C) 2012 Christoph Lameter <cl@gentwo.org>
+ * (C) 2012 Christoph Lameter <cl@linux.com>
  */
 #include <linux/slab.h>
 

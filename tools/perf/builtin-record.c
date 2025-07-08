@@ -26,7 +26,6 @@
 #include "util/target.h"
 #include "util/session.h"
 #include "util/tool.h"
-#include "util/stat.h"
 #include "util/symbol.h"
 #include "util/record.h"
 #include "util/cpumap.h"
@@ -52,7 +51,6 @@
 #include "util/clockid.h"
 #include "util/off_cpu.h"
 #include "util/bpf-filter.h"
-#include "util/strbuf.h"
 #include "asm/bug.h"
 #include "perf.h"
 #include "cputopo.h"
@@ -650,27 +648,14 @@ static int record__pushfn(struct mmap *map, void *to, void *bf, size_t size)
 	struct record *rec = to;
 
 	if (record__comp_enabled(rec)) {
-		struct perf_record_compressed2 *event = map->data;
-		size_t padding = 0;
-		u8 pad[8] = {0};
 		ssize_t compressed = zstd_compress(rec->session, map, map->data,
 						   mmap__mmap_len(map), bf, size);
 
 		if (compressed < 0)
 			return (int)compressed;
 
-		bf = event;
-		thread->samples++;
-
-		/*
-		 * The record from `zstd_compress` is not 8 bytes aligned, which would cause asan
-		 * error. We make it aligned here.
-		 */
-		event->data_size = compressed - sizeof(struct perf_record_compressed2);
-		event->header.size = PERF_ALIGN(compressed, sizeof(u64));
-		padding = event->header.size - compressed;
-		return record__write(rec, map, bf, compressed) ||
-		       record__write(rec, map, &pad, padding);
+		size = compressed;
+		bf   = map->data;
 	}
 
 	thread->samples++;
@@ -1549,7 +1534,7 @@ static void record__adjust_affinity(struct record *rec, struct mmap *map)
 
 static size_t process_comp_header(void *record, size_t increment)
 {
-	struct perf_record_compressed2 *event = record;
+	struct perf_record_compressed *event = record;
 	size_t size = sizeof(*event);
 
 	if (increment) {
@@ -1557,7 +1542,7 @@ static size_t process_comp_header(void *record, size_t increment)
 		return increment;
 	}
 
-	event->header.type = PERF_RECORD_COMPRESSED2;
+	event->header.type = PERF_RECORD_COMPRESSED;
 	event->header.size = size;
 
 	return size;
@@ -1567,7 +1552,7 @@ static ssize_t zstd_compress(struct perf_session *session, struct mmap *map,
 			    void *dst, size_t dst_size, void *src, size_t src_size)
 {
 	ssize_t compressed;
-	size_t max_record_size = PERF_SAMPLE_MAX_SIZE - sizeof(struct perf_record_compressed2) - 1;
+	size_t max_record_size = PERF_SAMPLE_MAX_SIZE - sizeof(struct perf_record_compressed) - 1;
 	struct zstd_data *zstd_data = &session->zstd_data;
 
 	if (map && map->file)
@@ -2498,11 +2483,7 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 		pr_warning("WARNING: --timestamp-filename option is not available in pipe mode.\n");
 	}
 
-	/*
-	 * Use global stat_config that is zero meaning aggr_mode is AGGR_NONE
-	 * and hybrid_merge is false.
-	 */
-	evlist__uniquify_evsel_names(rec->evlist, &stat_config);
+	evlist__uniquify_name(rec->evlist);
 
 	evlist__config(rec->evlist, opts, &callchain_param);
 
@@ -2586,13 +2567,6 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 	 */
 	if (!target__none(&opts->target) && !opts->target.initial_delay)
 		evlist__enable(rec->evlist);
-
-	/*
-	 * offcpu-time does not call execve, so enable_on_exe wouldn't work
-	 * when recording a workload, do it manually
-	 */
-	if (rec->off_cpu)
-		evlist__enable_evsel(rec->evlist, (char *)OFFCPU_EVENT);
 
 	/*
 	 * Let the child rip
@@ -2810,15 +2784,13 @@ static int __cmd_record(struct record *rec, int argc, const char **argv)
 		record__auxtrace_snapshot_exit(rec);
 
 	if (forks && workload_exec_errno) {
-		char msg[STRERR_BUFSIZE];
+		char msg[STRERR_BUFSIZE], strevsels[2048];
 		const char *emsg = str_error_r(workload_exec_errno, msg, sizeof(msg));
-		struct strbuf sb = STRBUF_INIT;
 
-		evlist__format_evsels(rec->evlist, &sb, 2048);
+		evlist__scnprintf_evsels(rec->evlist, sizeof(strevsels), strevsels);
 
 		pr_err("Failed to collect '%s' for the '%s' workload: %s\n",
-			sb.buf, argv[0], emsg);
-		strbuf_release(&sb);
+			strevsels, argv[0], emsg);
 		err = -1;
 		goto out_child;
 	}
@@ -3183,28 +3155,6 @@ out_free:
 	return ret;
 }
 
-static int record__parse_off_cpu_thresh(const struct option *opt,
-					const char *str,
-					int unset __maybe_unused)
-{
-	struct record_opts *opts = opt->value;
-	char *endptr;
-	u64 off_cpu_thresh_ms;
-
-	if (!str)
-		return -EINVAL;
-
-	off_cpu_thresh_ms = strtoull(str, &endptr, 10);
-
-	/* the threshold isn't string "0", yet strtoull() returns 0, parsing failed */
-	if (*endptr || (off_cpu_thresh_ms == 0 && strcmp(str, "0")))
-		return -EINVAL;
-	else
-		opts->off_cpu_thresh_ns = off_cpu_thresh_ms * NSEC_PER_MSEC;
-
-	return 0;
-}
-
 void __weak arch__add_leaf_frame_record_opts(struct record_opts *opts __maybe_unused)
 {
 }
@@ -3398,7 +3348,6 @@ static struct record record = {
 		.ctl_fd              = -1,
 		.ctl_fd_ack          = -1,
 		.synth               = PERF_SYNTH_ALL,
-		.off_cpu_thresh_ns   = OFFCPU_THRESH,
 	},
 };
 
@@ -3487,8 +3436,6 @@ static struct option __record_options[] = {
 		    "Record the sampled data address data page size"),
 	OPT_BOOLEAN(0, "code-page-size", &record.opts.sample_code_page_size,
 		    "Record the sampled code address (ip) page size"),
-	OPT_BOOLEAN(0, "sample-mem-info", &record.opts.sample_data_src,
-		    "Record the data source for memory operations"),
 	OPT_BOOLEAN(0, "sample-cpu", &record.opts.sample_cpu, "Record the sample cpu"),
 	OPT_BOOLEAN(0, "sample-identifier", &record.opts.sample_identifier,
 		    "Record the sample identifier"),
@@ -3533,7 +3480,7 @@ static struct option __record_options[] = {
 		    "sample selected machine registers on interrupt,"
 		    " use '-I?' to list register names", parse_intr_regs),
 	OPT_CALLBACK_OPTARG(0, "user-regs", &record.opts.sample_user_regs, NULL, "any register",
-		    "sample selected machine registers in user space,"
+		    "sample selected machine registers on interrupt,"
 		    " use '--user-regs=?' to list register names", parse_user_regs),
 	OPT_BOOLEAN(0, "running-time", &record.opts.running_time,
 		    "Record running/enabled time of read (:S) events"),
@@ -3626,9 +3573,6 @@ static struct option __record_options[] = {
 	OPT_BOOLEAN(0, "off-cpu", &record.off_cpu, "Enable off-cpu analysis"),
 	OPT_STRING(0, "setup-filter", &record.filter_action, "pin|unpin",
 		   "BPF filter action"),
-	OPT_CALLBACK(0, "off-cpu-thresh", &record.opts, "ms",
-		     "Dump off-cpu samples if off-cpu time exceeds this threshold (in milliseconds). (Default: 500ms)",
-		     record__parse_off_cpu_thresh),
 	OPT_END()
 };
 
@@ -4185,10 +4129,6 @@ int cmd_record(int argc, const char **argv)
 		}
 		goto out_opts;
 	}
-
-	/* For backward compatibility, -d implies --mem-info */
-	if (rec->opts.sample_address)
-		rec->opts.sample_data_src = true;
 
 	/*
 	 * Allow aliases to facilitate the lookup of symbols for address

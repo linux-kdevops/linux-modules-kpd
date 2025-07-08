@@ -350,6 +350,7 @@ static void smca_configure(unsigned int bank, unsigned int cpu)
 
 struct thresh_restart {
 	struct threshold_block	*b;
+	int			reset;
 	int			set_lvt_off;
 	int			lvt_off;
 	u16			old_limit;
@@ -431,13 +432,13 @@ static void threshold_restart_bank(void *_tr)
 
 	rdmsr(tr->b->address, lo, hi);
 
-	/*
-	 * Reset error count and overflow bit.
-	 * This is done during init or after handling an interrupt.
-	 */
-	if (hi & MASK_OVERFLOW_HI || tr->set_lvt_off) {
-		hi &= ~(MASK_ERR_COUNT_HI | MASK_OVERFLOW_HI);
-		hi |= THRESHOLD_MAX - tr->b->threshold_limit;
+	if (tr->b->threshold_limit < (hi & THRESHOLD_MAX))
+		tr->reset = 1;	/* limit cannot be lower than err count */
+
+	if (tr->reset) {		/* reset err count and overflow bit */
+		hi =
+		    (hi & ~(MASK_ERR_COUNT_HI | MASK_OVERFLOW_HI)) |
+		    (THRESHOLD_MAX - tr->b->threshold_limit);
 	} else if (tr->old_limit) {	/* change limit w/o reset */
 		int new_count = (hi & THRESHOLD_MAX) +
 		    (tr->old_limit - tr->b->threshold_limit);
@@ -661,12 +662,12 @@ static void disable_err_thresholding(struct cpuinfo_x86 *c, unsigned int bank)
 		return;
 	}
 
-	rdmsrq(MSR_K7_HWCR, hwcr);
+	rdmsrl(MSR_K7_HWCR, hwcr);
 
 	/* McStatusWrEn has to be set */
 	need_toggle = !(hwcr & BIT(18));
 	if (need_toggle)
-		wrmsrq(MSR_K7_HWCR, hwcr | BIT(18));
+		wrmsrl(MSR_K7_HWCR, hwcr | BIT(18));
 
 	/* Clear CntP bit safely */
 	for (i = 0; i < num_msrs; i++)
@@ -674,7 +675,7 @@ static void disable_err_thresholding(struct cpuinfo_x86 *c, unsigned int bank)
 
 	/* restore old settings */
 	if (need_toggle)
-		wrmsrq(MSR_K7_HWCR, hwcr);
+		wrmsrl(MSR_K7_HWCR, hwcr);
 }
 
 /* cpu init entry point, called from mce.c with preempt off */
@@ -804,12 +805,12 @@ static void __log_error(unsigned int bank, u64 status, u64 addr, u64 misc)
 	}
 
 	if (mce_flags.smca) {
-		rdmsrq(MSR_AMD64_SMCA_MCx_IPID(bank), m->ipid);
+		rdmsrl(MSR_AMD64_SMCA_MCx_IPID(bank), m->ipid);
 
 		if (m->status & MCI_STATUS_SYNDV) {
-			rdmsrq(MSR_AMD64_SMCA_MCx_SYND(bank), m->synd);
-			rdmsrq(MSR_AMD64_SMCA_MCx_SYND1(bank), err.vendor.amd.synd1);
-			rdmsrq(MSR_AMD64_SMCA_MCx_SYND2(bank), err.vendor.amd.synd2);
+			rdmsrl(MSR_AMD64_SMCA_MCx_SYND(bank), m->synd);
+			rdmsrl(MSR_AMD64_SMCA_MCx_SYND1(bank), err.vendor.amd.synd1);
+			rdmsrl(MSR_AMD64_SMCA_MCx_SYND2(bank), err.vendor.amd.synd2);
 		}
 	}
 
@@ -833,16 +834,16 @@ _log_error_bank(unsigned int bank, u32 msr_stat, u32 msr_addr, u64 misc)
 {
 	u64 status, addr = 0;
 
-	rdmsrq(msr_stat, status);
+	rdmsrl(msr_stat, status);
 	if (!(status & MCI_STATUS_VAL))
 		return false;
 
 	if (status & MCI_STATUS_ADDRV)
-		rdmsrq(msr_addr, addr);
+		rdmsrl(msr_addr, addr);
 
 	__log_error(bank, status, addr, misc);
 
-	wrmsrq(msr_stat, 0);
+	wrmsrl(msr_stat, 0);
 
 	return status & MCI_STATUS_DEFERRED;
 }
@@ -861,7 +862,7 @@ static bool _log_error_deferred(unsigned int bank, u32 misc)
 		return true;
 
 	/* Clear MCA_DESTAT if the deferred error was logged from MCA_STATUS. */
-	wrmsrq(MSR_AMD64_SMCA_MCx_DESTAT(bank), 0);
+	wrmsrl(MSR_AMD64_SMCA_MCx_DESTAT(bank), 0);
 	return true;
 }
 
@@ -1112,20 +1113,13 @@ static const char *get_name(unsigned int cpu, unsigned int bank, struct threshol
 	}
 
 	bank_type = smca_get_bank_type(cpu, bank);
+	if (bank_type >= N_SMCA_BANK_TYPES)
+		return NULL;
 
 	if (b && (bank_type == SMCA_UMC || bank_type == SMCA_UMC_V2)) {
 		if (b->block < ARRAY_SIZE(smca_umc_block_names))
 			return smca_umc_block_names[b->block];
-	}
-
-	if (b && b->block) {
-		snprintf(buf_mcatype, MAX_MCATYPE_NAME_LEN, "th_block_%u", b->block);
-		return buf_mcatype;
-	}
-
-	if (bank_type >= N_SMCA_BANK_TYPES) {
-		snprintf(buf_mcatype, MAX_MCATYPE_NAME_LEN, "th_bank_%u", bank);
-		return buf_mcatype;
+		return NULL;
 	}
 
 	if (per_cpu(smca_bank_counts, cpu)[bank_type] == 1)

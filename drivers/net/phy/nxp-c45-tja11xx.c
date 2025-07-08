@@ -19,6 +19,7 @@
 
 #include "nxp-c45-tja11xx.h"
 
+#define PHY_ID_MASK			GENMASK(31, 4)
 /* Same id: TJA1103, TJA1104 */
 #define PHY_ID_TJA_1103			0x001BB010
 /* Same id: TJA1120, TJA1121 */
@@ -762,6 +763,9 @@ static int nxp_c45_perout_enable(struct nxp_c45_phy *priv,
 	struct phy_device *phydev = priv->phydev;
 	int pin;
 
+	if (perout->flags & ~PTP_PEROUT_PHASE)
+		return -EOPNOTSUPP;
+
 	pin = ptp_find_pin(priv->ptp_clock, PTP_PF_PEROUT, perout->index);
 	if (pin < 0)
 		return pin;
@@ -856,6 +860,12 @@ static int nxp_c45_extts_enable(struct nxp_c45_phy *priv,
 {
 	const struct nxp_c45_phy_data *data = nxp_c45_get_data(priv->phydev);
 	int pin;
+
+	if (extts->flags & ~(PTP_ENABLE_FEATURE |
+			      PTP_RISING_EDGE |
+			      PTP_FALLING_EDGE |
+			      PTP_STRICT_FLAGS))
+		return -EOPNOTSUPP;
 
 	/* Sampling on both edges is not supported */
 	if ((extts->flags & PTP_RISING_EDGE) &&
@@ -952,10 +962,6 @@ static int nxp_c45_init_ptp_clock(struct nxp_c45_phy *priv)
 		.n_pins		= ARRAY_SIZE(nxp_c45_ptp_pins),
 		.n_ext_ts	= 1,
 		.n_per_out	= 1,
-		.supported_extts_flags = PTP_RISING_EDGE |
-					 PTP_FALLING_EDGE |
-					 PTP_STRICT_FLAGS,
-		.supported_perout_flags = PTP_PEROUT_PHASE,
 	};
 
 	priv->ptp_clock = ptp_clock_register(&priv->caps,
@@ -1965,24 +1971,28 @@ static int nxp_c45_macsec_ability(struct phy_device *phydev)
 	return macsec_ability;
 }
 
-static int tja11xx_no_macsec_match_phy_device(struct phy_device *phydev,
-					      const struct phy_driver *phydrv)
+static int tja1103_match_phy_device(struct phy_device *phydev)
 {
-	if (!phy_id_compare(phydev->phy_id, phydrv->phy_id,
-			    phydrv->phy_id_mask))
-		return 0;
-
-	return !nxp_c45_macsec_ability(phydev);
+	return phy_id_compare(phydev->phy_id, PHY_ID_TJA_1103, PHY_ID_MASK) &&
+	       !nxp_c45_macsec_ability(phydev);
 }
 
-static int tja11xx_macsec_match_phy_device(struct phy_device *phydev,
-					   const struct phy_driver *phydrv)
+static int tja1104_match_phy_device(struct phy_device *phydev)
 {
-	if (!phy_id_compare(phydev->phy_id, phydrv->phy_id,
-			    phydrv->phy_id_mask))
-		return 0;
+	return phy_id_compare(phydev->phy_id, PHY_ID_TJA_1103, PHY_ID_MASK) &&
+	       nxp_c45_macsec_ability(phydev);
+}
 
-	return nxp_c45_macsec_ability(phydev);
+static int tja1120_match_phy_device(struct phy_device *phydev)
+{
+	return phy_id_compare(phydev->phy_id, PHY_ID_TJA_1120, PHY_ID_MASK) &&
+	       !nxp_c45_macsec_ability(phydev);
+}
+
+static int tja1121_match_phy_device(struct phy_device *phydev)
+{
+	return phy_id_compare(phydev->phy_id, PHY_ID_TJA_1120, PHY_ID_MASK) &&
+	       nxp_c45_macsec_ability(phydev);
 }
 
 static const struct nxp_c45_regmap tja1120_regmap = {
@@ -2055,7 +2065,6 @@ static const struct nxp_c45_phy_data tja1120_phy_data = {
 
 static struct phy_driver nxp_c45_driver[] = {
 	{
-		PHY_ID_MATCH_MODEL(PHY_ID_TJA_1103),
 		.name			= "NXP C45 TJA1103",
 		.get_features		= nxp_c45_get_features,
 		.driver_data		= &tja1103_phy_data,
@@ -2077,10 +2086,9 @@ static struct phy_driver nxp_c45_driver[] = {
 		.get_sqi		= nxp_c45_get_sqi,
 		.get_sqi_max		= nxp_c45_get_sqi_max,
 		.remove			= nxp_c45_remove,
-		.match_phy_device	= tja11xx_no_macsec_match_phy_device,
+		.match_phy_device	= tja1103_match_phy_device,
 	},
 	{
-		PHY_ID_MATCH_MODEL(PHY_ID_TJA_1103),
 		.name			= "NXP C45 TJA1104",
 		.get_features		= nxp_c45_get_features,
 		.driver_data		= &tja1103_phy_data,
@@ -2102,10 +2110,9 @@ static struct phy_driver nxp_c45_driver[] = {
 		.get_sqi		= nxp_c45_get_sqi,
 		.get_sqi_max		= nxp_c45_get_sqi_max,
 		.remove			= nxp_c45_remove,
-		.match_phy_device	= tja11xx_macsec_match_phy_device,
+		.match_phy_device	= tja1104_match_phy_device,
 	},
 	{
-		PHY_ID_MATCH_MODEL(PHY_ID_TJA_1120),
 		.name			= "NXP C45 TJA1120",
 		.get_features		= nxp_c45_get_features,
 		.driver_data		= &tja1120_phy_data,
@@ -2128,10 +2135,9 @@ static struct phy_driver nxp_c45_driver[] = {
 		.get_sqi		= nxp_c45_get_sqi,
 		.get_sqi_max		= nxp_c45_get_sqi_max,
 		.remove			= nxp_c45_remove,
-		.match_phy_device	= tja11xx_no_macsec_match_phy_device,
+		.match_phy_device	= tja1120_match_phy_device,
 	},
 	{
-		PHY_ID_MATCH_MODEL(PHY_ID_TJA_1120),
 		.name			= "NXP C45 TJA1121",
 		.get_features		= nxp_c45_get_features,
 		.driver_data		= &tja1120_phy_data,
@@ -2154,7 +2160,7 @@ static struct phy_driver nxp_c45_driver[] = {
 		.get_sqi		= nxp_c45_get_sqi,
 		.get_sqi_max		= nxp_c45_get_sqi_max,
 		.remove			= nxp_c45_remove,
-		.match_phy_device	= tja11xx_macsec_match_phy_device,
+		.match_phy_device	= tja1121_match_phy_device,
 	},
 };
 
