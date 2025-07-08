@@ -112,8 +112,11 @@ enum ast_config_mode {
 
 #define AST_MAX_HWC_WIDTH	64
 #define AST_MAX_HWC_HEIGHT	64
+
 #define AST_HWC_PITCH		(AST_MAX_HWC_WIDTH * SZ_2)
 #define AST_HWC_SIZE		(AST_MAX_HWC_HEIGHT * AST_HWC_PITCH)
+
+#define AST_HWC_SIGNATURE_SIZE	32
 
 /*
  * Planes
@@ -122,6 +125,7 @@ enum ast_config_mode {
 struct ast_plane {
 	struct drm_plane base;
 
+	void __iomem *vaddr;
 	u64 offset;
 	unsigned long size;
 };
@@ -179,6 +183,7 @@ struct ast_device {
 	void __iomem	*vram;
 	unsigned long	vram_base;
 	unsigned long	vram_size;
+	unsigned long	vram_fb_available;
 
 	struct mutex modeset_lock; /* Protects access to modeset I/O registers in ioregs */
 
@@ -335,6 +340,14 @@ static inline void ast_set_index_reg_mask(struct ast_device *ast, u32 base, u8 i
 	__ast_write8_i_masked(ast->ioregs, base, index, preserve_mask, val);
 }
 
+#define AST_VIDMEM_SIZE_8M    0x00800000
+#define AST_VIDMEM_SIZE_16M   0x01000000
+#define AST_VIDMEM_SIZE_32M   0x02000000
+#define AST_VIDMEM_SIZE_64M   0x04000000
+#define AST_VIDMEM_SIZE_128M  0x08000000
+
+#define AST_VIDMEM_DEFAULT_SIZE AST_VIDMEM_SIZE_8M
+
 struct ast_vbios_stdtable {
 	u8 misc;
 	u8 seq[4];
@@ -427,7 +440,6 @@ int ast_vga_output_init(struct ast_device *ast);
 int ast_sil164_output_init(struct ast_device *ast);
 
 /* ast_cursor.c */
-long ast_cursor_vram_offset(struct ast_device *ast);
 int ast_cursor_plane_init(struct ast_device *ast);
 
 /* ast dp501 */
@@ -442,12 +454,11 @@ int ast_astdp_output_init(struct ast_device *ast);
 /* ast_mode.c */
 int ast_mode_config_init(struct ast_device *ast);
 int ast_plane_init(struct drm_device *dev, struct ast_plane *ast_plane,
-		   u64 offset, unsigned long size,
+		   void __iomem *vaddr, u64 offset, unsigned long size,
 		   uint32_t possible_crtcs,
 		   const struct drm_plane_funcs *funcs,
 		   const uint32_t *formats, unsigned int format_count,
 		   const uint64_t *format_modifiers,
 		   enum drm_plane_type type);
-void __iomem *ast_plane_vaddr(struct ast_plane *ast);
 
 #endif

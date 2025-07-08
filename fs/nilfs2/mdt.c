@@ -422,6 +422,8 @@ static int nilfs_mdt_write_folio(struct folio *folio,
 
 	if (wbc->sync_mode == WB_SYNC_ALL)
 		err = nilfs_construct_segment(sb);
+	else if (wbc->for_reclaim)
+		nilfs_flush_segment(sb, inode->i_ino);
 
 	return err;
 }

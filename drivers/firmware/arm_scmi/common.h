@@ -475,7 +475,6 @@ static int __tag##_probe(struct platform_device *pdev)			       \
 	if (ret)							       \
 		goto err;						       \
 									       \
-	spdev->dev.parent = dev;					       \
 	ret = platform_device_add(spdev);				       \
 	if (ret)							       \
 		goto err;						       \

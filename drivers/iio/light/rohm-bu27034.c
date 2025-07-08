@@ -998,8 +998,9 @@ static int bu27034_read_raw(struct iio_dev *idev,
 			return -EINVAL;
 
 		/* Don't mess with measurement enabling while buffering */
-		if (!iio_device_claim_direct(idev))
-			return -EBUSY;
+		ret = iio_device_claim_direct_mode(idev);
+		if (ret)
+			return ret;
 
 		mutex_lock(&data->mutex);
 		/*
@@ -1010,7 +1011,7 @@ static int bu27034_read_raw(struct iio_dev *idev,
 		ret = result_get(data, chan->channel, val);
 
 		mutex_unlock(&data->mutex);
-		iio_device_release_direct(idev);
+		iio_device_release_direct_mode(idev);
 
 		if (ret)
 			return ret;
@@ -1049,8 +1050,9 @@ static int bu27034_write_raw(struct iio_dev *idev,
 	struct bu27034_data *data = iio_priv(idev);
 	int ret;
 
-	if (!iio_device_claim_direct(idev))
-		return -EBUSY;
+	ret = iio_device_claim_direct_mode(idev);
+	if (ret)
+		return ret;
 
 	switch (mask) {
 	case IIO_CHAN_INFO_SCALE:
@@ -1067,7 +1069,7 @@ static int bu27034_write_raw(struct iio_dev *idev,
 		break;
 	}
 
-	iio_device_release_direct(idev);
+	iio_device_release_direct_mode(idev);
 
 	return ret;
 }

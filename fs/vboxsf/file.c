@@ -262,42 +262,40 @@ static struct vboxsf_handle *vboxsf_get_write_handle(struct vboxsf_inode *sf_i)
 	return sf_handle;
 }
 
-static int vboxsf_writepages(struct address_space *mapping,
-		struct writeback_control *wbc)
+static int vboxsf_writepage(struct page *page, struct writeback_control *wbc)
 {
-	struct inode *inode = mapping->host;
-	struct folio *folio = NULL;
+	struct inode *inode = page->mapping->host;
 	struct vboxsf_inode *sf_i = VBOXSF_I(inode);
 	struct vboxsf_handle *sf_handle;
+	loff_t off = page_offset(page);
 	loff_t size = i_size_read(inode);
-	int error;
+	u32 nwrite = PAGE_SIZE;
+	u8 *buf;
+	int err;
+
+	if (off + PAGE_SIZE > size)
+		nwrite = size & ~PAGE_MASK;
 
 	sf_handle = vboxsf_get_write_handle(sf_i);
 	if (!sf_handle)
 		return -EBADF;
 
-	while ((folio = writeback_iter(mapping, wbc, folio, &error))) {
-		loff_t off = folio_pos(folio);
-		u32 nwrite = folio_size(folio);
-		u8 *buf;
-
-		if (nwrite > size - off)
-			nwrite = size - off;
-
-		buf = kmap_local_folio(folio, 0);
-		error = vboxsf_write(sf_handle->root, sf_handle->handle,
-				off, &nwrite, buf);
-		kunmap_local(buf);
-
-		folio_unlock(folio);
-	}
+	buf = kmap(page);
+	err = vboxsf_write(sf_handle->root, sf_handle->handle,
+			   off, &nwrite, buf);
+	kunmap(page);
 
 	kref_put(&sf_handle->refcount, vboxsf_handle_release);
 
-	/* mtime changed */
-	if (error == 0)
+	if (err == 0) {
+		/* mtime changed */
 		sf_i->force_restat = 1;
-	return error;
+	} else {
+		ClearPageUptodate(page);
+	}
+
+	unlock_page(page);
+	return err;
 }
 
 static int vboxsf_write_end(struct file *file, struct address_space *mapping,
@@ -349,11 +347,10 @@ out:
  */
 const struct address_space_operations vboxsf_reg_aops = {
 	.read_folio = vboxsf_read_folio,
-	.writepages = vboxsf_writepages,
+	.writepage = vboxsf_writepage,
 	.dirty_folio = filemap_dirty_folio,
 	.write_begin = simple_write_begin,
 	.write_end = vboxsf_write_end,
-	.migrate_folio = filemap_migrate_folio,
 };
 
 static const char *vboxsf_get_link(struct dentry *dentry, struct inode *inode,

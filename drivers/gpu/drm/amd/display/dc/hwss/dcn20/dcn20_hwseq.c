@@ -76,7 +76,6 @@ void dcn20_log_color_state(struct dc *dc,
 {
 	struct dc_context *dc_ctx = dc->ctx;
 	struct resource_pool *pool = dc->res_pool;
-	bool is_gamut_remap_available = false;
 	int i;
 
 	DTN_INFO("DPP:  DGAM mode  SHAPER mode  3DLUT mode  3DLUT bit depth"
@@ -90,15 +89,15 @@ void dcn20_log_color_state(struct dc *dc,
 		struct dcn_dpp_state s = {0};
 
 		dpp->funcs->dpp_read_state(dpp, &s);
-		if (dpp->funcs->dpp_get_gamut_remap) {
-			dpp->funcs->dpp_get_gamut_remap(dpp, &s.gamut_remap);
-			is_gamut_remap_available = true;
-		}
+		dpp->funcs->dpp_get_gamut_remap(dpp, &s.gamut_remap);
 
 		if (!s.is_enabled)
 			continue;
 
-		DTN_INFO("[%2d]:  %8s  %11s  %10s  %15s  %10s  %9s",
+		DTN_INFO("[%2d]:  %8s  %11s  %10s  %15s  %10s  %9s  %12s  "
+			 "%010lld %010lld %010lld %010lld "
+			 "%010lld %010lld %010lld %010lld "
+			 "%010lld %010lld %010lld %010lld",
 			dpp->inst,
 			(s.dgam_lut_mode == 0) ? "Bypass" :
 			 ((s.dgam_lut_mode == 1) ? "sRGB" :
@@ -115,17 +114,10 @@ void dcn20_log_color_state(struct dc *dc,
 			(s.lut3d_bit_depth <= 0) ? "12-bit" : "10-bit",
 			(s.lut3d_size == 0) ? "17x17x17" : "9x9x9",
 			(s.rgam_lut_mode == 1) ? "RAM A" :
-			 ((s.rgam_lut_mode == 1) ? "RAM B" : "Bypass"));
-
-		if (is_gamut_remap_available) {
-			DTN_INFO("  %12s  "
-				 "%010lld %010lld %010lld %010lld "
-				 "%010lld %010lld %010lld %010lld "
-				 "%010lld %010lld %010lld %010lld",
-
+			 ((s.rgam_lut_mode == 1) ? "RAM B" : "Bypass"),
 			(s.gamut_remap.gamut_adjust_type == 0) ? "Bypass" :
-				((s.gamut_remap.gamut_adjust_type == 1) ? "HW" :
-									  "SW"),
+			 ((s.gamut_remap.gamut_adjust_type == 1) ? "HW" :
+								   "SW"),
 			s.gamut_remap.temperature_matrix[0].value,
 			s.gamut_remap.temperature_matrix[1].value,
 			s.gamut_remap.temperature_matrix[2].value,
@@ -138,8 +130,6 @@ void dcn20_log_color_state(struct dc *dc,
 			s.gamut_remap.temperature_matrix[9].value,
 			s.gamut_remap.temperature_matrix[10].value,
 			s.gamut_remap.temperature_matrix[11].value);
-		}
-
 		DTN_INFO("\n");
 	}
 	DTN_INFO("\n");
@@ -2063,7 +2053,7 @@ void dcn20_program_front_end_for_ctx(
 		for (i = 0; i < dc->res_pool->pipe_count; i++) {
 			pipe = &context->res_ctx.pipe_ctx[i];
 
-			if (pipe->plane_state) {
+			if (!pipe->top_pipe && !pipe->prev_odm_pipe && pipe->plane_state) {
 				ASSERT(!pipe->plane_state->triplebuffer_flips);
 				/*turn off triple buffer for full update*/
 				dc->hwss.program_triplebuffer(
@@ -2492,7 +2482,7 @@ bool dcn20_update_bandwidth(
 	struct dce_hwseq *hws = dc->hwseq;
 
 	/* recalculate DML parameters */
-	if (dc->res_pool->funcs->validate_bandwidth(dc, context, false) != DC_OK)
+	if (!dc->res_pool->funcs->validate_bandwidth(dc, context, false))
 		return false;
 
 	/* apply updated bandwidth parameters */

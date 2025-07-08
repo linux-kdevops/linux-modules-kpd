@@ -44,14 +44,24 @@ bool nfsd_support_version(int vers);
 #include "stats.h"
 
 /*
- * Default and maximum payload size (NFS READ or WRITE), in bytes.
- * The default is historical, and the maximum is an implementation
- * limit.
+ * Maximum blocksizes supported by daemon under various circumstances.
  */
-enum {
-	NFSSVC_DEFBLKSIZE       = 1 * 1024 * 1024,
-	NFSSVC_MAXBLKSIZE       = RPCSVC_MAXPAYLOAD,
-};
+#define NFSSVC_MAXBLKSIZE       RPCSVC_MAXPAYLOAD
+/* NFSv2 is limited by the protocol specification, see RFC 1094 */
+#define NFSSVC_MAXBLKSIZE_V2    (8*1024)
+
+
+/*
+ * Largest number of bytes we need to allocate for an NFS
+ * call or reply.  Used to control buffer sizes.  We use
+ * the length of v3 WRITE, READDIR and READDIR replies
+ * which are an RPC header, up to 26 XDR units of reply
+ * data, and some page data.
+ *
+ * Note that accuracy here doesn't matter too much as the
+ * size is rounded up to a page size when allocating space.
+ */
+#define NFSD_BUFSIZE            ((RPC_MAX_HEADER_WITH_AUTH+26)*XDR_UNIT + NFSSVC_MAXBLKSIZE)
 
 struct readdir_cd {
 	__be32			err;	/* 0, nfserr, or nfserr_eof */
@@ -145,16 +155,6 @@ int nfsd_minorversion(struct nfsd_net *nn, u32 minorversion, enum vers_op change
 void nfsd_reset_versions(struct nfsd_net *nn);
 int nfsd_create_serv(struct net *net);
 void nfsd_destroy_serv(struct net *net);
-
-#ifdef CONFIG_DEBUG_FS
-void nfsd_debugfs_init(void);
-void nfsd_debugfs_exit(void);
-#else
-static inline void nfsd_debugfs_init(void) {}
-static inline void nfsd_debugfs_exit(void) {}
-#endif
-
-extern bool nfsd_disable_splice_read __read_mostly;
 
 extern int nfsd_max_blksize;
 

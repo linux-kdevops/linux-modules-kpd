@@ -17,6 +17,7 @@
 
 #include <drm/drm_drv.h>
 #include <drm/drm_prime.h>
+#include <drm/tegra_drm.h>
 
 #include "drm.h"
 #include "gem.h"

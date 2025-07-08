@@ -344,7 +344,7 @@ case "$1" in
 
 	"tags")
 		rm -f tags
-		xtags ${CTAGS:-ctags}
+		xtags ctags
 		remove_structs=y
 		;;
 

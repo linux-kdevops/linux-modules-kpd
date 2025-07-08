@@ -65,7 +65,6 @@ struct catu_drvdata {
 	void __iomem *base;
 	struct coresight_device *csdev;
 	int irq;
-	raw_spinlock_t spinlock;
 };
 
 #define CATU_REG32(name, offset)					\

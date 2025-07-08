@@ -410,9 +410,8 @@ static int max17040_get_property(struct power_supply *psy,
 		if (!chip->channel_temp)
 			return -ENODATA;
 
-		iio_read_channel_processed(chip->channel_temp, &val->intval);
-		val->intval /= 100; /* Convert from milli- to deci-degree */
-
+		iio_read_channel_processed_scale(chip->channel_temp,
+						 &val->intval, 10);
 		break;
 	default:
 		return -EINVAL;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * DAMON Code for The Physical Address Space
+ * DAMON Primitives for The Physical Address Space
  *
  * Author: SeongJae Park <sj@kernel.org>
  */
@@ -548,6 +548,7 @@ static unsigned long damon_pa_stat(struct damon_region *r, struct damos *s,
 		unsigned long *sz_filter_passed)
 {
 	unsigned long addr;
+	LIST_HEAD(folio_list);
 	struct folio *folio;
 
 	if (!damon_pa_scheme_has_filter(s))

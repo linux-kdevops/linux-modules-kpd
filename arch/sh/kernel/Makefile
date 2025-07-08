@@ -3,7 +3,7 @@
 # Makefile for the Linux/SuperH kernel.
 #
 
-always-$(KBUILD_BUILTIN)	:= vmlinux.lds
+extra-y	:= vmlinux.lds
 
 ifdef CONFIG_FUNCTION_TRACER
 # Do not profile debug and lowlevel utilities

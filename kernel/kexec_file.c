@@ -19,6 +19,7 @@
 #include <linux/list.h>
 #include <linux/fs.h>
 #include <linux/ima.h>
+#include <crypto/hash.h>
 #include <crypto/sha2.h>
 #include <linux/elf.h>
 #include <linux/elfcore.h>
@@ -34,21 +35,6 @@ static bool sig_enforce = IS_ENABLED(CONFIG_KEXEC_SIG_FORCE);
 void set_kexec_sig_enforced(void)
 {
 	sig_enforce = true;
-}
-#endif
-
-#ifdef CONFIG_IMA_KEXEC
-static bool check_ima_segment_index(struct kimage *image, int i)
-{
-	if (image->is_ima_segment_index_set && i == image->ima_segment_index)
-		return true;
-	else
-		return false;
-}
-#else
-static bool check_ima_segment_index(struct kimage *image, int i)
-{
-	return false;
 }
 #endif
 
@@ -200,15 +186,6 @@ kimage_validate_signature(struct kimage *image)
 }
 #endif
 
-static int kexec_post_load(struct kimage *image, unsigned long flags)
-{
-#ifdef CONFIG_IMA_KEXEC
-	if (!(flags & KEXEC_FILE_ON_CRASH))
-		ima_kexec_post_load(image);
-#endif
-	return machine_kexec_post_load(image);
-}
-
 /*
  * In file mode list of segments is prepared by kernel. Copy relevant
  * data from user space, do error checking, prepare segment list
@@ -275,11 +252,6 @@ kimage_file_prepare_segments(struct kimage *image, int kernel_fd, int initrd_fd,
 
 	/* IMA needs to pass the measurement list to the next kernel. */
 	ima_add_kexec_buffer(image);
-
-	/* If KHO is active, add its images to the list */
-	ret = kho_fill_kimage(image);
-	if (ret)
-		goto out;
 
 	/* Call image load handler */
 	ldata = kexec_image_load_default(image);
@@ -441,7 +413,7 @@ SYSCALL_DEFINE5(kexec_file_load, int, kernel_fd, int, initrd_fd,
 
 	kimage_terminate(image);
 
-	ret = kexec_post_load(image, flags);
+	ret = machine_kexec_post_load(image);
 	if (ret)
 		goto out;
 
@@ -473,7 +445,6 @@ static int locate_mem_hole_top_down(unsigned long start, unsigned long end,
 
 	temp_end = min(end, kbuf->buf_max);
 	temp_start = temp_end - kbuf->memsz + 1;
-	kexec_random_range_start(temp_start, temp_end, kbuf, &temp_start);
 
 	do {
 		/* align down start */
@@ -517,8 +488,6 @@ static int locate_mem_hole_bottom_up(unsigned long start, unsigned long end,
 	unsigned long temp_start, temp_end;
 
 	temp_start = max(start, kbuf->buf_min);
-
-	kexec_random_range_start(temp_start, end, kbuf, &temp_start);
 
 	do {
 		temp_start = ALIGN(temp_start, kbuf->buf_align);
@@ -679,14 +648,6 @@ int kexec_locate_mem_hole(struct kexec_buf *kbuf)
 	if (kbuf->mem != KEXEC_BUF_MEM_UNKNOWN)
 		return 0;
 
-	/*
-	 * If KHO is active, only use KHO scratch memory. All other memory
-	 * could potentially be handed over.
-	 */
-	ret = kho_locate_mem_hole(kbuf, locate_mem_hole_callback);
-	if (ret <= 0)
-		return ret;
-
 	if (!IS_ENABLED(CONFIG_ARCH_KEEP_MEMBLOCK))
 		ret = kexec_walk_resources(kbuf, locate_mem_hole_callback);
 	else
@@ -751,10 +712,11 @@ int kexec_add_buffer(struct kexec_buf *kbuf)
 /* Calculate and store the digest of segments */
 static int kexec_calculate_store_digests(struct kimage *image)
 {
-	struct sha256_state state;
+	struct crypto_shash *tfm;
+	struct shash_desc *desc;
 	int ret = 0, i, j, zero_buf_sz, sha_region_sz;
-	size_t nullsz;
-	u8 digest[SHA256_DIGEST_SIZE];
+	size_t desc_size, nullsz;
+	char *digest;
 	void *zero_buf;
 	struct kexec_sha_region *sha_regions;
 	struct purgatory_info *pi = &image->purgatory_info;
@@ -765,12 +727,37 @@ static int kexec_calculate_store_digests(struct kimage *image)
 	zero_buf = __va(page_to_pfn(ZERO_PAGE(0)) << PAGE_SHIFT);
 	zero_buf_sz = PAGE_SIZE;
 
+	tfm = crypto_alloc_shash("sha256", 0, 0);
+	if (IS_ERR(tfm)) {
+		ret = PTR_ERR(tfm);
+		goto out;
+	}
+
+	desc_size = crypto_shash_descsize(tfm) + sizeof(*desc);
+	desc = kzalloc(desc_size, GFP_KERNEL);
+	if (!desc) {
+		ret = -ENOMEM;
+		goto out_free_tfm;
+	}
+
 	sha_region_sz = KEXEC_SEGMENT_MAX * sizeof(struct kexec_sha_region);
 	sha_regions = vzalloc(sha_region_sz);
-	if (!sha_regions)
-		return -ENOMEM;
+	if (!sha_regions) {
+		ret = -ENOMEM;
+		goto out_free_desc;
+	}
 
-	sha256_init(&state);
+	desc->tfm   = tfm;
+
+	ret = crypto_shash_init(desc);
+	if (ret < 0)
+		goto out_free_sha_regions;
+
+	digest = kzalloc(SHA256_DIGEST_SIZE, GFP_KERNEL);
+	if (!digest) {
+		ret = -ENOMEM;
+		goto out_free_sha_regions;
+	}
 
 	for (j = i = 0; i < image->nr_segments; i++) {
 		struct kexec_segment *ksegment;
@@ -789,14 +776,10 @@ static int kexec_calculate_store_digests(struct kimage *image)
 		if (ksegment->kbuf == pi->purgatory_buf)
 			continue;
 
-		/*
-		 * Skip the segment if ima_segment_index is set and matches
-		 * the current index
-		 */
-		if (check_ima_segment_index(image, i))
-			continue;
-
-		sha256_update(&state, ksegment->kbuf, ksegment->bufsz);
+		ret = crypto_shash_update(desc, ksegment->kbuf,
+					  ksegment->bufsz);
+		if (ret)
+			break;
 
 		/*
 		 * Assume rest of the buffer is filled with zero and
@@ -808,26 +791,44 @@ static int kexec_calculate_store_digests(struct kimage *image)
 
 			if (bytes > zero_buf_sz)
 				bytes = zero_buf_sz;
-			sha256_update(&state, zero_buf, bytes);
+			ret = crypto_shash_update(desc, zero_buf, bytes);
+			if (ret)
+				break;
 			nullsz -= bytes;
 		}
+
+		if (ret)
+			break;
 
 		sha_regions[j].start = ksegment->mem;
 		sha_regions[j].len = ksegment->memsz;
 		j++;
 	}
 
-	sha256_final(&state, digest);
+	if (!ret) {
+		ret = crypto_shash_final(desc, digest);
+		if (ret)
+			goto out_free_digest;
+		ret = kexec_purgatory_get_set_symbol(image, "purgatory_sha_regions",
+						     sha_regions, sha_region_sz, 0);
+		if (ret)
+			goto out_free_digest;
 
-	ret = kexec_purgatory_get_set_symbol(image, "purgatory_sha_regions",
-					     sha_regions, sha_region_sz, 0);
-	if (ret)
-		goto out_free_sha_regions;
+		ret = kexec_purgatory_get_set_symbol(image, "purgatory_sha256_digest",
+						     digest, SHA256_DIGEST_SIZE, 0);
+		if (ret)
+			goto out_free_digest;
+	}
 
-	ret = kexec_purgatory_get_set_symbol(image, "purgatory_sha256_digest",
-					     digest, SHA256_DIGEST_SIZE, 0);
+out_free_digest:
+	kfree(digest);
 out_free_sha_regions:
 	vfree(sha_regions);
+out_free_desc:
+	kfree(desc);
+out_free_tfm:
+	kfree(tfm);
+out:
 	return ret;
 }
 

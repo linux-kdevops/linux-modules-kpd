@@ -213,7 +213,8 @@ exit:
 	return rc;
 }
 
-static int it87_gpio_set(struct gpio_chip *chip, unsigned int gpio_num, int val)
+static void it87_gpio_set(struct gpio_chip *chip,
+			  unsigned gpio_num, int val)
 {
 	u8 mask, curr_vals;
 	u16 reg;
@@ -227,8 +228,6 @@ static int it87_gpio_set(struct gpio_chip *chip, unsigned int gpio_num, int val)
 		outb(curr_vals | mask, reg);
 	else
 		outb(curr_vals & ~mask, reg);
-
-	return 0;
 }
 
 static int it87_gpio_direction_out(struct gpio_chip *chip,
@@ -250,9 +249,7 @@ static int it87_gpio_direction_out(struct gpio_chip *chip,
 	/* set the output enable bit */
 	superio_set_mask(mask, group + it87_gpio->output_base);
 
-	rc = it87_gpio_set(chip, gpio_num, val);
-	if (rc)
-		goto exit;
+	it87_gpio_set(chip, gpio_num, val);
 
 	superio_exit();
 
@@ -267,7 +264,7 @@ static const struct gpio_chip it87_template_chip = {
 	.request		= it87_gpio_request,
 	.get			= it87_gpio_get,
 	.direction_input	= it87_gpio_direction_in,
-	.set_rv			= it87_gpio_set,
+	.set			= it87_gpio_set,
 	.direction_output	= it87_gpio_direction_out,
 	.base			= -1
 };

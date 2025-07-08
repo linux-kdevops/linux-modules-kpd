@@ -765,7 +765,7 @@ static int rvu_rep_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		return err;
 	}
 
-	err = pcim_request_all_regions(pdev, DRV_NAME);
+	err = pci_request_regions(pdev, DRV_NAME);
 	if (err) {
 		dev_err(dev, "PCI request regions failed 0x%x\n", err);
 		return err;
@@ -774,7 +774,7 @@ static int rvu_rep_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	err = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(48));
 	if (err) {
 		dev_err(dev, "DMA mask config failed, abort\n");
-		goto err_set_drv_data;
+		goto err_release_regions;
 	}
 
 	pci_set_master(pdev);
@@ -782,7 +782,7 @@ static int rvu_rep_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
 		err = -ENOMEM;
-		goto err_set_drv_data;
+		goto err_release_regions;
 	}
 
 	pci_set_drvdata(pdev, priv);
@@ -799,7 +799,7 @@ static int rvu_rep_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	err = otx2_init_rsrc(pdev, priv);
 	if (err)
-		goto err_set_drv_data;
+		goto err_release_regions;
 
 	priv->iommu_domain = iommu_get_domain_for_dev(dev);
 
@@ -822,8 +822,9 @@ err_detach_rsrc:
 	otx2_disable_mbox_intr(priv);
 	otx2_pfaf_mbox_destroy(priv);
 	pci_free_irq_vectors(pdev);
-err_set_drv_data:
+err_release_regions:
 	pci_set_drvdata(pdev, NULL);
+	pci_release_regions(pdev);
 	return err;
 }
 
@@ -843,6 +844,7 @@ static void rvu_rep_remove(struct pci_dev *pdev)
 	otx2_pfaf_mbox_destroy(priv);
 	pci_free_irq_vectors(priv->pdev);
 	pci_set_drvdata(pdev, NULL);
+	pci_release_regions(pdev);
 }
 
 static struct pci_driver rvu_rep_driver = {

@@ -420,7 +420,6 @@ static void dpi_init_pll(struct dpi_data *dpi)
  */
 
 static int dpi_bridge_attach(struct drm_bridge *bridge,
-			     struct drm_encoder *encoder,
 			     enum drm_bridge_attach_flags flags)
 {
 	struct dpi_data *dpi = drm_bridge_to_dpi(bridge);
@@ -430,7 +429,7 @@ static int dpi_bridge_attach(struct drm_bridge *bridge,
 
 	dpi_init_pll(dpi);
 
-	return drm_bridge_attach(encoder, dpi->output.next_bridge,
+	return drm_bridge_attach(bridge->encoder, dpi->output.next_bridge,
 				 bridge, flags);
 }
 

@@ -714,21 +714,21 @@ end:
 
 static int msm_dp_link_parse_sink_status_field(struct msm_dp_link_private *link)
 {
-	int ret;
+	int len;
 
 	link->prev_sink_count = link->msm_dp_link.sink_count;
-	ret = drm_dp_read_sink_count(link->aux);
-	if (ret < 0) {
+	len = drm_dp_read_sink_count(link->aux);
+	if (len < 0) {
 		DRM_ERROR("DP parse sink count failed\n");
-		return ret;
+		return len;
 	}
-	link->msm_dp_link.sink_count = ret;
+	link->msm_dp_link.sink_count = len;
 
-	ret = drm_dp_dpcd_read_link_status(link->aux,
-					   link->link_status);
-	if (ret < 0) {
+	len = drm_dp_dpcd_read_link_status(link->aux,
+		link->link_status);
+	if (len < DP_LINK_STATUS_SIZE) {
 		DRM_ERROR("DP link status read failed\n");
-		return ret;
+		return len;
 	}
 
 	return msm_dp_link_parse_request(link);

@@ -23,24 +23,13 @@
 		pwms = <&pwm2 0 25000 0>;
 	};
 
-	hdmi0-con {
+	hdmi-con {
 		compatible = "hdmi-connector";
 		type = "a";
 
 		port {
-			hdmi0_con_in: endpoint {
+			hdmi_con_in: endpoint {
 				remote-endpoint = <&hdmi0_out_con>;
-			};
-		};
-	};
-
-	hdmi1-con {
-		compatible = "hdmi-connector";
-		type = "a";
-
-		port {
-			hdmi1_con_in: endpoint {
-				remote-endpoint = <&hdmi1_out_con>;
 			};
 		};
 	};
@@ -128,10 +117,6 @@
 	status = "okay";
 };
 
-&hdmi0_sound {
-	status = "okay";
-};
-
 &hdmi0_in {
 	hdmi0_in_vp0: endpoint {
 		remote-endpoint = <&vp0_out_hdmi0>;
@@ -140,45 +125,11 @@
 
 &hdmi0_out {
 	hdmi0_out_con: endpoint {
-		remote-endpoint = <&hdmi0_con_in>;
+		remote-endpoint = <&hdmi_con_in>;
 	};
-};
-
-&hdmi1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&hdmim2_tx1_cec &hdmim0_tx1_hpd &hdmim1_tx1_scl &hdmim1_tx1_sda>;
-	status = "okay";
-};
-
-&hdmi1_in {
-	hdmi1_in_vp1: endpoint {
-		remote-endpoint = <&vp1_out_hdmi1>;
-	};
-};
-
-&hdmi1_out {
-	hdmi1_out_con: endpoint {
-		remote-endpoint = <&hdmi1_con_in>;
-	};
-};
-
-&hdmi1_sound {
-	status = "okay";
 };
 
 &hdptxphy0 {
-	status = "okay";
-};
-
-&hdptxphy1 {
-	status = "okay";
-};
-
-&i2s5_8ch {
-	status = "okay";
-};
-
-&i2s6_8ch {
 	status = "okay";
 };
 
@@ -308,12 +259,5 @@
 	vp0_out_hdmi0: endpoint@ROCKCHIP_VOP2_EP_HDMI0 {
 		reg = <ROCKCHIP_VOP2_EP_HDMI0>;
 		remote-endpoint = <&hdmi0_in_vp0>;
-	};
-};
-
-&vp1 {
-	vp1_out_hdmi1: endpoint@ROCKCHIP_VOP2_EP_HDMI1 {
-		reg = <ROCKCHIP_VOP2_EP_HDMI1>;
-		remote-endpoint = <&hdmi1_in_vp1>;
 	};
 };

@@ -319,12 +319,11 @@ static const char * const rockchip_pci_pm_rsts[] = {
 	"aclk",
 };
 
-/* NOTE: Do not reorder the deassert sequence of the following reset pins */
 static const char * const rockchip_pci_core_rsts[] = {
-	"pipe",
-	"mgmt",
-	"core",
 	"mgmt-sticky",
+	"core",
+	"mgmt",
+	"pipe",
 };
 
 struct rockchip_pcie {

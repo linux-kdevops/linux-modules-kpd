@@ -29,10 +29,3 @@ At this moment, only a few of these are described here.
 
    casefolding
    errorcodes
-
-Future design
--------------
-.. toctree::
-   :maxdepth: 1
-
-   future/idle_work

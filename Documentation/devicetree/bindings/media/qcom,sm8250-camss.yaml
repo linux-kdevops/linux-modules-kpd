@@ -128,11 +128,6 @@ properties:
                 minItems: 1
                 maxItems: 4
 
-              bus-type:
-                enum:
-                  - 1 # MEDIA_BUS_TYPE_CSI2_CPHY
-                  - 4 # MEDIA_BUS_TYPE_CSI2_DPHY
-
             required:
               - clock-lanes
               - data-lanes
@@ -155,11 +150,6 @@ properties:
               data-lanes:
                 minItems: 1
                 maxItems: 4
-
-              bus-type:
-                enum:
-                  - 1 # MEDIA_BUS_TYPE_CSI2_CPHY
-                  - 4 # MEDIA_BUS_TYPE_CSI2_DPHY
 
             required:
               - clock-lanes
@@ -184,11 +174,6 @@ properties:
                 minItems: 1
                 maxItems: 4
 
-              bus-type:
-                enum:
-                  - 1 # MEDIA_BUS_TYPE_CSI2_CPHY
-                  - 4 # MEDIA_BUS_TYPE_CSI2_DPHY
-
             required:
               - clock-lanes
               - data-lanes
@@ -211,11 +196,6 @@ properties:
               data-lanes:
                 minItems: 1
                 maxItems: 4
-
-              bus-type:
-                enum:
-                  - 1 # MEDIA_BUS_TYPE_CSI2_CPHY
-                  - 4 # MEDIA_BUS_TYPE_CSI2_DPHY
 
             required:
               - clock-lanes
@@ -240,11 +220,6 @@ properties:
                 minItems: 1
                 maxItems: 4
 
-              bus-type:
-                enum:
-                  - 1 # MEDIA_BUS_TYPE_CSI2_CPHY
-                  - 4 # MEDIA_BUS_TYPE_CSI2_DPHY
-
             required:
               - clock-lanes
               - data-lanes
@@ -267,11 +242,6 @@ properties:
               data-lanes:
                 minItems: 1
                 maxItems: 4
-
-              bus-type:
-                enum:
-                  - 1 # MEDIA_BUS_TYPE_CSI2_CPHY
-                  - 4 # MEDIA_BUS_TYPE_CSI2_DPHY
 
             required:
               - clock-lanes

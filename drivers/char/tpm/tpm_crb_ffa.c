@@ -38,11 +38,9 @@
  * messages.
  *
  * All requests with FFA_MSG_SEND_DIRECT_REQ and FFA_MSG_SEND_DIRECT_RESP
- * are using the AArch32 or AArch64 SMC calling convention with register usage
- * as defined in FF-A specification:
- * w0:    Function ID
- *          -for 32-bit: 0x8400006F or 0x84000070
- *          -for 64-bit: 0xC400006F or 0xC4000070
+ * are using the AArch32 SMC calling convention with register usage as
+ * defined in FF-A specification:
+ * w0:    Function ID (0x8400006F or 0x84000070)
  * w1:    Source/Destination IDs
  * w2:    Reserved (MBZ)
  * w3-w7: Implementation defined, free to be used below
@@ -70,8 +68,7 @@
 #define CRB_FFA_GET_INTERFACE_VERSION 0x0f000001
 
 /*
- * Notifies the TPM service that a TPM command or TPM locality request is
- * ready to be processed, and allows the TPM service to process it.
+ * Return information on a given feature of the TPM service
  * Call register usage:
  * w3:    Not used (MBZ)
  * w4:    TPM service function ID, CRB_FFA_START
@@ -108,10 +105,7 @@ struct tpm_crb_ffa {
 	u16 minor_version;
 	/* lock to protect sending of FF-A messages: */
 	struct mutex msg_data_lock;
-	union {
-		struct ffa_send_direct_data direct_msg_data;
-		struct ffa_send_direct_data2 direct_msg_data2;
-	};
+	struct ffa_send_direct_data direct_msg_data;
 };
 
 static struct tpm_crb_ffa *tpm_crb_ffa;
@@ -191,34 +185,18 @@ static int __tpm_crb_ffa_send_recieve(unsigned long func_id,
 
 	msg_ops = tpm_crb_ffa->ffa_dev->ops->msg_ops;
 
-	if (ffa_partition_supports_direct_req2_recv(tpm_crb_ffa->ffa_dev)) {
-		memset(&tpm_crb_ffa->direct_msg_data2, 0x00,
-		       sizeof(struct ffa_send_direct_data2));
+	memset(&tpm_crb_ffa->direct_msg_data, 0x00,
+	       sizeof(struct ffa_send_direct_data));
 
-		tpm_crb_ffa->direct_msg_data2.data[0] = func_id;
-		tpm_crb_ffa->direct_msg_data2.data[1] = a0;
-		tpm_crb_ffa->direct_msg_data2.data[2] = a1;
-		tpm_crb_ffa->direct_msg_data2.data[3] = a2;
+	tpm_crb_ffa->direct_msg_data.data1 = func_id;
+	tpm_crb_ffa->direct_msg_data.data2 = a0;
+	tpm_crb_ffa->direct_msg_data.data3 = a1;
+	tpm_crb_ffa->direct_msg_data.data4 = a2;
 
-		ret = msg_ops->sync_send_receive2(tpm_crb_ffa->ffa_dev,
-				&tpm_crb_ffa->direct_msg_data2);
-		if (!ret)
-			ret = tpm_crb_ffa_to_linux_errno(tpm_crb_ffa->direct_msg_data2.data[0]);
-	} else {
-		memset(&tpm_crb_ffa->direct_msg_data, 0x00,
-		       sizeof(struct ffa_send_direct_data));
-
-		tpm_crb_ffa->direct_msg_data.data1 = func_id;
-		tpm_crb_ffa->direct_msg_data.data2 = a0;
-		tpm_crb_ffa->direct_msg_data.data3 = a1;
-		tpm_crb_ffa->direct_msg_data.data4 = a2;
-
-		ret = msg_ops->sync_send_receive(tpm_crb_ffa->ffa_dev,
-				&tpm_crb_ffa->direct_msg_data);
-		if (!ret)
-			ret = tpm_crb_ffa_to_linux_errno(tpm_crb_ffa->direct_msg_data.data1);
-	}
-
+	ret = msg_ops->sync_send_receive(tpm_crb_ffa->ffa_dev,
+			&tpm_crb_ffa->direct_msg_data);
+	if (!ret)
+		ret = tpm_crb_ffa_to_linux_errno(tpm_crb_ffa->direct_msg_data.data1);
 
 	return ret;
 }
@@ -253,13 +231,8 @@ int tpm_crb_ffa_get_interface_version(u16 *major, u16 *minor)
 
 	rc = __tpm_crb_ffa_send_recieve(CRB_FFA_GET_INTERFACE_VERSION, 0x00, 0x00, 0x00);
 	if (!rc) {
-		if (ffa_partition_supports_direct_req2_recv(tpm_crb_ffa->ffa_dev)) {
-			*major = CRB_FFA_MAJOR_VERSION(tpm_crb_ffa->direct_msg_data2.data[1]);
-			*minor = CRB_FFA_MINOR_VERSION(tpm_crb_ffa->direct_msg_data2.data[1]);
-		} else {
-			*major = CRB_FFA_MAJOR_VERSION(tpm_crb_ffa->direct_msg_data.data2);
-			*minor = CRB_FFA_MINOR_VERSION(tpm_crb_ffa->direct_msg_data.data2);
-		}
+		*major = CRB_FFA_MAJOR_VERSION(tpm_crb_ffa->direct_msg_data.data2);
+		*minor = CRB_FFA_MINOR_VERSION(tpm_crb_ffa->direct_msg_data.data2);
 	}
 
 	return rc;
@@ -304,9 +277,8 @@ static int tpm_crb_ffa_probe(struct ffa_device *ffa_dev)
 
 	tpm_crb_ffa = ERR_PTR(-ENODEV); // set tpm_crb_ffa so we can detect probe failure
 
-	if (!ffa_partition_supports_direct_recv(ffa_dev) &&
-	    !ffa_partition_supports_direct_req2_recv(ffa_dev)) {
-		dev_warn(&ffa_dev->dev, "partition doesn't support direct message receive.\n");
+	if (!ffa_partition_supports_direct_recv(ffa_dev)) {
+		pr_err("TPM partition doesn't support direct message receive.\n");
 		return -EINVAL;
 	}
 
@@ -327,17 +299,17 @@ static int tpm_crb_ffa_probe(struct ffa_device *ffa_dev)
 	rc = tpm_crb_ffa_get_interface_version(&tpm_crb_ffa->major_version,
 					       &tpm_crb_ffa->minor_version);
 	if (rc) {
-		dev_err(&ffa_dev->dev, "failed to get crb interface version. rc:%d\n", rc);
+		pr_err("failed to get crb interface version. rc:%d", rc);
 		goto out;
 	}
 
-	dev_info(&ffa_dev->dev, "ABI version %u.%u\n", tpm_crb_ffa->major_version,
+	pr_info("ABI version %u.%u", tpm_crb_ffa->major_version,
 		tpm_crb_ffa->minor_version);
 
 	if (tpm_crb_ffa->major_version != CRB_FFA_VERSION_MAJOR ||
 	    (tpm_crb_ffa->minor_version > 0 &&
 	    tpm_crb_ffa->minor_version < CRB_FFA_VERSION_MINOR)) {
-		dev_warn(&ffa_dev->dev, "Incompatible ABI version\n");
+		pr_err("Incompatible ABI version");
 		goto out;
 	}
 

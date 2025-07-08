@@ -20,7 +20,6 @@ mremap_test
 on-fault-limit
 transhuge-stress
 pagemap_ioctl
-pfnmap
 *.tmp*
 protection_keys
 protection_keys_32
@@ -59,4 +58,3 @@ hugetlb_dio
 pkey_sighandler_tests_32
 pkey_sighandler_tests_64
 guard-regions
-merge

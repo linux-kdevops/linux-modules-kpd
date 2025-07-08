@@ -56,7 +56,6 @@
 #include "display/intel_pps_regs.h"
 #include "display/intel_psr_regs.h"
 #include "display/intel_sprite_regs.h"
-#include "display/intel_vga_regs.h"
 #include "display/skl_universal_plane_regs.h"
 #include "display/skl_watermark_regs.h"
 #include "display/vlv_dsi_pll_regs.h"
@@ -265,7 +264,6 @@ static int fence_mmio_write(struct intel_vgpu *vgpu, unsigned int off,
 {
 	struct intel_gvt *gvt = vgpu->gvt;
 	unsigned int fence_num = offset_to_fence_num(off);
-	intel_wakeref_t wakeref;
 	int ret;
 
 	ret = sanitize_fence_mmio_access(vgpu, fence_num, p_data, bytes);
@@ -273,10 +271,10 @@ static int fence_mmio_write(struct intel_vgpu *vgpu, unsigned int off,
 		return ret;
 	write_vreg(vgpu, off, p_data, bytes);
 
-	wakeref = mmio_hw_access_pre(gvt->gt);
+	mmio_hw_access_pre(gvt->gt);
 	intel_vgpu_write_fence(vgpu, fence_num,
 			vgpu_vreg64(vgpu, fence_num_to_offset(fence_num)));
-	mmio_hw_access_post(gvt->gt, wakeref);
+	mmio_hw_access_post(gvt->gt);
 	return 0;
 }
 
@@ -515,7 +513,7 @@ static u32 bdw_vgpu_get_dp_bitrate(struct intel_vgpu *vgpu, enum port port)
 
 		switch (wrpll_ctl & WRPLL_REF_MASK) {
 		case WRPLL_REF_PCH_SSC:
-			refclk = 135000;
+			refclk = vgpu->gvt->gt->i915->display.dpll.ref_clks.ssc;
 			break;
 		case WRPLL_REF_LCPLL:
 			refclk = 2700000;
@@ -546,7 +544,7 @@ out:
 static u32 bxt_vgpu_get_dp_bitrate(struct intel_vgpu *vgpu, enum port port)
 {
 	u32 dp_br = 0;
-	int refclk = 100000;
+	int refclk = vgpu->gvt->gt->i915->display.dpll.ref_clks.nssc;
 	enum dpio_phy phy = DPIO_PHY0;
 	enum dpio_channel ch = DPIO_CH0;
 	struct dpll clock = {};
@@ -1977,12 +1975,10 @@ static int mmio_read_from_hw(struct intel_vgpu *vgpu,
 	    vgpu == gvt->scheduler.engine_owner[engine->id] ||
 	    offset == i915_mmio_reg_offset(RING_TIMESTAMP(engine->mmio_base)) ||
 	    offset == i915_mmio_reg_offset(RING_TIMESTAMP_UDW(engine->mmio_base))) {
-		intel_wakeref_t wakeref;
-
-		wakeref = mmio_hw_access_pre(gvt->gt);
+		mmio_hw_access_pre(gvt->gt);
 		vgpu_vreg(vgpu, offset) =
 			intel_uncore_read(gvt->gt->uncore, _MMIO(offset));
-		mmio_hw_access_post(gvt->gt, wakeref);
+		mmio_hw_access_post(gvt->gt);
 	}
 
 	return intel_vgpu_default_mmio_read(vgpu, offset, p_data, bytes);
@@ -3213,12 +3209,10 @@ void intel_gvt_restore_fence(struct intel_gvt *gvt)
 	int i, id;
 
 	idr_for_each_entry(&(gvt)->vgpu_idr, vgpu, id) {
-		intel_wakeref_t wakeref;
-
-		wakeref = mmio_hw_access_pre(gvt->gt);
+		mmio_hw_access_pre(gvt->gt);
 		for (i = 0; i < vgpu_fence_sz(vgpu); i++)
 			intel_vgpu_write_fence(vgpu, i, vgpu_vreg64(vgpu, fence_num_to_offset(i)));
-		mmio_hw_access_post(gvt->gt, wakeref);
+		mmio_hw_access_post(gvt->gt);
 	}
 }
 
@@ -3239,10 +3233,8 @@ void intel_gvt_restore_mmio(struct intel_gvt *gvt)
 	int id;
 
 	idr_for_each_entry(&(gvt)->vgpu_idr, vgpu, id) {
-		intel_wakeref_t wakeref;
-
-		wakeref = mmio_hw_access_pre(gvt->gt);
+		mmio_hw_access_pre(gvt->gt);
 		intel_gvt_for_each_tracked_mmio(gvt, mmio_pm_restore_handler, vgpu);
-		mmio_hw_access_post(gvt->gt, wakeref);
+		mmio_hw_access_post(gvt->gt);
 	}
 }

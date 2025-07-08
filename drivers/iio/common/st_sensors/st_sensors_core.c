@@ -530,8 +530,9 @@ int st_sensors_read_info_raw(struct iio_dev *indio_dev,
 	int err;
 	struct st_sensor_data *sdata = iio_priv(indio_dev);
 
-	if (!iio_device_claim_direct(indio_dev))
-		return -EBUSY;
+	err = iio_device_claim_direct_mode(indio_dev);
+	if (err)
+		return err;
 
 	mutex_lock(&sdata->odr_lock);
 
@@ -550,7 +551,7 @@ int st_sensors_read_info_raw(struct iio_dev *indio_dev,
 
 out:
 	mutex_unlock(&sdata->odr_lock);
-	iio_device_release_direct(indio_dev);
+	iio_device_release_direct_mode(indio_dev);
 
 	return err;
 }

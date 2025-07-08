@@ -25,8 +25,7 @@ struct print_callbacks {
 			const char *long_desc,
 			const char *expr,
 			const char *threshold,
-			const char *unit,
-			const char *pmu_name);
+			const char *unit);
 	bool (*skip_duplicate_pmus)(void *print_state);
 };
 

@@ -98,8 +98,6 @@
 
 #define DMA_RX_BUF_SIZE		2048
 
-static DEFINE_IDA(port_ida);
-
 struct qcom_geni_device_data {
 	bool console;
 	enum geni_se_xfer_mode mode;
@@ -255,24 +253,10 @@ static struct qcom_geni_serial_port *get_port_from_line(int line, bool console)
 	struct qcom_geni_serial_port *port;
 	int nr_ports = console ? GENI_UART_CONS_PORTS : GENI_UART_PORTS;
 
-	if (console) {
-		if (line < 0 || line >= nr_ports)
-			return ERR_PTR(-ENXIO);
+	if (line < 0 || line >= nr_ports)
+		return ERR_PTR(-ENXIO);
 
-		port = &qcom_geni_console_port;
-	} else {
-		int max_alias_num = of_alias_get_highest_id("serial");
-
-		if (line < 0 || line >= nr_ports)
-			line = ida_alloc_range(&port_ida, max_alias_num + 1, nr_ports, GFP_KERNEL);
-		else
-			line = ida_alloc_range(&port_ida, line, nr_ports, GFP_KERNEL);
-
-		if (line < 0)
-			return ERR_PTR(-ENXIO);
-
-		port = &qcom_geni_uart_ports[line];
-	}
+	port = console ? &qcom_geni_console_port : &qcom_geni_uart_ports[line];
 	return port;
 }
 
@@ -1777,7 +1761,6 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 						port->wakeup_irq);
 		if (ret) {
 			device_init_wakeup(&pdev->dev, false);
-			ida_free(&port_ida, uport->line);
 			uart_remove_one_port(drv, uport);
 			return ret;
 		}
@@ -1789,12 +1772,10 @@ static int qcom_geni_serial_probe(struct platform_device *pdev)
 static void qcom_geni_serial_remove(struct platform_device *pdev)
 {
 	struct qcom_geni_serial_port *port = platform_get_drvdata(pdev);
-	struct uart_port *uport = &port->uport;
 	struct uart_driver *drv = port->private_data.drv;
 
 	dev_pm_clear_wake_irq(&pdev->dev);
 	device_init_wakeup(&pdev->dev, false);
-	ida_free(&port_ida, uport->line);
 	uart_remove_one_port(drv, &port->uport);
 }
 

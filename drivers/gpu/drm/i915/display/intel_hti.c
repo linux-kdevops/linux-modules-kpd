@@ -4,7 +4,6 @@
  */
 
 #include <drm/drm_device.h>
-#include <drm/drm_print.h>
 
 #include "intel_de.h"
 #include "intel_display.h"

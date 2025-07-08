@@ -136,15 +136,13 @@ EXPORT_SYMBOL(generic_fill_statx_attr);
  * @stat:	Where to fill in the attribute flags
  * @unit_min:	Minimum supported atomic write length in bytes
  * @unit_max:	Maximum supported atomic write length in bytes
- * @unit_max_opt: Optimised maximum supported atomic write length in bytes
  *
  * Fill in the STATX{_ATTR}_WRITE_ATOMIC flags in the kstat structure from
  * atomic write unit_min and unit_max values.
  */
 void generic_fill_statx_atomic_writes(struct kstat *stat,
 				      unsigned int unit_min,
-				      unsigned int unit_max,
-				      unsigned int unit_max_opt)
+				      unsigned int unit_max)
 {
 	/* Confirm that the request type is known */
 	stat->result_mask |= STATX_WRITE_ATOMIC;
@@ -155,7 +153,6 @@ void generic_fill_statx_atomic_writes(struct kstat *stat,
 	if (unit_min) {
 		stat->atomic_write_unit_min = unit_min;
 		stat->atomic_write_unit_max = unit_max;
-		stat->atomic_write_unit_max_opt = unit_max_opt;
 		/* Initially only allow 1x segment */
 		stat->atomic_write_segments_max = 1;
 
@@ -257,7 +254,7 @@ int vfs_getattr(const struct path *path, struct kstat *stat,
 	int retval;
 
 	retval = security_inode_getattr(path);
-	if (unlikely(retval))
+	if (retval)
 		return retval;
 	return vfs_getattr_nosec(path, stat, request_mask, query_flags);
 }
@@ -428,7 +425,7 @@ SYSCALL_DEFINE2(stat, const char __user *, filename,
 	int error;
 
 	error = vfs_stat(filename, &stat);
-	if (unlikely(error))
+	if (error)
 		return error;
 
 	return cp_old_stat(&stat, statbuf);
@@ -441,7 +438,7 @@ SYSCALL_DEFINE2(lstat, const char __user *, filename,
 	int error;
 
 	error = vfs_lstat(filename, &stat);
-	if (unlikely(error))
+	if (error)
 		return error;
 
 	return cp_old_stat(&stat, statbuf);
@@ -450,13 +447,12 @@ SYSCALL_DEFINE2(lstat, const char __user *, filename,
 SYSCALL_DEFINE2(fstat, unsigned int, fd, struct __old_kernel_stat __user *, statbuf)
 {
 	struct kstat stat;
-	int error;
+	int error = vfs_fstat(fd, &stat);
 
-	error = vfs_fstat(fd, &stat);
-	if (unlikely(error))
-		return error;
+	if (!error)
+		error = cp_old_stat(&stat, statbuf);
 
-	return cp_old_stat(&stat, statbuf);
+	return error;
 }
 
 #endif /* __ARCH_WANT_OLD_STAT */
@@ -510,12 +506,10 @@ SYSCALL_DEFINE2(newstat, const char __user *, filename,
 		struct stat __user *, statbuf)
 {
 	struct kstat stat;
-	int error;
+	int error = vfs_stat(filename, &stat);
 
-	error = vfs_stat(filename, &stat);
-	if (unlikely(error))
+	if (error)
 		return error;
-
 	return cp_new_stat(&stat, statbuf);
 }
 
@@ -526,7 +520,7 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
 	int error;
 
 	error = vfs_lstat(filename, &stat);
-	if (unlikely(error))
+	if (error)
 		return error;
 
 	return cp_new_stat(&stat, statbuf);
@@ -540,9 +534,8 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
 	int error;
 
 	error = vfs_fstatat(dfd, filename, &stat, flag);
-	if (unlikely(error))
+	if (error)
 		return error;
-
 	return cp_new_stat(&stat, statbuf);
 }
 #endif
@@ -550,13 +543,12 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
 SYSCALL_DEFINE2(newfstat, unsigned int, fd, struct stat __user *, statbuf)
 {
 	struct kstat stat;
-	int error;
+	int error = vfs_fstat(fd, &stat);
 
-	error = vfs_fstat(fd, &stat);
-	if (unlikely(error))
-		return error;
+	if (!error)
+		error = cp_new_stat(&stat, statbuf);
 
-	return cp_new_stat(&stat, statbuf);
+	return error;
 }
 #endif
 
@@ -744,7 +736,6 @@ cp_statx(const struct kstat *stat, struct statx __user *buffer)
 	tmp.stx_atomic_write_unit_min = stat->atomic_write_unit_min;
 	tmp.stx_atomic_write_unit_max = stat->atomic_write_unit_max;
 	tmp.stx_atomic_write_segments_max = stat->atomic_write_segments_max;
-	tmp.stx_atomic_write_unit_max_opt = stat->atomic_write_unit_max_opt;
 
 	return copy_to_user(buffer, &tmp, sizeof(tmp)) ? -EFAULT : 0;
 }

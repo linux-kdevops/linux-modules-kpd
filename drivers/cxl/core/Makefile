@@ -20,4 +20,3 @@ cxl_core-$(CONFIG_TRACING) += trace.o
 cxl_core-$(CONFIG_CXL_REGION) += region.o
 cxl_core-$(CONFIG_CXL_MCE) += mce.o
 cxl_core-$(CONFIG_CXL_FEATURES) += features.o
-cxl_core-$(CONFIG_CXL_EDAC_MEM_FEATURES) += edac.o

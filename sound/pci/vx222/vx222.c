@@ -123,7 +123,7 @@ static int snd_vx222_create(struct snd_card *card, struct pci_dev *pci,
 	vx = to_vx222(chip);
 	vx->pci = pci;
 
-	err = pcim_request_all_regions(pci, KBUILD_MODNAME);
+	err = pci_request_regions(pci, CARD_NAME);
 	if (err < 0)
 		return err;
 	for (i = 0; i < 2; i++)

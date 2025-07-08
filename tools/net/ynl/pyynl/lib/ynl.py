@@ -231,7 +231,14 @@ class NlMsg:
                     self.extack['unknown'].append(extack)
 
             if attr_space:
-                self.annotate_extack(attr_space)
+                # We don't have the ability to parse nests yet, so only do global
+                if 'miss-type' in self.extack and 'miss-nest' not in self.extack:
+                    miss_type = self.extack['miss-type']
+                    if miss_type in attr_space.attrs_by_val:
+                        spec = attr_space.attrs_by_val[miss_type]
+                        self.extack['miss-type'] = spec['name']
+                        if 'doc' in spec:
+                            self.extack['miss-type-doc'] = spec['doc']
 
     def _decode_policy(self, raw):
         policy = {}
@@ -257,18 +264,6 @@ class NlMsg:
                 policy['mask'] = attr.as_scalar('u64')
         return policy
 
-    def annotate_extack(self, attr_space):
-        """ Make extack more human friendly with attribute information """
-
-        # We don't have the ability to parse nests yet, so only do global
-        if 'miss-type' in self.extack and 'miss-nest' not in self.extack:
-            miss_type = self.extack['miss-type']
-            if miss_type in attr_space.attrs_by_val:
-                spec = attr_space.attrs_by_val[miss_type]
-                self.extack['miss-type'] = spec['name']
-                if 'doc' in spec:
-                    self.extack['miss-type-doc'] = spec['doc']
-
     def cmd(self):
         return self.nl_type
 
@@ -282,12 +277,12 @@ class NlMsg:
 
 
 class NlMsgs:
-    def __init__(self, data):
+    def __init__(self, data, attr_space=None):
         self.msgs = []
 
         offset = 0
         while offset < len(data):
-            msg = NlMsg(data, offset)
+            msg = NlMsg(data, offset, attr_space=attr_space)
             offset += msg.nl_len
             self.msgs.append(msg)
 
@@ -599,7 +594,7 @@ class YnlFamily(SpecFamily):
             scalar_selector = self._get_scalar(attr, value["selector"])
             attr_payload = struct.pack("II", scalar_value, scalar_selector)
         elif attr['type'] == 'sub-message':
-            msg_format, _ = self._resolve_selector(attr, search_attrs)
+            msg_format = self._resolve_selector(attr, search_attrs)
             attr_payload = b''
             if msg_format.fixed_header:
                 attr_payload += self._encode_struct(msg_format.fixed_header, value)
@@ -717,10 +712,10 @@ class YnlFamily(SpecFamily):
             raise Exception(f"No message format for '{value}' in sub-message spec '{sub_msg}'")
 
         spec = sub_msg_spec.formats[value]
-        return spec, value
+        return spec
 
     def _decode_sub_msg(self, attr, attr_spec, search_attrs):
-        msg_format, _ = self._resolve_selector(attr_spec, search_attrs)
+        msg_format = self._resolve_selector(attr_spec, search_attrs)
         decoded = {}
         offset = 0
         if msg_format.fixed_header:
@@ -792,7 +787,7 @@ class YnlFamily(SpecFamily):
 
         return rsp
 
-    def _decode_extack_path(self, attrs, attr_set, offset, target, search_attrs):
+    def _decode_extack_path(self, attrs, attr_set, offset, target):
         for attr in attrs:
             try:
                 attr_spec = attr_set.attrs_by_val[attr.type]
@@ -806,37 +801,26 @@ class YnlFamily(SpecFamily):
             if offset + attr.full_len <= target:
                 offset += attr.full_len
                 continue
-
-            pathname = attr_spec.name
-            if attr_spec['type'] == 'nest':
-                sub_attrs = self.attr_sets[attr_spec['nested-attributes']]
-                search_attrs = SpaceAttrs(sub_attrs, search_attrs.lookup(attr_spec['name']))
-            elif attr_spec['type'] == 'sub-message':
-                msg_format, value = self._resolve_selector(attr_spec, search_attrs)
-                if msg_format is None:
-                    raise Exception(f"Can't resolve sub-message of {attr_spec['name']} for extack")
-                sub_attrs = self.attr_sets[msg_format.attr_set]
-                pathname += f"({value})"
-            else:
+            if attr_spec['type'] != 'nest':
                 raise Exception(f"Can't dive into {attr.type} ({attr_spec['name']}) for extack")
             offset += 4
-            subpath = self._decode_extack_path(NlAttrs(attr.raw), sub_attrs,
-                                               offset, target, search_attrs)
+            subpath = self._decode_extack_path(NlAttrs(attr.raw),
+                                               self.attr_sets[attr_spec['nested-attributes']],
+                                               offset, target)
             if subpath is None:
                 return None
-            return '.' + pathname + subpath
+            return '.' + attr_spec.name + subpath
 
         return None
 
-    def _decode_extack(self, request, op, extack, vals):
+    def _decode_extack(self, request, op, extack):
         if 'bad-attr-offs' not in extack:
             return
 
         msg = self.nlproto.decode(self, NlMsg(request, 0, op.attr_set), op)
         offset = self.nlproto.msghdr_size() + self._struct_size(op.fixed_header)
-        search_attrs = SpaceAttrs(op.attr_set, vals)
         path = self._decode_extack_path(msg.raw_attrs, op.attr_set, offset,
-                                        extack['bad-attr-offs'], search_attrs)
+                                        extack['bad-attr-offs'])
         if path:
             del extack['bad-attr-offs']
             extack['bad-attr'] = path
@@ -1028,7 +1012,7 @@ class YnlFamily(SpecFamily):
         for (method, vals, flags) in ops:
             op = self.ops[method]
             msg = self._encode_message(op, vals, flags, req_seq)
-            reqs_by_seq[req_seq] = (op, vals, msg, flags)
+            reqs_by_seq[req_seq] = (op, msg, flags)
             payload += msg
             req_seq += 1
 
@@ -1039,14 +1023,13 @@ class YnlFamily(SpecFamily):
         op_rsp = []
         while not done:
             reply = self.sock.recv(self._recv_size)
-            nms = NlMsgs(reply)
+            nms = NlMsgs(reply, attr_space=op.attr_set)
             self._recv_dbg_print(reply, nms)
             for nl_msg in nms:
                 if nl_msg.nl_seq in reqs_by_seq:
-                    (op, vals, req_msg, req_flags) = reqs_by_seq[nl_msg.nl_seq]
+                    (op, req_msg, req_flags) = reqs_by_seq[nl_msg.nl_seq]
                     if nl_msg.extack:
-                        nl_msg.annotate_extack(op.attr_set)
-                        self._decode_extack(req_msg, op, nl_msg.extack, vals)
+                        self._decode_extack(req_msg, op, nl_msg.extack)
                 else:
                     op = None
                     req_flags = []

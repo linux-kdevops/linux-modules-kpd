@@ -3,21 +3,21 @@
  * Copyright © 2023 Intel Corporation
  */
 
+#include "i915_drv.h"
 #include "intel_crtc.h"
-#include "intel_display_core.h"
 #include "intel_display_types.h"
 #include "intel_sprite_uapi.h"
 
-static bool has_dst_key_in_primary_plane(struct intel_display *display)
+static bool has_dst_key_in_primary_plane(struct drm_i915_private *dev_priv)
 {
-	return DISPLAY_VER(display) >= 9;
+	return DISPLAY_VER(dev_priv) >= 9;
 }
 
 static void intel_plane_set_ckey(struct intel_plane_state *plane_state,
 				 const struct drm_intel_sprite_colorkey *set)
 {
-	struct intel_display *display = to_intel_display(plane_state);
 	struct intel_plane *plane = to_intel_plane(plane_state->uapi.plane);
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
 	struct drm_intel_sprite_colorkey *key = &plane_state->ckey;
 
 	*key = *set;
@@ -34,7 +34,7 @@ static void intel_plane_set_ckey(struct intel_plane_state *plane_state,
 	 * On SKL+ we want dst key enabled on
 	 * the primary and not on the sprite.
 	 */
-	if (DISPLAY_VER(display) >= 9 && plane->id != PLANE_PRIMARY &&
+	if (DISPLAY_VER(dev_priv) >= 9 && plane->id != PLANE_PRIMARY &&
 	    set->flags & I915_SET_COLORKEY_DESTINATION)
 		key->flags = 0;
 }
@@ -43,6 +43,7 @@ int intel_sprite_set_colorkey_ioctl(struct drm_device *dev, void *data,
 				    struct drm_file *file_priv)
 {
 	struct intel_display *display = to_intel_display(dev);
+	struct drm_i915_private *dev_priv = to_i915(dev);
 	struct drm_intel_sprite_colorkey *set = data;
 	struct drm_plane *plane;
 	struct drm_plane_state *plane_state;
@@ -60,7 +61,7 @@ int intel_sprite_set_colorkey_ioctl(struct drm_device *dev, void *data,
 	if ((set->flags & (I915_SET_COLORKEY_DESTINATION | I915_SET_COLORKEY_SOURCE)) == (I915_SET_COLORKEY_DESTINATION | I915_SET_COLORKEY_SOURCE))
 		return -EINVAL;
 
-	if ((display->platform.valleyview || display->platform.cherryview) &&
+	if ((IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv)) &&
 	    set->flags & I915_SET_COLORKEY_DESTINATION)
 		return -EINVAL;
 
@@ -73,7 +74,7 @@ int intel_sprite_set_colorkey_ioctl(struct drm_device *dev, void *data,
 	 * Also multiple planes can't do destination keying on the same
 	 * pipe simultaneously.
 	 */
-	if (DISPLAY_VER(display) >= 9 &&
+	if (DISPLAY_VER(dev_priv) >= 9 &&
 	    to_intel_plane(plane)->id >= PLANE_3 &&
 	    set->flags & I915_SET_COLORKEY_DESTINATION)
 		return -EINVAL;
@@ -98,7 +99,7 @@ int intel_sprite_set_colorkey_ioctl(struct drm_device *dev, void *data,
 		 * On some platforms we have to configure
 		 * the dst colorkey on the primary plane.
 		 */
-		if (!ret && has_dst_key_in_primary_plane(display)) {
+		if (!ret && has_dst_key_in_primary_plane(dev_priv)) {
 			struct intel_crtc *crtc =
 				intel_crtc_for_pipe(display,
 						    to_intel_plane(plane)->pipe);

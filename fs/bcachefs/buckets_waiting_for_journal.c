@@ -108,8 +108,7 @@ int bch2_set_bucket_needs_journal_commit(struct buckets_waiting_for_journal *b,
 realloc:
 	n = kvmalloc(sizeof(*n) + (sizeof(n->d[0]) << new_bits), GFP_KERNEL);
 	if (!n) {
-		struct bch_fs *c = container_of(b, struct bch_fs, buckets_waiting_for_journal);
-		ret = bch_err_throw(c, ENOMEM_buckets_waiting_for_journal_set);
+		ret = -BCH_ERR_ENOMEM_buckets_waiting_for_journal_set;
 		goto out;
 	}
 

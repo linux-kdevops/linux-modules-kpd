@@ -64,8 +64,7 @@ static int __led_set_brightness_blocking(struct led_classdev *led_cdev, unsigned
 
 static void led_timer_function(struct timer_list *t)
 {
-	struct led_classdev *led_cdev = timer_container_of(led_cdev, t,
-							   blink_timer);
+	struct led_classdev *led_cdev = from_timer(led_cdev, t, blink_timer);
 	unsigned long brightness;
 	unsigned long delay;
 
@@ -530,7 +529,6 @@ int led_compose_name(struct device *dev, struct led_init_data *init_data,
 	struct led_properties props = {};
 	struct fwnode_handle *fwnode = init_data->fwnode;
 	const char *devicename = init_data->devicename;
-	int n;
 
 	if (!led_classdev_name)
 		return -EINVAL;
@@ -544,48 +542,44 @@ int led_compose_name(struct device *dev, struct led_init_data *init_data,
 		 * Otherwise the label is prepended with devicename to compose
 		 * the final LED class device name.
 		 */
-		if (devicename) {
-			n = snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s:%s",
-				     devicename, props.label);
+		if (!devicename) {
+			strscpy(led_classdev_name, props.label,
+				LED_MAX_NAME_SIZE);
 		} else {
-			n = snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s", props.label);
+			snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s:%s",
+				 devicename, props.label);
 		}
 	} else if (props.function || props.color_present) {
 		char tmp_buf[LED_MAX_NAME_SIZE];
 
 		if (props.func_enum_present) {
-			n = snprintf(tmp_buf, LED_MAX_NAME_SIZE, "%s:%s-%d",
-				     props.color_present ? led_colors[props.color] : "",
-				     props.function ?: "", props.func_enum);
+			snprintf(tmp_buf, LED_MAX_NAME_SIZE, "%s:%s-%d",
+				 props.color_present ? led_colors[props.color] : "",
+				 props.function ?: "", props.func_enum);
 		} else {
-			n = snprintf(tmp_buf, LED_MAX_NAME_SIZE, "%s:%s",
-				     props.color_present ? led_colors[props.color] : "",
-				     props.function ?: "");
+			snprintf(tmp_buf, LED_MAX_NAME_SIZE, "%s:%s",
+				 props.color_present ? led_colors[props.color] : "",
+				 props.function ?: "");
 		}
-		if (n >= LED_MAX_NAME_SIZE)
-			return -E2BIG;
-
 		if (init_data->devname_mandatory) {
-			n = snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s:%s",
-				     devicename, tmp_buf);
+			snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s:%s",
+				 devicename, tmp_buf);
 		} else {
-			n = snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s", tmp_buf);
+			strscpy(led_classdev_name, tmp_buf, LED_MAX_NAME_SIZE);
+
 		}
 	} else if (init_data->default_label) {
 		if (!devicename) {
 			dev_err(dev, "Legacy LED naming requires devicename segment");
 			return -EINVAL;
 		}
-		n = snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s:%s",
-			     devicename, init_data->default_label);
+		snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s:%s",
+			 devicename, init_data->default_label);
 	} else if (is_of_node(fwnode)) {
-		n = snprintf(led_classdev_name, LED_MAX_NAME_SIZE, "%s",
-			     to_of_node(fwnode)->name);
+		strscpy(led_classdev_name, to_of_node(fwnode)->name,
+			LED_MAX_NAME_SIZE);
 	} else
 		return -EINVAL;
-
-	if (n >= LED_MAX_NAME_SIZE)
-		return -E2BIG;
 
 	return 0;
 }

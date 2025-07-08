@@ -72,11 +72,6 @@ enum mlx5hws_action_type mlx5hws_action_get_type(struct mlx5hws_action *action)
 	return action->type;
 }
 
-struct mlx5_core_dev *mlx5hws_action_get_dev(struct mlx5hws_action *action)
-{
-	return action->ctx->mdev;
-}
-
 static int hws_action_get_shared_stc_nic(struct mlx5hws_context *ctx,
 					 enum mlx5hws_context_shared_stc_type stc_type,
 					 u8 tbl_type)
@@ -243,7 +238,6 @@ hws_action_fixup_stc_attr(struct mlx5hws_context *ctx,
 			  enum mlx5hws_table_type table_type,
 			  bool is_mirror)
 {
-	struct mlx5hws_pool *pool;
 	bool use_fixup = false;
 	u32 fw_tbl_type;
 	u32 base_id;
@@ -259,11 +253,13 @@ hws_action_fixup_stc_attr(struct mlx5hws_context *ctx,
 			use_fixup = true;
 			break;
 		}
-		pool = stc_attr->ste_table.ste_pool;
 		if (!is_mirror)
-			base_id = mlx5hws_pool_get_base_id(pool);
+			base_id = mlx5hws_pool_chunk_get_base_id(stc_attr->ste_table.ste_pool,
+								 &stc_attr->ste_table.ste);
 		else
-			base_id = mlx5hws_pool_get_base_mirror_id(pool);
+			base_id =
+				mlx5hws_pool_chunk_get_base_mirror_id(stc_attr->ste_table.ste_pool,
+								      &stc_attr->ste_table.ste);
 
 		*fixup_stc_attr = *stc_attr;
 		fixup_stc_attr->ste_table.ste_obj_id = base_id;
@@ -341,7 +337,7 @@ __must_hold(&ctx->ctrl_lock)
 	if (!mlx5hws_context_cap_dynamic_reparse(ctx))
 		stc_attr->reparse_mode = MLX5_IFC_STC_REPARSE_IGNORE;
 
-	obj_0_id = mlx5hws_pool_get_base_id(stc_pool);
+	obj_0_id = mlx5hws_pool_chunk_get_base_id(stc_pool, stc);
 
 	/* According to table/action limitation change the stc_attr */
 	use_fixup = hws_action_fixup_stc_attr(ctx, stc_attr, &fixup_stc_attr, table_type, false);
@@ -357,7 +353,7 @@ __must_hold(&ctx->ctrl_lock)
 	if (table_type == MLX5HWS_TABLE_TYPE_FDB) {
 		u32 obj_1_id;
 
-		obj_1_id = mlx5hws_pool_get_base_mirror_id(stc_pool);
+		obj_1_id = mlx5hws_pool_chunk_get_base_mirror_id(stc_pool, stc);
 
 		use_fixup = hws_action_fixup_stc_attr(ctx, stc_attr,
 						      &fixup_stc_attr,
@@ -397,11 +393,11 @@ __must_hold(&ctx->ctrl_lock)
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_DROP;
 	stc_attr.action_offset = MLX5HWS_ACTION_OFFSET_HIT;
 	stc_attr.stc_offset = stc->offset;
-	obj_id = mlx5hws_pool_get_base_id(stc_pool);
+	obj_id = mlx5hws_pool_chunk_get_base_id(stc_pool, stc);
 	mlx5hws_cmd_stc_modify(ctx->mdev, obj_id, &stc_attr);
 
 	if (table_type == MLX5HWS_TABLE_TYPE_FDB) {
-		obj_id = mlx5hws_pool_get_base_mirror_id(stc_pool);
+		obj_id = mlx5hws_pool_chunk_get_base_mirror_id(stc_pool, stc);
 		mlx5hws_cmd_stc_modify(ctx->mdev, obj_id, &stc_attr);
 	}
 
@@ -1190,15 +1186,14 @@ hws_action_create_modify_header_hws(struct mlx5hws_action *action,
 				    struct mlx5hws_action_mh_pattern *pattern,
 				    u32 log_bulk_size)
 {
-	u16 num_actions, max_mh_actions = 0, hw_max_actions;
 	struct mlx5hws_context *ctx = action->ctx;
+	u16 num_actions, max_mh_actions = 0;
 	int i, ret, size_in_bytes;
 	u32 pat_id, arg_id = 0;
 	__be64 *new_pattern;
 	size_t pat_max_sz;
 
 	pat_max_sz = MLX5HWS_ARG_CHUNK_SIZE_MAX * MLX5HWS_ARG_DATA_SIZE;
-	hw_max_actions = pat_max_sz / MLX5HWS_MODIFY_ACTION_SIZE;
 	size_in_bytes = pat_max_sz * sizeof(__be64);
 	new_pattern = kcalloc(num_of_patterns, size_in_bytes, GFP_KERNEL);
 	if (!new_pattern)
@@ -1208,20 +1203,16 @@ hws_action_create_modify_header_hws(struct mlx5hws_action *action,
 	for (i = 0; i < num_of_patterns; i++) {
 		size_t new_num_actions;
 		size_t cur_num_actions;
-		u32 nop_locations;
+		u32 nope_location;
 
 		cur_num_actions = pattern[i].sz / MLX5HWS_MODIFY_ACTION_SIZE;
 
-		ret = mlx5hws_pat_calc_nop(pattern[i].data, cur_num_actions,
-					   hw_max_actions, &new_num_actions,
-					   &nop_locations,
-					   &new_pattern[i * pat_max_sz]);
-		if (ret) {
-			mlx5hws_err(ctx, "Too many actions after nop insertion\n");
-			goto free_new_pat;
-		}
+		mlx5hws_pat_calc_nope(pattern[i].data, cur_num_actions,
+				      pat_max_sz / MLX5HWS_MODIFY_ACTION_SIZE,
+				      &new_num_actions, &nope_location,
+				      &new_pattern[i * pat_max_sz]);
 
-		action[i].modify_header.nop_locations = nop_locations;
+		action[i].modify_header.nope_locations = nope_location;
 		action[i].modify_header.num_of_actions = new_num_actions;
 
 		max_mh_actions = max(max_mh_actions, new_num_actions);
@@ -1268,7 +1259,7 @@ hws_action_create_modify_header_hws(struct mlx5hws_action *action,
 				MLX5_GET(set_action_in, pattern[i].data, action_type);
 		} else {
 			/* Multiple modify actions require a pattern */
-			if (unlikely(action[i].modify_header.nop_locations)) {
+			if (unlikely(action[i].modify_header.nope_locations)) {
 				size_t pattern_sz;
 
 				pattern_sz = action[i].modify_header.num_of_actions *
@@ -1370,8 +1361,8 @@ mlx5hws_action_create_dest_array(struct mlx5hws_context *ctx,
 	struct mlx5hws_cmd_set_fte_attr fte_attr = {0};
 	struct mlx5hws_cmd_forward_tbl *fw_island;
 	struct mlx5hws_action *action;
-	int ret, last_dest_idx = -1;
-	u32 i;
+	u32 i /*, packet_reformat_id*/;
+	int ret;
 
 	if (num_dest <= 1) {
 		mlx5hws_err(ctx, "Action must have multiple dests\n");
@@ -1401,8 +1392,11 @@ mlx5hws_action_create_dest_array(struct mlx5hws_context *ctx,
 			dest_list[i].destination_id = dests[i].dest->dest_obj.obj_id;
 			fte_attr.action_flags |= MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
 			fte_attr.ignore_flow_level = ignore_flow_level;
-			if (dests[i].is_wire_ft)
-				last_dest_idx = i;
+			/* ToDo: In SW steering we have a handling of 'go to WIRE'
+			 * destination here by upper layer setting 'is_wire_ft' flag
+			 * if the destination is wire.
+			 * This is because uplink should be last dest in the list.
+			 */
 			break;
 		case MLX5HWS_ACTION_TYP_VPORT:
 			dest_list[i].destination_type = MLX5_FLOW_DESTINATION_TYPE_VPORT;
@@ -1425,9 +1419,6 @@ mlx5hws_action_create_dest_array(struct mlx5hws_context *ctx,
 			goto free_dest_list;
 		}
 	}
-
-	if (last_dest_idx != -1)
-		swap(dest_list[last_dest_idx], dest_list[num_dest - 1]);
 
 	fte_attr.dests_num = num_dest;
 	fte_attr.dests = dest_list;
@@ -1584,15 +1575,17 @@ hws_action_create_dest_match_range_definer(struct mlx5hws_context *ctx)
 	return definer;
 }
 
-static struct mlx5hws_range_action_table *
+static struct mlx5hws_matcher_action_ste *
 hws_action_create_dest_match_range_table(struct mlx5hws_context *ctx,
 					 struct mlx5hws_definer *definer,
 					 u32 miss_ft_id)
 {
 	struct mlx5hws_cmd_rtc_create_attr rtc_attr = {0};
-	struct mlx5hws_range_action_table *table_ste;
+	struct mlx5hws_action_default_stc *default_stc;
+	struct mlx5hws_matcher_action_ste *table_ste;
 	struct mlx5hws_pool_attr pool_attr = {0};
 	struct mlx5hws_pool *ste_pool, *stc_pool;
+	struct mlx5hws_pool_chunk *ste;
 	u32 *rtc_0_id, *rtc_1_id;
 	u32 obj_id;
 	int ret;
@@ -1611,6 +1604,7 @@ hws_action_create_dest_match_range_table(struct mlx5hws_context *ctx,
 
 	pool_attr.table_type = MLX5HWS_TABLE_TYPE_FDB;
 	pool_attr.pool_type = MLX5HWS_POOL_TYPE_STE;
+	pool_attr.flags = MLX5HWS_POOL_FLAGS_FOR_STE_ACTION_POOL;
 	pool_attr.alloc_log_sz = 1;
 	table_ste->pool = mlx5hws_pool_create(ctx, &pool_attr);
 	if (!table_ste->pool) {
@@ -1622,6 +1616,8 @@ hws_action_create_dest_match_range_table(struct mlx5hws_context *ctx,
 	rtc_0_id = &table_ste->rtc_0_id;
 	rtc_1_id = &table_ste->rtc_1_id;
 	ste_pool = table_ste->pool;
+	ste = &table_ste->ste;
+	ste->order = 1;
 
 	rtc_attr.log_size = 0;
 	rtc_attr.log_depth = 0;
@@ -1633,16 +1629,18 @@ hws_action_create_dest_match_range_table(struct mlx5hws_context *ctx,
 	rtc_attr.fw_gen_wqe = true;
 	rtc_attr.is_scnd_range = true;
 
-	obj_id = mlx5hws_pool_get_base_id(ste_pool);
+	obj_id = mlx5hws_pool_chunk_get_base_id(ste_pool, ste);
 
 	rtc_attr.pd = ctx->pd_num;
 	rtc_attr.ste_base = obj_id;
+	rtc_attr.ste_offset = ste->offset;
 	rtc_attr.reparse_mode = mlx5hws_context_get_reparse_mode(ctx);
 	rtc_attr.table_type = mlx5hws_table_get_res_fw_ft_type(MLX5HWS_TABLE_TYPE_FDB, false);
 
 	/* STC is a single resource (obj_id), use any STC for the ID */
 	stc_pool = ctx->stc_pool;
-	obj_id = mlx5hws_pool_get_base_id(stc_pool);
+	default_stc = ctx->common_res.default_stc;
+	obj_id = mlx5hws_pool_chunk_get_base_id(stc_pool, &default_stc->default_hit);
 	rtc_attr.stc_base = obj_id;
 
 	ret = mlx5hws_cmd_rtc_create(ctx->mdev, &rtc_attr, rtc_0_id);
@@ -1652,11 +1650,11 @@ hws_action_create_dest_match_range_table(struct mlx5hws_context *ctx,
 	}
 
 	/* Create mirror RTC */
-	obj_id = mlx5hws_pool_get_base_mirror_id(ste_pool);
+	obj_id = mlx5hws_pool_chunk_get_base_mirror_id(ste_pool, ste);
 	rtc_attr.ste_base = obj_id;
 	rtc_attr.table_type = mlx5hws_table_get_res_fw_ft_type(MLX5HWS_TABLE_TYPE_FDB, true);
 
-	obj_id = mlx5hws_pool_get_base_mirror_id(stc_pool);
+	obj_id = mlx5hws_pool_chunk_get_base_mirror_id(stc_pool, &default_stc->default_hit);
 	rtc_attr.stc_base = obj_id;
 
 	ret = mlx5hws_cmd_rtc_create(ctx->mdev, &rtc_attr, rtc_1_id);
@@ -1679,9 +1677,9 @@ free_ste:
 	return NULL;
 }
 
-static void hws_action_destroy_dest_match_range_table(
-	struct mlx5hws_context *ctx,
-	struct mlx5hws_range_action_table *table_ste)
+static void
+hws_action_destroy_dest_match_range_table(struct mlx5hws_context *ctx,
+					  struct mlx5hws_matcher_action_ste *table_ste)
 {
 	mutex_lock(&ctx->ctrl_lock);
 
@@ -1693,11 +1691,12 @@ static void hws_action_destroy_dest_match_range_table(
 	mutex_unlock(&ctx->ctrl_lock);
 }
 
-static int hws_action_create_dest_match_range_fill_table(
-	struct mlx5hws_context *ctx,
-	struct mlx5hws_range_action_table *table_ste,
-	struct mlx5hws_action *hit_ft_action,
-	struct mlx5hws_definer *range_definer, u32 min, u32 max)
+static int
+hws_action_create_dest_match_range_fill_table(struct mlx5hws_context *ctx,
+					      struct mlx5hws_matcher_action_ste *table_ste,
+					      struct mlx5hws_action *hit_ft_action,
+					      struct mlx5hws_definer *range_definer,
+					      u32 min, u32 max)
 {
 	struct mlx5hws_wqe_gta_data_seg_ste match_wqe_data = {0};
 	struct mlx5hws_wqe_gta_data_seg_ste range_wqe_data = {0};
@@ -1793,7 +1792,7 @@ mlx5hws_action_create_dest_match_range(struct mlx5hws_context *ctx,
 				       u32 min, u32 max, u32 flags)
 {
 	struct mlx5hws_cmd_stc_modify_attr stc_attr = {0};
-	struct mlx5hws_range_action_table *table_ste;
+	struct mlx5hws_matcher_action_ste *table_ste;
 	struct mlx5hws_action *hit_ft_action;
 	struct mlx5hws_definer *definer;
 	struct mlx5hws_action *action;
@@ -1838,6 +1837,7 @@ mlx5hws_action_create_dest_match_range(struct mlx5hws_context *ctx,
 	stc_attr.action_offset = MLX5HWS_ACTION_OFFSET_HIT;
 	stc_attr.action_type = MLX5_IFC_STC_ACTION_TYPE_JUMP_TO_STE_TABLE;
 	stc_attr.reparse_mode = MLX5_IFC_STC_REPARSE_IGNORE;
+	stc_attr.ste_table.ste = table_ste->ste;
 	stc_attr.ste_table.ste_pool = table_ste->pool;
 	stc_attr.ste_table.match_definer_id = ctx->caps->trivial_match_definer;
 
@@ -2110,23 +2110,21 @@ static void hws_action_modify_write(struct mlx5hws_send_engine *queue,
 				    u32 arg_idx,
 				    u8 *arg_data,
 				    u16 num_of_actions,
-				    u32 nop_locations)
+				    u32 nope_locations)
 {
 	u8 *new_arg_data = NULL;
 	int i, j;
 
-	if (unlikely(nop_locations)) {
+	if (unlikely(nope_locations)) {
 		new_arg_data = kcalloc(num_of_actions,
 				       MLX5HWS_MODIFY_ACTION_SIZE, GFP_KERNEL);
 		if (unlikely(!new_arg_data))
 			return;
 
-		for (i = 0, j = 0; j < num_of_actions; i++, j++) {
-			if (BIT(i) & nop_locations)
+		for (i = 0, j = 0; i < num_of_actions; i++, j++) {
+			memcpy(&new_arg_data[j], arg_data, MLX5HWS_MODIFY_ACTION_SIZE);
+			if (BIT(i) & nope_locations)
 				j++;
-			memcpy(&new_arg_data[j * MLX5HWS_MODIFY_ACTION_SIZE],
-			       &arg_data[i * MLX5HWS_MODIFY_ACTION_SIZE],
-			       MLX5HWS_MODIFY_ACTION_SIZE);
 		}
 	}
 
@@ -2222,7 +2220,6 @@ hws_action_setter_modify_header(struct mlx5hws_actions_apply_data *apply,
 	struct mlx5hws_action *action;
 	u32 arg_sz, arg_idx;
 	u8 *single_action;
-	u8 max_actions;
 	__be32 stc_idx;
 
 	rule_action = &apply->rule_action[setter->idx_double];
@@ -2250,23 +2247,21 @@ hws_action_setter_modify_header(struct mlx5hws_actions_apply_data *apply,
 
 		apply->wqe_data[MLX5HWS_ACTION_OFFSET_DW7] =
 			*(__be32 *)MLX5_ADDR_OF(set_action_in, single_action, data);
-		return;
-	}
+	} else {
+		/* Argument offset multiple with number of args per these actions */
+		arg_sz = mlx5hws_arg_get_arg_size(action->modify_header.max_num_of_actions);
+		arg_idx = rule_action->modify_header.offset * arg_sz;
 
-	/* Argument offset multiple with number of args per these actions */
-	max_actions = action->modify_header.max_num_of_actions;
-	arg_sz = mlx5hws_arg_get_arg_size(max_actions);
-	arg_idx = rule_action->modify_header.offset * arg_sz;
+		apply->wqe_data[MLX5HWS_ACTION_OFFSET_DW7] = htonl(arg_idx);
 
-	apply->wqe_data[MLX5HWS_ACTION_OFFSET_DW7] = htonl(arg_idx);
-
-	if (!(action->flags & MLX5HWS_ACTION_FLAG_SHARED)) {
-		apply->require_dep = 1;
-		hws_action_modify_write(apply->queue,
-					action->modify_header.arg_id + arg_idx,
-					rule_action->modify_header.data,
-					action->modify_header.num_of_actions,
-					action->modify_header.nop_locations);
+		if (!(action->flags & MLX5HWS_ACTION_FLAG_SHARED)) {
+			apply->require_dep = 1;
+			hws_action_modify_write(apply->queue,
+						action->modify_header.arg_id + arg_idx,
+						rule_action->modify_header.data,
+						action->modify_header.num_of_actions,
+						action->modify_header.nope_locations);
+		}
 	}
 }
 

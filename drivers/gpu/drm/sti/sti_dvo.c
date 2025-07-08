@@ -511,6 +511,7 @@ static int sti_dvo_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct sti_dvo *dvo;
+	struct resource *res;
 	struct device_node *np = dev->of_node;
 
 	DRM_INFO("%s\n", __func__);
@@ -522,9 +523,16 @@ static int sti_dvo_probe(struct platform_device *pdev)
 	}
 
 	dvo->dev = pdev->dev;
-	dvo->regs = devm_platform_ioremap_resource_byname(pdev, "dvo-reg");
-	if (IS_ERR(dvo->regs))
-		return PTR_ERR(dvo->regs);
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dvo-reg");
+	if (!res) {
+		DRM_ERROR("Invalid dvo resource\n");
+		return -ENOMEM;
+	}
+	dvo->regs = devm_ioremap(dev, res->start,
+			resource_size(res));
+	if (!dvo->regs)
+		return -ENOMEM;
 
 	dvo->clk_pix = devm_clk_get(dev, "dvo_pix");
 	if (IS_ERR(dvo->clk_pix)) {

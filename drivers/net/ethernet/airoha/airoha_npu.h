@@ -17,8 +17,6 @@ struct airoha_npu {
 		struct work_struct wdt_work;
 	} cores[NPU_NUM_CORES];
 
-	struct airoha_foe_stats __iomem *stats;
-
 	struct {
 		int (*ppe_init)(struct airoha_npu *npu);
 		int (*ppe_deinit)(struct airoha_npu *npu);
@@ -32,5 +30,5 @@ struct airoha_npu {
 	} ops;
 };
 
-struct airoha_npu *airoha_npu_get(struct device *dev, dma_addr_t *stats_addr);
+struct airoha_npu *airoha_npu_get(struct device *dev);
 void airoha_npu_put(struct airoha_npu *npu);

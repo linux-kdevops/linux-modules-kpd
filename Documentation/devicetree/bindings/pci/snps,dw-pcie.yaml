@@ -105,8 +105,6 @@ properties:
             Vendor-specific CSR names. Consider using the generic names above
             for new bindings.
           oneOf:
-            - description: See native 'dbi' CSR region for details.
-              enum: [ ctrl ]
             - description: See native 'elbi/app' CSR region for details.
               enum: [ apb, mgmt, link, ulreg, appl ]
             - description: See native 'atu' CSR region for details.
@@ -119,7 +117,7 @@ properties:
               const: slcr
     allOf:
       - contains:
-          enum: [ dbi, ctrl ]
+          const: dbi
       - contains:
           const: config
 

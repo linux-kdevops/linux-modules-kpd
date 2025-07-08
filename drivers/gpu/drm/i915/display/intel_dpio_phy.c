@@ -222,7 +222,9 @@ static const struct bxt_dpio_phy_info glk_dpio_phy_info[] = {
 static const struct bxt_dpio_phy_info *
 bxt_get_phy_list(struct intel_display *display, int *count)
 {
-	if (display->platform.geminilake) {
+	struct drm_i915_private *dev_priv = to_i915(display->drm);
+
+	if (IS_GEMINILAKE(dev_priv)) {
 		*count =  ARRAY_SIZE(glk_dpio_phy_info);
 		return glk_dpio_phy_info;
 	} else {
@@ -806,9 +808,9 @@ void chv_set_phy_signal_level(struct intel_encoder *encoder,
 	vlv_dpio_put(dev_priv);
 }
 
-static void __chv_data_lane_soft_reset(struct intel_encoder *encoder,
-				       const struct intel_crtc_state *crtc_state,
-				       bool reset)
+void chv_data_lane_soft_reset(struct intel_encoder *encoder,
+			      const struct intel_crtc_state *crtc_state,
+			      bool reset)
 {
 	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct intel_digital_port *dig_port = enc_to_dig_port(encoder);
@@ -851,17 +853,6 @@ static void __chv_data_lane_soft_reset(struct intel_encoder *encoder,
 	}
 }
 
-void chv_data_lane_soft_reset(struct intel_encoder *encoder,
-			      const struct intel_crtc_state *crtc_state,
-			      bool reset)
-{
-	struct drm_i915_private *i915 = to_i915(encoder->base.dev);
-
-	vlv_dpio_get(i915);
-	__chv_data_lane_soft_reset(encoder, crtc_state, reset);
-	vlv_dpio_put(i915);
-}
-
 void chv_phy_pre_pll_enable(struct intel_encoder *encoder,
 			    const struct intel_crtc_state *crtc_state)
 {
@@ -889,7 +880,7 @@ void chv_phy_pre_pll_enable(struct intel_encoder *encoder,
 	vlv_dpio_get(dev_priv);
 
 	/* Assert data lane reset */
-	__chv_data_lane_soft_reset(encoder, crtc_state, true);
+	chv_data_lane_soft_reset(encoder, crtc_state, true);
 
 	/* program left/right clock distribution */
 	if (pipe != PIPE_B) {
@@ -1017,7 +1008,7 @@ void chv_phy_pre_encoder_enable(struct intel_encoder *encoder,
 	}
 
 	/* Deassert data lane reset */
-	__chv_data_lane_soft_reset(encoder, crtc_state, false);
+	chv_data_lane_soft_reset(encoder, crtc_state, false);
 
 	vlv_dpio_put(dev_priv);
 }

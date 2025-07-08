@@ -7,7 +7,6 @@ Laptop Drivers
 .. toctree::
    :maxdepth: 1
 
-   alienware-wmi
    asus-laptop
    disk-shock-protection
    laptop-mode

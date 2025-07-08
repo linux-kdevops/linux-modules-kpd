@@ -192,7 +192,7 @@ static void btrfs_end_repair_bio(struct btrfs_bio *repair_bbio,
 		btrfs_repair_io_failure(fs_info, btrfs_ino(inode),
 				  repair_bbio->file_offset, fs_info->sectorsize,
 				  repair_bbio->saved_iter.bi_sector << SECTOR_SHIFT,
-				  bvec_phys(bv), mirror);
+				  page_folio(bv->bv_page), bv->bv_offset, mirror);
 	} while (mirror != fbio->bbio->mirror_num);
 
 done:
@@ -512,7 +512,7 @@ static void btrfs_submit_bio(struct bio *bio, struct btrfs_io_context *bioc,
 	}
 }
 
-static int btrfs_bio_csum(struct btrfs_bio *bbio)
+static blk_status_t btrfs_bio_csum(struct btrfs_bio *bbio)
 {
 	if (bbio->bio.bi_opf & REQ_META)
 		return btree_csum_one_bio(bbio);
@@ -543,11 +543,11 @@ static void run_one_async_start(struct btrfs_work *work)
 {
 	struct async_submit_bio *async =
 		container_of(work, struct async_submit_bio, work);
-	int ret;
+	blk_status_t ret;
 
 	ret = btrfs_bio_csum(async->bbio);
 	if (ret)
-		async->bbio->bio.bi_status = errno_to_blk_status(ret);
+		async->bbio->bio.bi_status = ret;
 }
 
 /*
@@ -674,8 +674,8 @@ static bool btrfs_submit_chunk(struct btrfs_bio *bbio, int mirror_num)
 	bool use_append = btrfs_use_zone_append(bbio);
 	struct btrfs_io_context *bioc = NULL;
 	struct btrfs_io_stripe smap;
-	blk_status_t status;
-	int ret;
+	blk_status_t ret;
+	int error;
 
 	if (!bbio->inode || btrfs_is_data_reloc_root(inode->root))
 		smap.rst_search_commit_root = true;
@@ -683,10 +683,10 @@ static bool btrfs_submit_chunk(struct btrfs_bio *bbio, int mirror_num)
 		smap.rst_search_commit_root = false;
 
 	btrfs_bio_counter_inc_blocked(fs_info);
-	ret = btrfs_map_block(fs_info, btrfs_op(bio), logical, &map_length,
-			      &bioc, &smap, &mirror_num);
-	if (ret) {
-		status = errno_to_blk_status(ret);
+	error = btrfs_map_block(fs_info, btrfs_op(bio), logical, &map_length,
+				&bioc, &smap, &mirror_num);
+	if (error) {
+		ret = errno_to_blk_status(error);
 		btrfs_bio_counter_dec(fs_info);
 		goto end_bbio;
 	}
@@ -700,7 +700,7 @@ static bool btrfs_submit_chunk(struct btrfs_bio *bbio, int mirror_num)
 
 		split = btrfs_split_bio(fs_info, bbio, map_length);
 		if (IS_ERR(split)) {
-			status = errno_to_blk_status(PTR_ERR(split));
+			ret = errno_to_blk_status(PTR_ERR(split));
 			btrfs_bio_counter_dec(fs_info);
 			goto end_bbio;
 		}
@@ -715,8 +715,7 @@ static bool btrfs_submit_chunk(struct btrfs_bio *bbio, int mirror_num)
 	if (bio_op(bio) == REQ_OP_READ && is_data_bbio(bbio)) {
 		bbio->saved_iter = bio->bi_iter;
 		ret = btrfs_lookup_bio_sums(bbio);
-		status = errno_to_blk_status(ret);
-		if (status)
+		if (ret)
 			goto fail;
 	}
 
@@ -749,15 +748,13 @@ static bool btrfs_submit_chunk(struct btrfs_bio *bbio, int mirror_num)
 				goto done;
 
 			ret = btrfs_bio_csum(bbio);
-			status = errno_to_blk_status(ret);
-			if (status)
+			if (ret)
 				goto fail;
 		} else if (use_append ||
 			   (btrfs_is_zoned(fs_info) && inode &&
 			    inode->flags & BTRFS_INODE_NODATASUM)) {
 			ret = btrfs_alloc_dummy_sum(bbio);
-			status = errno_to_blk_status(ret);
-			if (status)
+			if (ret)
 				goto fail;
 		}
 	}
@@ -778,10 +775,10 @@ fail:
 		ASSERT(bbio->bio.bi_pool == &btrfs_clone_bioset);
 		ASSERT(remaining);
 
-		btrfs_bio_end_io(remaining, status);
+		btrfs_bio_end_io(remaining, ret);
 	}
 end_bbio:
-	btrfs_bio_end_io(bbio, status);
+	btrfs_bio_end_io(bbio, ret);
 	/* Do not submit another chunk */
 	return true;
 }
@@ -806,7 +803,8 @@ void btrfs_submit_bbio(struct btrfs_bio *bbio, int mirror_num)
  * freeing the bio.
  */
 int btrfs_repair_io_failure(struct btrfs_fs_info *fs_info, u64 ino, u64 start,
-			    u64 length, u64 logical, phys_addr_t paddr, int mirror_num)
+			    u64 length, u64 logical, struct folio *folio,
+			    unsigned int folio_offset, int mirror_num)
 {
 	struct btrfs_io_stripe smap = { 0 };
 	struct bio_vec bvec;
@@ -837,7 +835,8 @@ int btrfs_repair_io_failure(struct btrfs_fs_info *fs_info, u64 ino, u64 start,
 
 	bio_init(&bio, smap.dev->bdev, &bvec, 1, REQ_OP_WRITE | REQ_SYNC);
 	bio.bi_iter.bi_sector = smap.physical >> SECTOR_SHIFT;
-	__bio_add_page(&bio, phys_to_page(paddr), length, offset_in_page(paddr));
+	ret = bio_add_folio(&bio, folio, length, folio_offset);
+	ASSERT(ret);
 	ret = submit_bio_wait(&bio);
 	if (ret) {
 		/* try to remap that extent elsewhere? */
@@ -901,18 +900,22 @@ int __init btrfs_bioset_init(void)
 		return -ENOMEM;
 	if (bioset_init(&btrfs_clone_bioset, BIO_POOL_SIZE,
 			offsetof(struct btrfs_bio, bio), 0))
-		goto out;
+		goto out_free_bioset;
 	if (bioset_init(&btrfs_repair_bioset, BIO_POOL_SIZE,
 			offsetof(struct btrfs_bio, bio),
 			BIOSET_NEED_BVECS))
-		goto out;
+		goto out_free_clone_bioset;
 	if (mempool_init_kmalloc_pool(&btrfs_failed_bio_pool, BIO_POOL_SIZE,
 				      sizeof(struct btrfs_failed_bio)))
-		goto out;
+		goto out_free_repair_bioset;
 	return 0;
 
-out:
-	btrfs_bioset_exit();
+out_free_repair_bioset:
+	bioset_exit(&btrfs_repair_bioset);
+out_free_clone_bioset:
+	bioset_exit(&btrfs_clone_bioset);
+out_free_bioset:
+	bioset_exit(&btrfs_bioset);
 	return -ENOMEM;
 }
 

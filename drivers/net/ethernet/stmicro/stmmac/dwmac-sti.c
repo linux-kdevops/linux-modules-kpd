@@ -23,7 +23,12 @@
 
 #define DWMAC_50MHZ	50000000
 
-#define IS_PHY_IF_MODE_GBIT(iface)	(phy_interface_mode_is_rgmii(iface) || \
+#define IS_PHY_IF_MODE_RGMII(iface)	(iface == PHY_INTERFACE_MODE_RGMII || \
+			iface == PHY_INTERFACE_MODE_RGMII_ID || \
+			iface == PHY_INTERFACE_MODE_RGMII_RXID || \
+			iface == PHY_INTERFACE_MODE_RGMII_TXID)
+
+#define IS_PHY_IF_MODE_GBIT(iface)	(IS_PHY_IF_MODE_RGMII(iface) || \
 					 iface == PHY_INTERFACE_MODE_GMII)
 
 /* STiH4xx register definitions (STiH407/STiH410 families)
@@ -143,7 +148,7 @@ static void stih4xx_fix_retime_src(void *priv, int spd, unsigned int mode)
 			src = TX_RETIME_SRC_CLKGEN;
 			freq = DWMAC_50MHZ;
 		}
-	} else if (phy_interface_mode_is_rgmii(dwmac->interface)) {
+	} else if (IS_PHY_IF_MODE_RGMII(dwmac->interface)) {
 		/* On GiGa clk source can be either ext or from clkgen */
 		freq = rgmii_clock(spd);
 
@@ -233,29 +238,6 @@ static int sti_dwmac_parse_data(struct sti_dwmac *dwmac,
 	return 0;
 }
 
-static int sti_dwmac_init(struct platform_device *pdev, void *bsp_priv)
-{
-	struct sti_dwmac *dwmac = bsp_priv;
-	int ret;
-
-	ret = clk_prepare_enable(dwmac->clk);
-	if (ret)
-		return ret;
-
-	ret = sti_dwmac_set_mode(dwmac);
-	if (ret)
-		clk_disable_unprepare(dwmac->clk);
-
-	return ret;
-}
-
-static void sti_dwmac_exit(struct platform_device *pdev, void *bsp_priv)
-{
-	struct sti_dwmac *dwmac = bsp_priv;
-
-	clk_disable_unprepare(dwmac->clk);
-}
-
 static int sti_dwmac_probe(struct platform_device *pdev)
 {
 	struct plat_stmmacenet_data *plat_dat;
@@ -292,11 +274,58 @@ static int sti_dwmac_probe(struct platform_device *pdev)
 
 	plat_dat->bsp_priv = dwmac;
 	plat_dat->fix_mac_speed = data->fix_retime_src;
-	plat_dat->init = sti_dwmac_init;
-	plat_dat->exit = sti_dwmac_exit;
 
-	return devm_stmmac_pltfr_probe(pdev, plat_dat, &stmmac_res);
+	ret = clk_prepare_enable(dwmac->clk);
+	if (ret)
+		return ret;
+
+	ret = sti_dwmac_set_mode(dwmac);
+	if (ret)
+		goto disable_clk;
+
+	ret = stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
+	if (ret)
+		goto disable_clk;
+
+	return 0;
+
+disable_clk:
+	clk_disable_unprepare(dwmac->clk);
+
+	return ret;
 }
+
+static void sti_dwmac_remove(struct platform_device *pdev)
+{
+	struct sti_dwmac *dwmac = get_stmmac_bsp_priv(&pdev->dev);
+
+	stmmac_dvr_remove(&pdev->dev);
+
+	clk_disable_unprepare(dwmac->clk);
+}
+
+static int sti_dwmac_suspend(struct device *dev)
+{
+	struct sti_dwmac *dwmac = get_stmmac_bsp_priv(dev);
+	int ret = stmmac_suspend(dev);
+
+	clk_disable_unprepare(dwmac->clk);
+
+	return ret;
+}
+
+static int sti_dwmac_resume(struct device *dev)
+{
+	struct sti_dwmac *dwmac = get_stmmac_bsp_priv(dev);
+
+	clk_prepare_enable(dwmac->clk);
+	sti_dwmac_set_mode(dwmac);
+
+	return stmmac_resume(dev);
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(sti_dwmac_pm_ops, sti_dwmac_suspend,
+						  sti_dwmac_resume);
 
 static const struct sti_dwmac_of_data stih4xx_dwmac_data = {
 	.fix_retime_src = stih4xx_fix_retime_src,
@@ -310,9 +339,10 @@ MODULE_DEVICE_TABLE(of, sti_dwmac_match);
 
 static struct platform_driver sti_dwmac_driver = {
 	.probe  = sti_dwmac_probe,
+	.remove = sti_dwmac_remove,
 	.driver = {
 		.name           = "sti-dwmac",
-		.pm		= &stmmac_pltfr_pm_ops,
+		.pm		= pm_sleep_ptr(&sti_dwmac_pm_ops),
 		.of_match_table = sti_dwmac_match,
 	},
 };

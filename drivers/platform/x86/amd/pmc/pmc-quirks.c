@@ -11,7 +11,6 @@
 #include <linux/dmi.h>
 #include <linux/io.h>
 #include <linux/ioport.h>
-#include <linux/platform_data/x86/amd-fch.h>
 
 #include "pmc.h"
 
@@ -21,7 +20,7 @@ struct quirk_entry {
 };
 
 static struct quirk_entry quirk_s2idle_bug = {
-	.s2idle_bug_mmio = FCH_PM_BASE + FCH_PM_SCRATCH,
+	.s2idle_bug_mmio = 0xfed80380,
 };
 
 static struct quirk_entry quirk_spurious_8042 = {
@@ -216,22 +215,6 @@ static const struct dmi_system_id fwbug_list[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Framework"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Laptop 13 (AMD Ryzen 7040Series)"),
 			DMI_MATCH(DMI_BIOS_VERSION, "03.05"),
-		}
-	},
-	{
-		.ident = "MECHREVO Wujie 14X (GX4HRXL)",
-		.driver_data = &quirk_spurious_8042,
-		.matches = {
-			DMI_MATCH(DMI_BOARD_NAME, "WUJIE14-GX4HRXL"),
-		}
-	},
-	/* https://bugzilla.kernel.org/show_bug.cgi?id=220116 */
-	{
-		.ident = "PCSpecialist Lafite Pro V 14M",
-		.driver_data = &quirk_spurious_8042,
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "PCSpecialist"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Lafite Pro V 14M"),
 		}
 	},
 	{}

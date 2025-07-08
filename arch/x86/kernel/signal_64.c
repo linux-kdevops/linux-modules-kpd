@@ -250,8 +250,6 @@ SYSCALL_DEFINE0(rt_sigreturn)
 	sigset_t set;
 	unsigned long uc_flags;
 
-	prevent_single_step_upon_eretu(regs);
-
 	frame = (struct rt_sigframe __user *)(regs->sp - sizeof(long));
 	if (!access_ok(frame, sizeof(*frame)))
 		goto badframe;
@@ -367,8 +365,6 @@ COMPAT_SYSCALL_DEFINE0(x32_rt_sigreturn)
 	struct rt_sigframe_x32 __user *frame;
 	sigset_t set;
 	unsigned long uc_flags;
-
-	prevent_single_step_upon_eretu(regs);
 
 	frame = (struct rt_sigframe_x32 __user *)(regs->sp - 8);
 

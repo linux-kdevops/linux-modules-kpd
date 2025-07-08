@@ -11,8 +11,6 @@ obj-$(CONFIG_ARM_MHU_V2)	+= arm_mhuv2.o
 
 obj-$(CONFIG_ARM_MHU_V3)	+= arm_mhuv3.o
 
-obj-$(CONFIG_CV1800_MBOX)	+= cv1800-mailbox.o
-
 obj-$(CONFIG_EXYNOS_MBOX)	+= exynos-mailbox.o
 
 obj-$(CONFIG_IMX_MBOX)	+= imx-mailbox.o

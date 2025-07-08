@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * DAMON Code for Virtual Address Spaces
+ * DAMON Primitives for Virtual Address Spaces
  *
  * Author: SeongJae Park <sj@kernel.org>
  */

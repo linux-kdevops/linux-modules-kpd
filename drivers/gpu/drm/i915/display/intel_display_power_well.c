@@ -13,7 +13,6 @@
 #include "intel_de.h"
 #include "intel_display_irq.h"
 #include "intel_display_power_well.h"
-#include "intel_display_rpm.h"
 #include "intel_display_types.h"
 #include "intel_dkl_phy.h"
 #include "intel_dkl_phy_regs.h"
@@ -25,7 +24,6 @@
 #include "intel_hotplug.h"
 #include "intel_pcode.h"
 #include "intel_pps.h"
-#include "intel_psr.h"
 #include "intel_tc.h"
 #include "intel_vga.h"
 #include "skl_watermark.h"
@@ -188,18 +186,22 @@ int intel_power_well_refcount(struct i915_power_well *power_well)
 static void hsw_power_well_post_enable(struct intel_display *display,
 				       u8 irq_pipe_mask, bool has_vga)
 {
+	struct drm_i915_private *dev_priv = to_i915(display->drm);
+
 	if (has_vga)
 		intel_vga_reset_io_mem(display);
 
 	if (irq_pipe_mask)
-		gen8_irq_power_well_post_enable(display, irq_pipe_mask);
+		gen8_irq_power_well_post_enable(dev_priv, irq_pipe_mask);
 }
 
 static void hsw_power_well_pre_disable(struct intel_display *display,
 				       u8 irq_pipe_mask)
 {
+	struct drm_i915_private *dev_priv = to_i915(display->drm);
+
 	if (irq_pipe_mask)
-		gen8_irq_power_well_pre_disable(display, irq_pipe_mask);
+		gen8_irq_power_well_pre_disable(dev_priv, irq_pipe_mask);
 }
 
 #define ICL_AUX_PW_TO_PHY(pw_idx)	\
@@ -750,9 +752,8 @@ void gen9_sanitize_dc_state(struct intel_display *display)
 void gen9_set_dc_state(struct intel_display *display, u32 state)
 {
 	struct i915_power_domains *power_domains = &display->power.domains;
-	bool dc6_was_enabled, enable_dc6;
-	u32 mask;
 	u32 val;
+	u32 mask;
 
 	if (!HAS_DISPLAY(display))
 		return;
@@ -760,9 +761,6 @@ void gen9_set_dc_state(struct intel_display *display, u32 state)
 	if (drm_WARN_ON_ONCE(display->drm,
 			     state & ~power_domains->allowed_dc_mask))
 		state &= power_domains->allowed_dc_mask;
-
-	if (!power_domains->initializing)
-		intel_psr_notify_dc5_dc6(display);
 
 	val = intel_de_read(display, DC_STATE_EN);
 	mask = gen9_dc_mask(display);
@@ -774,18 +772,10 @@ void gen9_set_dc_state(struct intel_display *display, u32 state)
 		drm_err(display->drm, "DC state mismatch (0x%x -> 0x%x)\n",
 			power_domains->dc_state, val & mask);
 
-	enable_dc6 = state & DC_STATE_EN_UPTO_DC6;
-	dc6_was_enabled = val & DC_STATE_EN_UPTO_DC6;
-	if (!dc6_was_enabled && enable_dc6)
-		intel_dmc_update_dc6_allowed_count(display, true);
-
 	val &= ~mask;
 	val |= state;
 
 	gen9_write_dc_state(display, val);
-
-	if (!enable_dc6 && dc6_was_enabled)
-		intel_dmc_update_dc6_allowed_count(display, false);
 
 	power_domains->dc_state = val & mask;
 }
@@ -826,8 +816,7 @@ static void assert_can_enable_dc5(struct intel_display *display)
 		      (intel_de_read(display, DC_STATE_EN) &
 		       DC_STATE_EN_UPTO_DC5),
 		      "DC5 already programmed to be enabled.\n");
-
-	assert_display_rpm_held(display);
+	assert_rpm_wakelock_held(&dev_priv->runtime_pm);
 
 	assert_dmc_loaded(display);
 }
@@ -1212,6 +1201,7 @@ static void vlv_init_display_clock_gating(struct intel_display *display)
 
 static void vlv_display_power_well_init(struct intel_display *display)
 {
+	struct drm_i915_private *dev_priv = to_i915(display->drm);
 	struct intel_encoder *encoder;
 	enum pipe pipe;
 
@@ -1235,7 +1225,9 @@ static void vlv_display_power_well_init(struct intel_display *display)
 
 	vlv_init_display_clock_gating(display);
 
-	valleyview_enable_display_irqs(display);
+	spin_lock_irq(&dev_priv->irq_lock);
+	valleyview_enable_display_irqs(dev_priv);
+	spin_unlock_irq(&dev_priv->irq_lock);
 
 	/*
 	 * During driver initialization/resume we can avoid restoring the
@@ -1244,8 +1236,8 @@ static void vlv_display_power_well_init(struct intel_display *display)
 	if (display->power.domains.initializing)
 		return;
 
-	intel_hpd_init(display);
-	intel_hpd_poll_disable(display);
+	intel_hpd_init(dev_priv);
+	intel_hpd_poll_disable(dev_priv);
 
 	/* Re-enable the ADPA, if we have one */
 	for_each_intel_encoder(display->drm, encoder) {
@@ -1253,7 +1245,7 @@ static void vlv_display_power_well_init(struct intel_display *display)
 			intel_crt_reset(&encoder->base);
 	}
 
-	intel_vga_disable(display);
+	intel_vga_redisable_power_on(display);
 
 	intel_pps_unlock_regs_wa(display);
 }
@@ -1262,7 +1254,9 @@ static void vlv_display_power_well_deinit(struct intel_display *display)
 {
 	struct drm_i915_private *dev_priv = to_i915(display->drm);
 
-	valleyview_disable_display_irqs(display);
+	spin_lock_irq(&dev_priv->irq_lock);
+	valleyview_disable_display_irqs(dev_priv);
+	spin_unlock_irq(&dev_priv->irq_lock);
 
 	/* make sure we're done processing display irqs */
 	intel_synchronize_irq(dev_priv);
@@ -1271,7 +1265,7 @@ static void vlv_display_power_well_deinit(struct intel_display *display)
 
 	/* Prevent us from re-enabling polling on accident in late suspend */
 	if (!display->drm->dev->power.is_suspended)
-		intel_hpd_poll_enable(display);
+		intel_hpd_poll_enable(dev_priv);
 }
 
 static void vlv_display_power_well_enable(struct intel_display *display,

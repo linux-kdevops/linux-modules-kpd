@@ -831,10 +831,11 @@ static int apds9306_read_raw(struct iio_dev *indio_dev,
 		 * Changing device parameters during adc operation, resets
 		 * the ADC which has to avoided.
 		 */
-		if (!iio_device_claim_direct(indio_dev))
-			return -EBUSY;
+		ret = iio_device_claim_direct_mode(indio_dev);
+		if (ret)
+			return ret;
 		ret = apds9306_read_data(data, val, reg);
-		iio_device_release_direct(indio_dev);
+		iio_device_release_direct_mode(indio_dev);
 		if (ret)
 			return ret;
 

@@ -25,7 +25,6 @@
 #include <linux/hrtimer.h>
 #include <linux/slab.h>
 #include <linux/hashtable.h>
-#include <linux/bpf.h>
 
 #include <net/netdev_lock.h>
 #include <net/net_namespace.h>
@@ -208,7 +207,7 @@ static struct Qdisc_ops *qdisc_lookup_default(const char *name)
 
 	for (q = qdisc_base; q; q = q->next) {
 		if (!strcmp(name, q->id)) {
-			if (!bpf_try_module_get(q, q->owner))
+			if (!try_module_get(q->owner))
 				q = NULL;
 			break;
 		}
@@ -238,7 +237,7 @@ int qdisc_set_default(const char *name)
 
 	if (ops) {
 		/* Set new default */
-		bpf_module_put(default_qdisc_ops, default_qdisc_ops->owner);
+		module_put(default_qdisc_ops->owner);
 		default_qdisc_ops = ops;
 	}
 	write_unlock(&qdisc_mod_lock);
@@ -360,7 +359,7 @@ static struct Qdisc_ops *qdisc_lookup_ops(struct nlattr *kind)
 		read_lock(&qdisc_mod_lock);
 		for (q = qdisc_base; q; q = q->next) {
 			if (nla_strcmp(kind, q->id) == 0) {
-				if (!bpf_try_module_get(q, q->owner))
+				if (!try_module_get(q->owner))
 					q = NULL;
 				break;
 			}
@@ -780,12 +779,15 @@ static u32 qdisc_alloc_handle(struct net_device *dev)
 
 void qdisc_tree_reduce_backlog(struct Qdisc *sch, int n, int len)
 {
+	bool qdisc_is_offloaded = sch->flags & TCQ_F_OFFLOADED;
 	const struct Qdisc_class_ops *cops;
 	unsigned long cl;
 	u32 parentid;
 	bool notify;
 	int drops;
 
+	if (n == 0 && len == 0)
+		return;
 	drops = max_t(int, n, 0);
 	rcu_read_lock();
 	while ((parentid = sch->parent)) {
@@ -794,8 +796,17 @@ void qdisc_tree_reduce_backlog(struct Qdisc *sch, int n, int len)
 
 		if (sch->flags & TCQ_F_NOPARENT)
 			break;
-		/* Notify parent qdisc only if child qdisc becomes empty. */
-		notify = !sch->q.qlen;
+		/* Notify parent qdisc only if child qdisc becomes empty.
+		 *
+		 * If child was empty even before update then backlog
+		 * counter is screwed and we skip notification because
+		 * parent class is already passive.
+		 *
+		 * If the original child was offloaded then it is allowed
+		 * to be seem as empty, so the parent is notified anyway.
+		 */
+		notify = !sch->q.qlen && !WARN_ON_ONCE(!n &&
+						       !qdisc_is_offloaded);
 		/* TODO: perform the search on a per txq basis */
 		sch = qdisc_lookup_rcu(qdisc_dev(sch), TC_H_MAJ(parentid));
 		if (sch == NULL) {
@@ -804,9 +815,6 @@ void qdisc_tree_reduce_backlog(struct Qdisc *sch, int n, int len)
 		}
 		cops = sch->ops->cl_ops;
 		if (notify && cops->qlen_notify) {
-			/* Note that qlen_notify must be idempotent as it may get called
-			 * multiple times.
-			 */
 			cl = cops->find(sch, parentid);
 			cops->qlen_notify(sch, cl);
 		}
@@ -1362,7 +1370,7 @@ err_out3:
 	netdev_put(dev, &sch->dev_tracker);
 	qdisc_free(sch);
 err_out2:
-	bpf_module_put(ops, ops->owner);
+	module_put(ops->owner);
 err_out:
 	*errp = err;
 	return NULL;
@@ -1774,7 +1782,7 @@ static void request_qdisc_module(struct nlattr *kind)
 
 	ops = qdisc_lookup_ops(kind);
 	if (ops) {
-		bpf_module_put(ops, ops->owner);
+		module_put(ops->owner);
 		return;
 	}
 

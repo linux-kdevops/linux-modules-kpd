@@ -179,7 +179,7 @@ void setup_boot_command_line(void)
 	if (has_ebcdic_char(parmarea.command_line))
 		EBCASC(parmarea.command_line, COMMAND_LINE_SIZE);
 	/* copy arch command line */
-	strscpy(early_command_line, strim(parmarea.command_line));
+	strcpy(early_command_line, strim(parmarea.command_line));
 
 	/* append IPL PARM data to the boot command line */
 	if (!is_prot_virt_guest() && ipl_block_valid)
@@ -253,8 +253,7 @@ void parse_boot_command_line(void)
 	int rc;
 
 	__kaslr_enabled = IS_ENABLED(CONFIG_RANDOMIZE_BASE);
-	strscpy(command_line_buf, early_command_line);
-	args = command_line_buf;
+	args = strcpy(command_line_buf, early_command_line);
 	while (*args) {
 		args = next_arg(args, &param, &val);
 
@@ -310,7 +309,7 @@ void parse_boot_command_line(void)
 		if (!strcmp(param, "bootdebug")) {
 			bootdebug = true;
 			if (val)
-				strscpy(bootdebug_filter, val);
+				strncpy(bootdebug_filter, val, sizeof(bootdebug_filter) - 1);
 		}
 		if (!strcmp(param, "quiet"))
 			boot_console_loglevel = CONSOLE_LOGLEVEL_QUIET;

@@ -117,18 +117,11 @@ static int mctp_dump_addrinfo(struct sk_buff *skb, struct netlink_callback *cb)
 	struct net_device *dev;
 	struct ifaddrmsg *hdr;
 	struct mctp_dev *mdev;
-	int ifindex = 0, rc;
+	int ifindex, rc;
 
-	/* Filter by ifindex if a header is provided */
-	hdr = nlmsg_payload(cb->nlh, sizeof(*hdr));
-	if (hdr) {
-		ifindex = hdr->ifa_index;
-	} else {
-		if (cb->strict_check) {
-			NL_SET_ERR_MSG(cb->extack, "mctp: Invalid header for addr dump request");
-			return -EINVAL;
-		}
-	}
+	hdr = nlmsg_data(cb->nlh);
+	// filter by ifindex if requested
+	ifindex = hdr->ifa_index;
 
 	rcu_read_lock();
 	for_each_netdev_dump(net, dev, mcb->ifindex) {

@@ -725,7 +725,7 @@ static int alloc_wq_table(int max_wqs)
 
 	for (cpu = 0; cpu < nr_cpus; cpu++) {
 		entry = per_cpu_ptr(wq_table, cpu);
-		entry->wqs = kcalloc(max_wqs, sizeof(*entry->wqs), GFP_KERNEL);
+		entry->wqs = kcalloc(max_wqs, sizeof(struct wq *), GFP_KERNEL);
 		if (!entry->wqs) {
 			free_wq_table();
 			return -ENOMEM;
@@ -894,7 +894,7 @@ out:
 static void rebalance_wq_table(void)
 {
 	const struct cpumask *node_cpus;
-	int node_cpu, node, cpu, iaa = 0;
+	int node, cpu, iaa = -1;
 
 	if (nr_iaa == 0)
 		return;
@@ -905,29 +905,36 @@ static void rebalance_wq_table(void)
 	clear_wq_table();
 
 	if (nr_iaa == 1) {
-		for_each_possible_cpu(cpu) {
-			if (WARN_ON(wq_table_add_wqs(0, cpu)))
-				goto err;
+		for (cpu = 0; cpu < nr_cpus; cpu++) {
+			if (WARN_ON(wq_table_add_wqs(0, cpu))) {
+				pr_debug("could not add any wqs for iaa 0 to cpu %d!\n", cpu);
+				return;
+			}
 		}
 
 		return;
 	}
 
 	for_each_node_with_cpus(node) {
-		cpu = 0;
 		node_cpus = cpumask_of_node(node);
 
-		for_each_cpu(node_cpu, node_cpus) {
-			iaa = cpu / cpus_per_iaa;
-			if (WARN_ON(wq_table_add_wqs(iaa, node_cpu)))
-				goto err;
-			cpu++;
+		for (cpu = 0; cpu <  cpumask_weight(node_cpus); cpu++) {
+			int node_cpu = cpumask_nth(cpu, node_cpus);
+
+			if (WARN_ON(node_cpu >= nr_cpu_ids)) {
+				pr_debug("node_cpu %d doesn't exist!\n", node_cpu);
+				return;
+			}
+
+			if ((cpu % cpus_per_iaa) == 0)
+				iaa++;
+
+			if (WARN_ON(wq_table_add_wqs(iaa, node_cpu))) {
+				pr_debug("could not add any wqs for iaa %d to cpu %d!\n", iaa, cpu);
+				return;
+			}
 		}
 	}
-
-	return;
-err:
-	pr_debug("could not add any wqs for iaa %d to cpu %d!\n", iaa, cpu);
 }
 
 static inline int check_completion(struct device *dev,
@@ -992,9 +999,12 @@ out:
 
 static int deflate_generic_decompress(struct acomp_req *req)
 {
-	ACOMP_FBREQ_ON_STACK(fbreq, req);
+	ACOMP_REQUEST_ON_STACK(fbreq, crypto_acomp_reqtfm(req));
 	int ret;
 
+	acomp_request_set_callback(fbreq, 0, NULL, NULL);
+	acomp_request_set_params(fbreq, req->src, req->dst, req->slen,
+				 req->dlen);
 	ret = crypto_acomp_decompress(fbreq);
 	req->dlen = fbreq->dlen;
 
@@ -1010,7 +1020,8 @@ static int iaa_remap_for_verify(struct device *dev, struct iaa_wq *iaa_wq,
 static int iaa_compress_verify(struct crypto_tfm *tfm, struct acomp_req *req,
 			       struct idxd_wq *wq,
 			       dma_addr_t src_addr, unsigned int slen,
-			       dma_addr_t dst_addr, unsigned int *dlen);
+			       dma_addr_t dst_addr, unsigned int *dlen,
+			       u32 compression_crc);
 
 static void iaa_desc_complete(struct idxd_desc *idxd_desc,
 			      enum idxd_complete_type comp_type,
@@ -1076,10 +1087,10 @@ static void iaa_desc_complete(struct idxd_desc *idxd_desc,
 	}
 
 	if (ctx->compress && compression_ctx->verify_compress) {
-		u32 *compression_crc = acomp_request_ctx(ctx->req);
 		dma_addr_t src_addr, dst_addr;
+		u32 compression_crc;
 
-		*compression_crc = idxd_desc->iax_completion->crc;
+		compression_crc = idxd_desc->iax_completion->crc;
 
 		ret = iaa_remap_for_verify(dev, iaa_wq, ctx->req, &src_addr, &dst_addr);
 		if (ret) {
@@ -1089,7 +1100,8 @@ static void iaa_desc_complete(struct idxd_desc *idxd_desc,
 		}
 
 		ret = iaa_compress_verify(ctx->tfm, ctx->req, iaa_wq->wq, src_addr,
-					  ctx->req->slen, dst_addr, &ctx->req->dlen);
+					  ctx->req->slen, dst_addr, &ctx->req->dlen,
+					  compression_crc);
 		if (ret) {
 			dev_dbg(dev, "%s: compress verify failed ret=%d\n", __func__, ret);
 			err = -EIO;
@@ -1118,11 +1130,11 @@ out:
 static int iaa_compress(struct crypto_tfm *tfm,	struct acomp_req *req,
 			struct idxd_wq *wq,
 			dma_addr_t src_addr, unsigned int slen,
-			dma_addr_t dst_addr, unsigned int *dlen)
+			dma_addr_t dst_addr, unsigned int *dlen,
+			u32 *compression_crc)
 {
 	struct iaa_device_compression_mode *active_compression_mode;
 	struct iaa_compression_ctx *ctx = crypto_tfm_ctx(tfm);
-	u32 *compression_crc = acomp_request_ctx(req);
 	struct iaa_device *iaa_device;
 	struct idxd_desc *idxd_desc;
 	struct iax_hw_desc *desc;
@@ -1175,7 +1187,8 @@ static int iaa_compress(struct crypto_tfm *tfm,	struct acomp_req *req,
 			" src_addr %llx, dst_addr %llx\n", __func__,
 			active_compression_mode->name,
 			src_addr, dst_addr);
-	}
+	} else if (ctx->async_mode)
+		req->base.data = idxd_desc;
 
 	dev_dbg(dev, "%s: compression mode %s,"
 		" desc->src1_addr %llx, desc->src1_size %d,"
@@ -1269,11 +1282,11 @@ out:
 static int iaa_compress_verify(struct crypto_tfm *tfm, struct acomp_req *req,
 			       struct idxd_wq *wq,
 			       dma_addr_t src_addr, unsigned int slen,
-			       dma_addr_t dst_addr, unsigned int *dlen)
+			       dma_addr_t dst_addr, unsigned int *dlen,
+			       u32 compression_crc)
 {
 	struct iaa_device_compression_mode *active_compression_mode;
 	struct iaa_compression_ctx *ctx = crypto_tfm_ctx(tfm);
-	u32 *compression_crc = acomp_request_ctx(req);
 	struct iaa_device *iaa_device;
 	struct idxd_desc *idxd_desc;
 	struct iax_hw_desc *desc;
@@ -1333,10 +1346,10 @@ static int iaa_compress_verify(struct crypto_tfm *tfm, struct acomp_req *req,
 		goto err;
 	}
 
-	if (*compression_crc != idxd_desc->iax_completion->crc) {
+	if (compression_crc != idxd_desc->iax_completion->crc) {
 		ret = -EINVAL;
 		dev_dbg(dev, "(verify) iaa comp/decomp crc mismatch:"
-			" comp=0x%x, decomp=0x%x\n", *compression_crc,
+			" comp=0x%x, decomp=0x%x\n", compression_crc,
 			idxd_desc->iax_completion->crc);
 		print_hex_dump(KERN_INFO, "cmp-rec: ", DUMP_PREFIX_OFFSET,
 			       8, 1, idxd_desc->iax_completion, 64, 0);
@@ -1356,7 +1369,8 @@ err:
 static int iaa_decompress(struct crypto_tfm *tfm, struct acomp_req *req,
 			  struct idxd_wq *wq,
 			  dma_addr_t src_addr, unsigned int slen,
-			  dma_addr_t dst_addr, unsigned int *dlen)
+			  dma_addr_t dst_addr, unsigned int *dlen,
+			  bool disable_async)
 {
 	struct iaa_device_compression_mode *active_compression_mode;
 	struct iaa_compression_ctx *ctx = crypto_tfm_ctx(tfm);
@@ -1398,7 +1412,7 @@ static int iaa_decompress(struct crypto_tfm *tfm, struct acomp_req *req,
 	desc->src1_size = slen;
 	desc->completion_addr = idxd_desc->compl_dma;
 
-	if (ctx->use_irq) {
+	if (ctx->use_irq && !disable_async) {
 		desc->flags |= IDXD_OP_FLAG_RCI;
 
 		idxd_desc->crypto.req = req;
@@ -1411,7 +1425,8 @@ static int iaa_decompress(struct crypto_tfm *tfm, struct acomp_req *req,
 			" src_addr %llx, dst_addr %llx\n", __func__,
 			active_compression_mode->name,
 			src_addr, dst_addr);
-	}
+	} else if (ctx->async_mode && !disable_async)
+		req->base.data = idxd_desc;
 
 	dev_dbg(dev, "%s: decompression mode %s,"
 		" desc->src1_addr %llx, desc->src1_size %d,"
@@ -1431,7 +1446,7 @@ static int iaa_decompress(struct crypto_tfm *tfm, struct acomp_req *req,
 	update_total_decomp_calls();
 	update_wq_decomp_calls(wq);
 
-	if (ctx->async_mode) {
+	if (ctx->async_mode && !disable_async) {
 		ret = -EINPROGRESS;
 		dev_dbg(dev, "%s: returning -EINPROGRESS\n", __func__);
 		goto out;
@@ -1459,7 +1474,7 @@ static int iaa_decompress(struct crypto_tfm *tfm, struct acomp_req *req,
 
 	*dlen = req->dlen;
 
-	if (!ctx->async_mode)
+	if (!ctx->async_mode || disable_async)
 		idxd_free_desc(wq, idxd_desc);
 
 	/* Update stats */
@@ -1481,6 +1496,7 @@ static int iaa_comp_acompress(struct acomp_req *req)
 	dma_addr_t src_addr, dst_addr;
 	int nr_sgs, cpu, ret = 0;
 	struct iaa_wq *iaa_wq;
+	u32 compression_crc;
 	struct idxd_wq *wq;
 	struct device *dev;
 
@@ -1541,7 +1557,7 @@ static int iaa_comp_acompress(struct acomp_req *req)
 		req->dst, req->dlen, sg_dma_len(req->dst));
 
 	ret = iaa_compress(tfm, req, wq, src_addr, req->slen, dst_addr,
-			   &req->dlen);
+			   &req->dlen, &compression_crc);
 	if (ret == -EINPROGRESS)
 		return ret;
 
@@ -1553,7 +1569,7 @@ static int iaa_comp_acompress(struct acomp_req *req)
 		}
 
 		ret = iaa_compress_verify(tfm, req, wq, src_addr, req->slen,
-					  dst_addr, &req->dlen);
+					  dst_addr, &req->dlen, compression_crc);
 		if (ret)
 			dev_dbg(dev, "asynchronous compress verification failed ret=%d\n", ret);
 
@@ -1639,7 +1655,7 @@ static int iaa_comp_adecompress(struct acomp_req *req)
 		req->dst, req->dlen, sg_dma_len(req->dst));
 
 	ret = iaa_decompress(tfm, req, wq, src_addr, req->slen,
-			     dst_addr, &req->dlen);
+			     dst_addr, &req->dlen, false);
 	if (ret == -EINPROGRESS)
 		return ret;
 
@@ -1683,7 +1699,6 @@ static struct acomp_alg iaa_acomp_fixed_deflate = {
 		.cra_driver_name	= "deflate-iaa",
 		.cra_flags		= CRYPTO_ALG_ASYNC,
 		.cra_ctxsize		= sizeof(struct iaa_compression_ctx),
-		.cra_reqsize		= sizeof(u32),
 		.cra_module		= THIS_MODULE,
 		.cra_priority		= IAA_ALG_PRIORITY,
 	}

@@ -583,7 +583,7 @@ const struct file_operations simple_offset_dir_operations = {
 	.fsync		= noop_fsync,
 };
 
-struct dentry *find_next_child(struct dentry *parent, struct dentry *prev)
+static struct dentry *find_next_child(struct dentry *parent, struct dentry *prev)
 {
 	struct dentry *child = NULL, *d;
 
@@ -603,7 +603,6 @@ struct dentry *find_next_child(struct dentry *parent, struct dentry *prev)
 	dput(prev);
 	return child;
 }
-EXPORT_SYMBOL(find_next_child);
 
 void simple_recursive_removal(struct dentry *dentry,
                               void (*callback)(struct dentry *))
@@ -1648,14 +1647,10 @@ struct inode *alloc_anon_inode(struct super_block *s)
 	 * that it already _is_ on the dirty list.
 	 */
 	inode->i_state = I_DIRTY;
-	/*
-	 * Historically anonymous inodes don't have a type at all and
-	 * userspace has come to rely on this.
-	 */
 	inode->i_mode = S_IRUSR | S_IWUSR;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	inode->i_flags |= S_PRIVATE | S_ANON_INODE;
+	inode->i_flags |= S_PRIVATE;
 	simple_inode_init_ts(inode);
 	return inode;
 }

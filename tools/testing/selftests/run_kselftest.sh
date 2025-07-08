@@ -3,14 +3,7 @@
 #
 # Run installed kselftest tests.
 #
-
-# Fallback to readlink if realpath is not available
-if which realpath > /dev/null; then
-        BASE_DIR=$(realpath $(dirname $0))
-else
-        BASE_DIR=$(readlink -f $(dirname $0))
-fi
-
+BASE_DIR=$(realpath $(dirname $0))
 cd $BASE_DIR
 TESTS="$BASE_DIR"/kselftest-list.txt
 if [ ! -r "$TESTS" ] ; then

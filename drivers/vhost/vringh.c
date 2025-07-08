@@ -225,9 +225,10 @@ static int resize_iovec(struct vringh_kiov *iov, gfp_t gfp)
 
 	flag = (iov->max_num & VRINGH_IOV_ALLOCATED);
 	if (flag)
-		new = krealloc_array(iov->iov, new_num, sizeof(*new), gfp);
+		new = krealloc_array(iov->iov, new_num,
+				     sizeof(struct iovec), gfp);
 	else {
-		new = kmalloc_array(new_num, sizeof(*new), gfp);
+		new = kmalloc_array(new_num, sizeof(struct iovec), gfp);
 		if (new) {
 			memcpy(new, iov->iov,
 			       iov->max_num * sizeof(struct iovec));
@@ -1290,10 +1291,11 @@ static inline int getu16_iotlb(const struct vringh *vrh,
 		if (ret)
 			return ret;
 	} else {
-		__virtio16 *from = bvec_kmap_local(&ivec.iov.bvec[0]);
+		void *kaddr = kmap_local_page(ivec.iov.bvec[0].bv_page);
+		void *from = kaddr + ivec.iov.bvec[0].bv_offset;
 
-		tmp = READ_ONCE(*from);
-		kunmap_local(from);
+		tmp = READ_ONCE(*(__virtio16 *)from);
+		kunmap_local(kaddr);
 	}
 
 	*val = vringh16_to_cpu(vrh, tmp);
@@ -1328,10 +1330,11 @@ static inline int putu16_iotlb(const struct vringh *vrh,
 		if (ret)
 			return ret;
 	} else {
-		__virtio16 *to = bvec_kmap_local(&ivec.iov.bvec[0]);
+		void *kaddr = kmap_local_page(ivec.iov.bvec[0].bv_page);
+		void *to = kaddr + ivec.iov.bvec[0].bv_offset;
 
-		WRITE_ONCE(*to, tmp);
-		kunmap_local(to);
+		WRITE_ONCE(*(__virtio16 *)to, tmp);
+		kunmap_local(kaddr);
 	}
 
 	return 0;

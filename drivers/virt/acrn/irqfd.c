@@ -16,6 +16,8 @@
 
 #include "acrn_drv.h"
 
+static LIST_HEAD(acrn_irqfd_clients);
+
 /**
  * struct hsm_irqfd - Properties of HSM irqfd
  * @vm:		Associated VM pointer

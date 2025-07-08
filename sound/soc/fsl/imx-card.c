@@ -670,12 +670,9 @@ static int imx_card_parse_of(struct imx_card_data *data)
 			}
 		} else if (!strncmp(link->name, "HiFi-ASRC-BE", 12)) {
 			/* DPCM backend */
-			/*
-			 * No need to have link->platforms. alloced dlc[1] will be just wasted,
-			 * but it won't leak.
-			 */
 			link->no_pcm = 1;
-			link->platforms = NULL;
+			link->platforms->of_node = NULL;
+			link->platforms->name = "snd-soc-dummy";
 
 			link->be_hw_params_fixup = be_hw_params_fixup;
 			link->ops = &imx_aif_ops_be;

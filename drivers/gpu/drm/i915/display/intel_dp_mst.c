@@ -27,11 +27,10 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_fixed.h>
-#include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 
+#include "i915_drv.h"
 #include "i915_reg.h"
-#include "i915_utils.h"
 #include "intel_atomic.h"
 #include "intel_audio.h"
 #include "intel_connector.h"
@@ -52,9 +51,7 @@
 #include "intel_link_bw.h"
 #include "intel_pfit.h"
 #include "intel_psr.h"
-#include "intel_step.h"
 #include "intel_vdsc.h"
-#include "intel_vrr.h"
 #include "skl_scaler.h"
 
 /*
@@ -105,34 +102,6 @@ static struct intel_dp *to_primary_dp(struct intel_encoder *encoder)
 	struct intel_digital_port *dig_port = intel_mst->primary;
 
 	return &dig_port->dp;
-}
-
-int intel_dp_mst_active_streams(struct intel_dp *intel_dp)
-{
-	return intel_dp->mst.active_streams;
-}
-
-static bool intel_dp_mst_dec_active_streams(struct intel_dp *intel_dp)
-{
-	struct intel_display *display = to_intel_display(intel_dp);
-
-	drm_dbg_kms(display->drm, "active MST streams %d -> %d\n",
-		    intel_dp->mst.active_streams, intel_dp->mst.active_streams - 1);
-
-	if (drm_WARN_ON(display->drm, intel_dp->mst.active_streams == 0))
-		return true;
-
-	return --intel_dp->mst.active_streams == 0;
-}
-
-static bool intel_dp_mst_inc_active_streams(struct intel_dp *intel_dp)
-{
-	struct intel_display *display = to_intel_display(intel_dp);
-
-	drm_dbg_kms(display->drm, "active MST streams %d -> %d\n",
-		    intel_dp->mst.active_streams, intel_dp->mst.active_streams + 1);
-
-	return intel_dp->mst.active_streams++ == 0;
 }
 
 static int intel_dp_mst_max_dpt_bpp(const struct intel_crtc_state *crtc_state,
@@ -241,6 +210,26 @@ static int intel_dp_mst_dsc_get_slice_count(const struct intel_connector *connec
 					    num_joined_pipes);
 }
 
+static void intel_dp_mst_compute_min_hblank(struct intel_crtc_state *crtc_state,
+					    int bpp_x16)
+{
+	struct intel_display *display = to_intel_display(crtc_state);
+	const struct drm_display_mode *adjusted_mode =
+					&crtc_state->hw.adjusted_mode;
+	int symbol_size = intel_dp_is_uhbr(crtc_state) ? 32 : 8;
+	int hblank;
+
+	if (DISPLAY_VER(display) < 20)
+		return;
+
+	/* Calculate min Hblank Link Layer Symbol Cycle Count for 8b/10b MST & 128b/132b */
+	hblank = DIV_ROUND_UP((DIV_ROUND_UP
+			       (adjusted_mode->htotal - adjusted_mode->hdisplay, 4) * bpp_x16),
+			      symbol_size);
+
+	crtc_state->min_hblank = hblank;
+}
+
 int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
 				   struct intel_crtc_state *crtc_state,
 				   struct drm_connector_state *conn_state,
@@ -310,6 +299,8 @@ int intel_dp_mtp_tu_compute_config(struct intel_dp *intel_dp,
 
 		local_bw_overhead = intel_dp_mst_bw_overhead(crtc_state,
 							     false, dsc_slice_count, link_bpp_x16);
+
+		intel_dp_mst_compute_min_hblank(crtc_state, link_bpp_x16);
 
 		intel_dp_mst_compute_m_n(crtc_state,
 					 local_bw_overhead,
@@ -599,13 +590,12 @@ adjust_limits_for_dsc_hblank_expansion_quirk(struct intel_dp *intel_dp,
 
 static bool
 mst_stream_compute_config_limits(struct intel_dp *intel_dp,
-				 struct intel_connector *connector,
+				 const struct intel_connector *connector,
 				 struct intel_crtc_state *crtc_state,
 				 bool dsc,
 				 struct link_config_limits *limits)
 {
-	if (!intel_dp_compute_config_limits(intel_dp, connector,
-					    crtc_state, false, dsc,
+	if (!intel_dp_compute_config_limits(intel_dp, crtc_state, false, dsc,
 					    limits))
 		return false;
 
@@ -719,12 +709,6 @@ static int mst_stream_compute_config(struct intel_encoder *encoder,
 	if (display->platform.geminilake || display->platform.broxton)
 		pipe_config->lane_lat_optim_mask =
 			bxt_dpio_phy_calc_lane_lat_optim_mask(pipe_config->lane_count);
-
-	ret = intel_dp_compute_min_hblank(pipe_config, conn_state);
-	if (ret)
-		return ret;
-
-	intel_vrr_compute_config(pipe_config, conn_state);
 
 	intel_dp_audio_compute_config(encoder, pipe_config, conn_state);
 
@@ -1006,17 +990,25 @@ static void mst_stream_disable(struct intel_atomic_state *state,
 			       const struct intel_crtc_state *old_crtc_state,
 			       const struct drm_connector_state *old_conn_state)
 {
+	struct intel_display *display = to_intel_display(state);
 	struct intel_dp_mst_encoder *intel_mst = enc_to_mst(encoder);
 	struct intel_dp *intel_dp = to_primary_dp(encoder);
 	struct intel_connector *connector =
 		to_intel_connector(old_conn_state->connector);
+	enum transcoder trans = old_crtc_state->cpu_transcoder;
 
-	if (intel_dp_mst_active_streams(intel_dp) == 1)
-		intel_dp->link.active = false;
+	drm_dbg_kms(display->drm, "active links %d\n",
+		    intel_dp->mst.active_links);
+
+	if (intel_dp->mst.active_links == 1)
+		intel_dp->link_trained = false;
 
 	intel_hdcp_disable(intel_mst->connector);
 
 	intel_dp_sink_disable_decompression(state, connector, old_crtc_state);
+
+	if (DISPLAY_VER(display) >= 20)
+		intel_de_write(display, DP_MIN_HBLANK_CTL(trans), 0);
 }
 
 static void mst_stream_post_disable(struct intel_atomic_state *state,
@@ -1042,8 +1034,8 @@ static void mst_stream_post_disable(struct intel_atomic_state *state,
 	bool last_mst_stream;
 	int i;
 
-	last_mst_stream = intel_dp_mst_dec_active_streams(intel_dp);
-
+	intel_dp->mst.active_links--;
+	last_mst_stream = intel_dp->mst.active_links == 0;
 	drm_WARN_ON(display->drm, DISPLAY_VER(display) >= 12 && last_mst_stream &&
 		    !intel_dp_mst_is_master_trans(old_crtc_state));
 
@@ -1069,8 +1061,6 @@ static void mst_stream_post_disable(struct intel_atomic_state *state,
 
 	drm_dp_remove_payload_part2(&intel_dp->mst.mgr, new_mst_state,
 				    old_payload, new_payload);
-
-	intel_vrr_transcoder_disable(old_crtc_state);
 
 	intel_ddi_disable_transcoder_func(old_crtc_state);
 
@@ -1114,6 +1104,8 @@ static void mst_stream_post_disable(struct intel_atomic_state *state,
 		primary_encoder->post_disable(state, primary_encoder,
 					      old_crtc_state, NULL);
 
+	drm_dbg_kms(display->drm, "active links %d\n",
+		    intel_dp->mst.active_links);
 }
 
 static void mst_stream_post_pll_disable(struct intel_atomic_state *state,
@@ -1124,7 +1116,7 @@ static void mst_stream_post_pll_disable(struct intel_atomic_state *state,
 	struct intel_encoder *primary_encoder = to_primary_encoder(encoder);
 	struct intel_dp *intel_dp = to_primary_dp(encoder);
 
-	if (intel_dp_mst_active_streams(intel_dp) == 0 &&
+	if (intel_dp->mst.active_links == 0 &&
 	    primary_encoder->post_pll_disable)
 		primary_encoder->post_pll_disable(state, primary_encoder, old_crtc_state, old_conn_state);
 }
@@ -1137,7 +1129,7 @@ static void mst_stream_pre_pll_enable(struct intel_atomic_state *state,
 	struct intel_encoder *primary_encoder = to_primary_encoder(encoder);
 	struct intel_dp *intel_dp = to_primary_dp(encoder);
 
-	if (intel_dp_mst_active_streams(intel_dp) == 0)
+	if (intel_dp->mst.active_links == 0)
 		primary_encoder->pre_pll_enable(state, primary_encoder,
 						pipe_config, NULL);
 	else
@@ -1197,10 +1189,12 @@ static void mst_stream_pre_enable(struct intel_atomic_state *state,
 	 */
 	connector->encoder = encoder;
 	intel_mst->connector = connector;
-
-	first_mst_stream = intel_dp_mst_inc_active_streams(intel_dp);
+	first_mst_stream = intel_dp->mst.active_links == 0;
 	drm_WARN_ON(display->drm, DISPLAY_VER(display) >= 12 && first_mst_stream &&
 		    !intel_dp_mst_is_master_trans(pipe_config));
+
+	drm_dbg_kms(display->drm, "active links %d\n",
+		    intel_dp->mst.active_links);
 
 	if (first_mst_stream)
 		intel_dp_set_power(intel_dp, DP_SET_POWER_D0);
@@ -1215,6 +1209,8 @@ static void mst_stream_pre_enable(struct intel_atomic_state *state,
 
 		intel_mst_reprobe_topology(intel_dp, pipe_config);
 	}
+
+	intel_dp->mst.active_links++;
 
 	ret = drm_dp_add_payload_part1(&intel_dp->mst.mgr, mst_state,
 				       drm_atomic_get_mst_payload_state(mst_state, connector->mst.port));
@@ -1283,9 +1279,9 @@ static void mst_stream_enable(struct intel_atomic_state *state,
 	struct drm_dp_mst_topology_state *mst_state =
 		drm_atomic_get_new_mst_topology_state(&state->base, &intel_dp->mst.mgr);
 	enum transcoder trans = pipe_config->cpu_transcoder;
-	bool first_mst_stream = intel_dp_mst_active_streams(intel_dp) == 1;
+	bool first_mst_stream = intel_dp->mst.active_links == 1;
 	struct intel_crtc *pipe_crtc;
-	int ret, i;
+	int ret, i, min_hblank;
 
 	drm_WARN_ON(display->drm, pipe_config->has_pch_encoder);
 
@@ -1300,16 +1296,40 @@ static void mst_stream_enable(struct intel_atomic_state *state,
 			       TRANS_DP2_VFREQ_PIXEL_CLOCK(crtc_clock_hz & 0xffffff));
 	}
 
+	if (DISPLAY_VER(display) >= 20) {
+		/*
+		 * adjust the BlankingStart/BlankingEnd framing control from
+		 * the calculated value
+		 */
+		min_hblank = pipe_config->min_hblank - 2;
+
+		/* Maximum value to be programmed is limited to 0x10 */
+		min_hblank = min(0x10, min_hblank);
+
+		/*
+		 * Minimum hblank accepted for 128b/132b would be 5 and for
+		 * 8b/10b would be 3 symbol count
+		 */
+		if (intel_dp_is_uhbr(pipe_config))
+			min_hblank = max(min_hblank, 5);
+		else
+			min_hblank = max(min_hblank, 3);
+
+		intel_de_write(display, DP_MIN_HBLANK_CTL(trans),
+			       min_hblank);
+	}
+
 	enable_bs_jitter_was(pipe_config);
 
 	intel_ddi_enable_transcoder_func(encoder, pipe_config);
-
-	intel_vrr_transcoder_enable(pipe_config);
 
 	intel_ddi_clear_act_sent(encoder, pipe_config);
 
 	intel_de_rmw(display, TRANS_DDI_FUNC_CTL(display, trans), 0,
 		     TRANS_DDI_DP_VC_PAYLOAD_ALLOC);
+
+	drm_dbg_kms(display->drm, "active links %d\n",
+		    intel_dp->mst.active_links);
 
 	intel_ddi_wait_for_act_sent(encoder, pipe_config);
 	drm_dp_check_act_status(&intel_dp->mst.mgr);
@@ -1327,6 +1347,8 @@ static void mst_stream_enable(struct intel_atomic_state *state,
 		intel_de_rmw(display, CHICKEN_TRANS(display, trans),
 			     FECSTALL_DIS_DPTSTREAM_DPTTG,
 			     pipe_config->fec_enable ? FECSTALL_DIS_DPTSTREAM_DPTTG : 0);
+
+	intel_audio_sdp_split_update(pipe_config);
 
 	intel_enable_transcoder(pipe_config);
 
@@ -1848,6 +1870,12 @@ mst_stream_encoders_create(struct intel_digital_port *dig_port)
 }
 
 int
+intel_dp_mst_encoder_active_links(struct intel_digital_port *dig_port)
+{
+	return dig_port->dp.mst.active_links;
+}
+
+int
 intel_dp_mst_encoder_init(struct intel_digital_port *dig_port, int conn_base_id)
 {
 	struct intel_display *display = to_intel_display(dig_port);
@@ -2073,7 +2101,7 @@ void intel_dp_mst_prepare_probe(struct intel_dp *intel_dp)
 	u8 rate_select;
 	u8 link_bw;
 
-	if (intel_dp->link.active)
+	if (intel_dp->link_trained)
 		return;
 
 	if (intel_mst_probed_link_params_valid(intel_dp, link_rate, lane_count))

@@ -795,7 +795,7 @@ struct gfs2_sbd {
 
 	/* Log stuff */
 
-	struct inode *sd_inode;
+	struct address_space sd_aspace;
 
 	spinlock_t sd_log_lock;
 
@@ -850,13 +850,6 @@ struct gfs2_sbd {
 	struct dentry *debugfs_dir;    /* debugfs directory */
 	unsigned long sd_glock_dqs_held;
 };
-
-#define GFS2_BAD_INO 1
-
-static inline struct address_space *gfs2_aspace(struct gfs2_sbd *sdp)
-{
-	return sdp->sd_inode->i_mapping;
-}
 
 static inline void gfs2_glstats_inc(struct gfs2_glock *gl, int which)
 {

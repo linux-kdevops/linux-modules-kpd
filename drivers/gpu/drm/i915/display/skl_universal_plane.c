@@ -601,7 +601,7 @@ static u32 tgl_plane_min_alignment(struct intel_plane *plane,
 	 * Figure out what's going on here...
 	 */
 	if (display->platform.alderlake_p &&
-	    intel_plane_can_async_flip(plane, fb->format->format, fb->modifier))
+	    intel_plane_can_async_flip(plane, fb->modifier))
 		return mult * 16 * 1024;
 
 	switch (fb->modifier) {
@@ -2666,7 +2666,6 @@ static const struct drm_plane_funcs skl_plane_funcs = {
 	.atomic_duplicate_state = intel_plane_duplicate_state,
 	.atomic_destroy_state = intel_plane_destroy_state,
 	.format_mod_supported = skl_plane_format_mod_supported,
-	.format_mod_supported_async = intel_plane_format_mod_supported_async,
 };
 
 static const struct drm_plane_funcs icl_plane_funcs = {
@@ -2676,7 +2675,6 @@ static const struct drm_plane_funcs icl_plane_funcs = {
 	.atomic_duplicate_state = intel_plane_duplicate_state,
 	.atomic_destroy_state = intel_plane_destroy_state,
 	.format_mod_supported = icl_plane_format_mod_supported,
-	.format_mod_supported_async = intel_plane_format_mod_supported_async,
 };
 
 static const struct drm_plane_funcs tgl_plane_funcs = {
@@ -2686,29 +2684,28 @@ static const struct drm_plane_funcs tgl_plane_funcs = {
 	.atomic_duplicate_state = intel_plane_duplicate_state,
 	.atomic_destroy_state = intel_plane_destroy_state,
 	.format_mod_supported = tgl_plane_format_mod_supported,
-	.format_mod_supported_async = intel_plane_format_mod_supported_async,
 };
 
 static void
 skl_plane_enable_flip_done(struct intel_plane *plane)
 {
-	struct intel_display *display = to_intel_display(plane);
+	struct drm_i915_private *i915 = to_i915(plane->base.dev);
 	enum pipe pipe = plane->pipe;
 
-	spin_lock_irq(&display->irq.lock);
-	bdw_enable_pipe_irq(display, pipe, GEN9_PIPE_PLANE_FLIP_DONE(plane->id));
-	spin_unlock_irq(&display->irq.lock);
+	spin_lock_irq(&i915->irq_lock);
+	bdw_enable_pipe_irq(i915, pipe, GEN9_PIPE_PLANE_FLIP_DONE(plane->id));
+	spin_unlock_irq(&i915->irq_lock);
 }
 
 static void
 skl_plane_disable_flip_done(struct intel_plane *plane)
 {
-	struct intel_display *display = to_intel_display(plane);
+	struct drm_i915_private *i915 = to_i915(plane->base.dev);
 	enum pipe pipe = plane->pipe;
 
-	spin_lock_irq(&display->irq.lock);
-	bdw_disable_pipe_irq(display, pipe, GEN9_PIPE_PLANE_FLIP_DONE(plane->id));
-	spin_unlock_irq(&display->irq.lock);
+	spin_lock_irq(&i915->irq_lock);
+	bdw_disable_pipe_irq(i915, pipe, GEN9_PIPE_PLANE_FLIP_DONE(plane->id));
+	spin_unlock_irq(&i915->irq_lock);
 }
 
 static bool skl_plane_has_rc_ccs(struct intel_display *display,

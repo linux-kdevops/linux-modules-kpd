@@ -36,11 +36,6 @@ struct shadow_if {
 
 static DEFINE_PER_CPU(struct shadow_if, shadow_if);
 
-static int lr_map_idx_to_shadow_idx(struct shadow_if *shadow_if, int idx)
-{
-	return hweight16(shadow_if->lr_map & (BIT(idx) - 1));
-}
-
 /*
  * Nesting GICv3 support
  *
@@ -214,29 +209,6 @@ u64 vgic_v3_get_misr(struct kvm_vcpu *vcpu)
 	return reg;
 }
 
-static u64 translate_lr_pintid(struct kvm_vcpu *vcpu, u64 lr)
-{
-	struct vgic_irq *irq;
-
-	if (!(lr & ICH_LR_HW))
-		return lr;
-
-	/* We have the HW bit set, check for validity of pINTID */
-	irq = vgic_get_vcpu_irq(vcpu, FIELD_GET(ICH_LR_PHYS_ID_MASK, lr));
-	/* If there was no real mapping, nuke the HW bit */
-	if (!irq || !irq->hw || irq->intid > VGIC_MAX_SPI)
-		lr &= ~ICH_LR_HW;
-
-	/* Translate the virtual mapping to the real one, even if invalid */
-	if (irq) {
-		lr &= ~ICH_LR_PHYS_ID_MASK;
-		lr |= FIELD_PREP(ICH_LR_PHYS_ID_MASK, (u64)irq->hwintid);
-		vgic_put_irq(vcpu->kvm, irq);
-	}
-
-	return lr;
-}
-
 /*
  * For LRs which have HW bit set such as timer interrupts, we modify them to
  * have the host hardware interrupt number instead of the virtual one programmed
@@ -245,37 +217,61 @@ static u64 translate_lr_pintid(struct kvm_vcpu *vcpu, u64 lr)
 static void vgic_v3_create_shadow_lr(struct kvm_vcpu *vcpu,
 				     struct vgic_v3_cpu_if *s_cpu_if)
 {
-	struct shadow_if *shadow_if;
-
-	shadow_if = container_of(s_cpu_if, struct shadow_if, cpuif);
-	shadow_if->lr_map = 0;
+	unsigned long lr_map = 0;
+	int index = 0;
 
 	for (int i = 0; i < kvm_vgic_global_state.nr_lr; i++) {
 		u64 lr = __vcpu_sys_reg(vcpu, ICH_LRN(i));
+		struct vgic_irq *irq;
 
 		if (!(lr & ICH_LR_STATE))
-			continue;
+			lr = 0;
 
-		lr = translate_lr_pintid(vcpu, lr);
+		if (!(lr & ICH_LR_HW))
+			goto next;
 
-		s_cpu_if->vgic_lr[hweight16(shadow_if->lr_map)] = lr;
-		shadow_if->lr_map |= BIT(i);
+		/* We have the HW bit set, check for validity of pINTID */
+		irq = vgic_get_vcpu_irq(vcpu, FIELD_GET(ICH_LR_PHYS_ID_MASK, lr));
+		if (!irq || !irq->hw || irq->intid > VGIC_MAX_SPI ) {
+			/* There was no real mapping, so nuke the HW bit */
+			lr &= ~ICH_LR_HW;
+			if (irq)
+				vgic_put_irq(vcpu->kvm, irq);
+			goto next;
+		}
+
+		/* It is illegal to have the EOI bit set with HW */
+		lr &= ~ICH_LR_EOI;
+
+		/* Translate the virtual mapping to the real one */
+		lr &= ~ICH_LR_PHYS_ID_MASK;
+		lr |= FIELD_PREP(ICH_LR_PHYS_ID_MASK, (u64)irq->hwintid);
+
+		vgic_put_irq(vcpu->kvm, irq);
+
+next:
+		s_cpu_if->vgic_lr[index] = lr;
+		if (lr) {
+			lr_map |= BIT(i);
+			index++;
+		}
 	}
 
-	s_cpu_if->used_lrs = hweight16(shadow_if->lr_map);
+	container_of(s_cpu_if, struct shadow_if, cpuif)->lr_map = lr_map;
+	s_cpu_if->used_lrs = index;
 }
 
 void vgic_v3_sync_nested(struct kvm_vcpu *vcpu)
 {
 	struct shadow_if *shadow_if = get_shadow_if();
-	int i;
+	int i, index = 0;
 
 	for_each_set_bit(i, &shadow_if->lr_map, kvm_vgic_global_state.nr_lr) {
 		u64 lr = __vcpu_sys_reg(vcpu, ICH_LRN(i));
 		struct vgic_irq *irq;
 
 		if (!(lr & ICH_LR_HW) || !(lr & ICH_LR_STATE))
-			continue;
+			goto next;
 
 		/*
 		 * If we had a HW lr programmed by the guest hypervisor, we
@@ -284,13 +280,15 @@ void vgic_v3_sync_nested(struct kvm_vcpu *vcpu)
 		 */
 		irq = vgic_get_vcpu_irq(vcpu, FIELD_GET(ICH_LR_PHYS_ID_MASK, lr));
 		if (WARN_ON(!irq)) /* Shouldn't happen as we check on load */
-			continue;
+			goto next;
 
-		lr = __gic_v3_get_lr(lr_map_idx_to_shadow_idx(shadow_if, i));
+		lr = __gic_v3_get_lr(index);
 		if (!(lr & ICH_LR_STATE))
 			irq->active = false;
 
 		vgic_put_irq(vcpu->kvm, irq);
+	next:
+		index++;
 	}
 }
 
@@ -361,23 +359,25 @@ void vgic_v3_put_nested(struct kvm_vcpu *vcpu)
 	val = __vcpu_sys_reg(vcpu, ICH_HCR_EL2);
 	val &= ~ICH_HCR_EL2_EOIcount_MASK;
 	val |= (s_cpu_if->vgic_hcr & ICH_HCR_EL2_EOIcount_MASK);
-	__vcpu_assign_sys_reg(vcpu, ICH_HCR_EL2, val);
-	__vcpu_assign_sys_reg(vcpu, ICH_VMCR_EL2, s_cpu_if->vgic_vmcr);
+	__vcpu_sys_reg(vcpu, ICH_HCR_EL2) = val;
+	__vcpu_sys_reg(vcpu, ICH_VMCR_EL2) = s_cpu_if->vgic_vmcr;
 
 	for (i = 0; i < 4; i++) {
-		__vcpu_assign_sys_reg(vcpu, ICH_AP0RN(i), s_cpu_if->vgic_ap0r[i]);
-		__vcpu_assign_sys_reg(vcpu, ICH_AP1RN(i), s_cpu_if->vgic_ap1r[i]);
+		__vcpu_sys_reg(vcpu, ICH_AP0RN(i)) = s_cpu_if->vgic_ap0r[i];
+		__vcpu_sys_reg(vcpu, ICH_AP1RN(i)) = s_cpu_if->vgic_ap1r[i];
 	}
 
 	for_each_set_bit(i, &shadow_if->lr_map, kvm_vgic_global_state.nr_lr) {
 		val = __vcpu_sys_reg(vcpu, ICH_LRN(i));
 
 		val &= ~ICH_LR_STATE;
-		val |= s_cpu_if->vgic_lr[lr_map_idx_to_shadow_idx(shadow_if, i)] & ICH_LR_STATE;
+		val |= s_cpu_if->vgic_lr[i] & ICH_LR_STATE;
 
-		__vcpu_assign_sys_reg(vcpu, ICH_LRN(i), val);
+		__vcpu_sys_reg(vcpu, ICH_LRN(i)) = val;
+		s_cpu_if->vgic_lr[i] = 0;
 	}
 
+	shadow_if->lr_map = 0;
 	vcpu->arch.vgic_cpu.vgic_v3.used_lrs = 0;
 }
 

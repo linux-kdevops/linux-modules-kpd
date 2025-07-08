@@ -139,13 +139,12 @@ static inline struct intel_vsec_device *auxdev_to_ivdev(struct auxiliary_device 
 }
 
 #if IS_ENABLED(CONFIG_INTEL_VSEC)
-int intel_vsec_register(struct pci_dev *pdev,
+void intel_vsec_register(struct pci_dev *pdev,
 			 struct intel_vsec_platform_info *info);
 #else
-static inline int intel_vsec_register(struct pci_dev *pdev,
+static inline void intel_vsec_register(struct pci_dev *pdev,
 				       struct intel_vsec_platform_info *info)
 {
-	return -ENODEV;
 }
 #endif
 #endif

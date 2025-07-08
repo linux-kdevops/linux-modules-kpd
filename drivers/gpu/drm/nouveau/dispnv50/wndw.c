@@ -556,24 +556,14 @@ nv50_wndw_prepare_fb(struct drm_plane *plane, struct drm_plane_state *state)
 		return ret;
 
 	if (wndw->ctxdma.parent) {
-		if (wndw->wndw.base.user.oclass < GB202_DISP_WINDOW_CHANNEL_DMA) {
-			ctxdma = nv50_wndw_ctxdma_new(wndw, fb);
-			if (IS_ERR(ctxdma)) {
-				nouveau_bo_unpin(nvbo);
-				return PTR_ERR(ctxdma);
-			}
-
-			if (asyw->visible)
-				asyw->image.handle[0] = ctxdma->object.handle;
-		} else {
-			/* No CTXDMAs on Blackwell. */
-			if (asyw->visible) {
-				/* "handle != NULL_HANDLE" is used to determine enable status
-				 * in a number of places, so fill in a fake object handle.
-				 */
-				asyw->image.handle[0] = NV50_DISP_HANDLE_WNDW_CTX(0);
-			}
+		ctxdma = nv50_wndw_ctxdma_new(wndw, fb);
+		if (IS_ERR(ctxdma)) {
+			nouveau_bo_unpin(nvbo);
+			return PTR_ERR(ctxdma);
 		}
+
+		if (asyw->visible)
+			asyw->image.handle[0] = ctxdma->object.handle;
 	}
 
 	ret = drm_gem_plane_helper_prepare_fb(plane, state);
@@ -911,7 +901,6 @@ nv50_wndw_new(struct nouveau_drm *drm, enum drm_plane_type type, int index,
 		int (*new)(struct nouveau_drm *, enum drm_plane_type,
 			   int, s32, struct nv50_wndw **);
 	} wndws[] = {
-		{ GB202_DISP_WINDOW_CHANNEL_DMA, 0, wndwca7e_new },
 		{ GA102_DISP_WINDOW_CHANNEL_DMA, 0, wndwc67e_new },
 		{ TU102_DISP_WINDOW_CHANNEL_DMA, 0, wndwc57e_new },
 		{ GV100_DISP_WINDOW_CHANNEL_DMA, 0, wndwc37e_new },

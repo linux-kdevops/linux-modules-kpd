@@ -413,10 +413,15 @@ static int panel_nv3051d_probe(struct mipi_dsi_device *dsi)
 static void panel_nv3051d_shutdown(struct mipi_dsi_device *dsi)
 {
 	struct panel_nv3051d *ctx = mipi_dsi_get_drvdata(dsi);
+	int ret;
 
-	drm_panel_unprepare(&ctx->panel);
+	ret = drm_panel_unprepare(&ctx->panel);
+	if (ret < 0)
+		dev_err(&dsi->dev, "Failed to unprepare panel: %d\n", ret);
 
-	drm_panel_disable(&ctx->panel);
+	ret = drm_panel_disable(&ctx->panel);
+	if (ret < 0)
+		dev_err(&dsi->dev, "Failed to disable panel: %d\n", ret);
 }
 
 static void panel_nv3051d_remove(struct mipi_dsi_device *dsi)

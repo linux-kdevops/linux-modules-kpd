@@ -20,7 +20,6 @@
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
-#include <linux/string_choices.h>
 
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
@@ -209,7 +208,7 @@ static void alcor_trf_block_pio(struct alcor_sdmmc_host *host, bool read)
 	len = min(host->sg_miter.length, blksize);
 
 	dev_dbg(host->dev, "PIO, %s block size: 0x%zx\n",
-		str_read_write(read), blksize);
+		read ? "read" : "write", blksize);
 
 	host->sg_miter.consumed = len;
 	host->blocks--;

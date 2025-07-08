@@ -19,7 +19,6 @@ properties:
       - items:
           - enum:
               - atmel,at91sam9260-gpbr
-              - microchip,sama7d65-gpbr
           - const: syscon
       - items:
           - enum:

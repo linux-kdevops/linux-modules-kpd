@@ -47,6 +47,7 @@ struct pasid_entry {
 /* The representative of a PASID table */
 struct pasid_table {
 	void			*table;		/* pasid table pointer */
+	int			order;		/* page order of pasid table */
 	u32			max_pasid;	/* max pasid */
 };
 

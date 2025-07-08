@@ -35,14 +35,8 @@ perf_script_filenames() {
 	grep -E " +touch +[0-9]+ +\[[0-9]+\] +[0-9]+\.[0-9]+: +probe:vfs_getname[_0-9]*: +\([[:xdigit:]]+\) +pathname=\"${file}\""
 }
 
-add_probe_vfs_getname
+add_probe_vfs_getname || skip_if_no_debuginfo
 err=$?
-
-if [ $err -eq 1 ] ; then
-        skip_if_no_debuginfo
-        err=$?
-fi
-
 if [ $err -ne 0 ] ; then
 	exit $err
 fi

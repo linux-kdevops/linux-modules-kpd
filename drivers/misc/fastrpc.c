@@ -2313,7 +2313,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		rmem = of_reserved_mem_lookup(rmem_node);
 		if (!rmem) {
 			err = -EINVAL;
-			goto err_free_data;
+			goto fdev_error;
 		}
 
 		src_perms = BIT(QCOM_SCM_VMID_HLOS);
@@ -2334,7 +2334,7 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		data->unsigned_support = false;
 		err = fastrpc_device_register(rdev, data, secure_dsp, domains[domain_id]);
 		if (err)
-			goto err_free_data;
+			goto fdev_error;
 		break;
 	case CDSP_DOMAIN_ID:
 	case CDSP1_DOMAIN_ID:
@@ -2342,15 +2342,15 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 		/* Create both device nodes so that we can allow both Signed and Unsigned PD */
 		err = fastrpc_device_register(rdev, data, true, domains[domain_id]);
 		if (err)
-			goto err_free_data;
+			goto fdev_error;
 
 		err = fastrpc_device_register(rdev, data, false, domains[domain_id]);
 		if (err)
-			goto err_deregister_fdev;
+			goto populate_error;
 		break;
 	default:
 		err = -EINVAL;
-		goto err_free_data;
+		goto fdev_error;
 	}
 
 	kref_init(&data->refcount);
@@ -2367,17 +2367,17 @@ static int fastrpc_rpmsg_probe(struct rpmsg_device *rpdev)
 
 	err = of_platform_populate(rdev->of_node, NULL, NULL, rdev);
 	if (err)
-		goto err_deregister_fdev;
+		goto populate_error;
 
 	return 0;
 
-err_deregister_fdev:
+populate_error:
 	if (data->fdevice)
 		misc_deregister(&data->fdevice->miscdev);
 	if (data->secure_fdevice)
 		misc_deregister(&data->secure_fdevice->miscdev);
 
-err_free_data:
+fdev_error:
 	kfree(data);
 	return err;
 }

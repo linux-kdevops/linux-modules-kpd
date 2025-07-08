@@ -6,7 +6,6 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic_uapi.h>
-#include <drm/drm_print.h>
 
 #include "intel_atomic.h"
 #include "intel_crtc.h"

@@ -114,6 +114,9 @@ enum {
 struct io_wq {
 	unsigned long state;
 
+	free_work_fn *free_work;
+	io_wq_work_fn *do_work;
+
 	struct io_wq_hash *hash;
 
 	atomic_t worker_refs;
@@ -149,16 +152,6 @@ static bool io_acct_cancel_pending_work(struct io_wq *wq,
 					struct io_cb_cancel_data *match);
 static void create_worker_cb(struct callback_head *cb);
 static void io_wq_cancel_tw_create(struct io_wq *wq);
-
-static inline unsigned int __io_get_work_hash(unsigned int work_flags)
-{
-	return work_flags >> IO_WQ_HASH_SHIFT;
-}
-
-static inline unsigned int io_get_work_hash(struct io_wq_work *work)
-{
-	return __io_get_work_hash(atomic_read(&work->flags));
-}
 
 static bool io_worker_get(struct io_worker *worker)
 {
@@ -419,30 +412,6 @@ fail:
 	return false;
 }
 
-/* Defer if current and next work are both hashed to the same chain */
-static bool io_wq_hash_defer(struct io_wq_work *work, struct io_wq_acct *acct)
-{
-	unsigned int hash, work_flags;
-	struct io_wq_work *next;
-
-	lockdep_assert_held(&acct->lock);
-
-	work_flags = atomic_read(&work->flags);
-	if (!__io_wq_is_hashed(work_flags))
-		return false;
-
-	/* should not happen, io_acct_run_queue() said we had work */
-	if (wq_list_empty(&acct->work_list))
-		return true;
-
-	hash = __io_get_work_hash(work_flags);
-	next = container_of(acct->work_list.first, struct io_wq_work, list);
-	work_flags = atomic_read(&next->flags);
-	if (!__io_wq_is_hashed(work_flags))
-		return false;
-	return hash == __io_get_work_hash(work_flags);
-}
-
 static void io_wq_dec_running(struct io_worker *worker)
 {
 	struct io_wq_acct *acct = io_wq_get_acct(worker);
@@ -453,14 +422,8 @@ static void io_wq_dec_running(struct io_worker *worker)
 
 	if (!atomic_dec_and_test(&acct->nr_running))
 		return;
-	if (!worker->cur_work)
-		return;
 	if (!io_acct_run_queue(acct))
 		return;
-	if (io_wq_hash_defer(worker->cur_work, acct)) {
-		raw_spin_unlock(&acct->lock);
-		return;
-	}
 
 	raw_spin_unlock(&acct->lock);
 	atomic_inc(&acct->nr_running);
@@ -492,6 +455,16 @@ static void __io_worker_idle(struct io_wq_acct *acct, struct io_worker *worker)
 		set_bit(IO_WORKER_F_FREE, &worker->flags);
 		hlist_nulls_add_head_rcu(&worker->nulls_node, &acct->free_list);
 	}
+}
+
+static inline unsigned int __io_get_work_hash(unsigned int work_flags)
+{
+	return work_flags >> IO_WQ_HASH_SHIFT;
+}
+
+static inline unsigned int io_get_work_hash(struct io_wq_work *work)
+{
+	return __io_get_work_hash(atomic_read(&work->flags));
 }
 
 static bool io_wait_on_hash(struct io_wq *wq, unsigned int hash)
@@ -639,10 +612,10 @@ static void io_worker_handle_work(struct io_wq_acct *acct,
 			if (do_kill &&
 			    (work_flags & IO_WQ_WORK_UNBOUND))
 				atomic_or(IO_WQ_WORK_CANCEL, &work->flags);
-			io_wq_submit_work(work);
+			wq->do_work(work);
 			io_assign_current_work(worker, NULL);
 
-			linked = io_wq_free_work(work);
+			linked = wq->free_work(work);
 			work = next_hashed;
 			if (!work && linked && !io_wq_is_hashed(linked)) {
 				work = linked;
@@ -961,8 +934,8 @@ static void io_run_cancel(struct io_wq_work *work, struct io_wq *wq)
 {
 	do {
 		atomic_or(IO_WQ_WORK_CANCEL, &work->flags);
-		io_wq_submit_work(work);
-		work = io_wq_free_work(work);
+		wq->do_work(work);
+		work = wq->free_work(work);
 	} while (work);
 }
 
@@ -1222,6 +1195,8 @@ struct io_wq *io_wq_create(unsigned bounded, struct io_wq_data *data)
 	int ret, i;
 	struct io_wq *wq;
 
+	if (WARN_ON_ONCE(!data->free_work || !data->do_work))
+		return ERR_PTR(-EINVAL);
 	if (WARN_ON_ONCE(!bounded))
 		return ERR_PTR(-EINVAL);
 
@@ -1231,6 +1206,8 @@ struct io_wq *io_wq_create(unsigned bounded, struct io_wq_data *data)
 
 	refcount_inc(&data->hash->refs);
 	wq->hash = data->hash;
+	wq->free_work = data->free_work;
+	wq->do_work = data->do_work;
 
 	ret = -ENOMEM;
 
@@ -1259,10 +1236,8 @@ struct io_wq *io_wq_create(unsigned bounded, struct io_wq_data *data)
 	atomic_set(&wq->worker_refs, 1);
 	init_completion(&wq->worker_done);
 	ret = cpuhp_state_add_instance_nocalls(io_wq_online, &wq->cpuhp_node);
-	if (ret) {
-		put_task_struct(wq->task);
+	if (ret)
 		goto err;
-	}
 
 	return wq;
 err:
