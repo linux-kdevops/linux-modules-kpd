@@ -1215,6 +1215,8 @@ static int gfs2_fill_super(struct super_block *sb, struct fs_context *fc)
 	if (error)
 		goto fail_debug;
 
+	INIT_WORK(&sdp->sd_withdraw_work, gfs2_withdraw_func);
+
 	error = init_locking(sdp, &mount_gh, DO);
 	if (error)
 		goto fail_lm;
@@ -1292,6 +1294,7 @@ static int gfs2_fill_super(struct super_block *sb, struct fs_context *fc)
 fail_per_node:
 	init_per_node(sdp, UNDO);
 fail_inodes:
+	flush_work(&sdp->sd_withdraw_work);
 	init_inodes(sdp, UNDO);
 fail_sb:
 	if (sdp->sd_root_dir)
