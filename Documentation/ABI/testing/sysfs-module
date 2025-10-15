@@ -52,14 +52,8 @@ What:		/sys/module/*/taint
 Date:		Jan 2012
 KernelVersion:	3.3
 Contact:	Kay Sievers <kay.sievers@vrfy.org>
-Description:	Module taint flags:
-			==  =====================
-			P   proprietary module
-			O   out-of-tree module
-			F   force-loaded module
-			C   staging driver module
-			E   unsigned module
-			==  =====================
+Description:	Module taint flags: same as the kernel taint flags.
+		See: :ref:`taint_flags` in Documentation/admin-guide/tainted-kernels.rst
 
 What:		/sys/module/grant_table/parameters/free_per_iteration
 Date:		July 2023
