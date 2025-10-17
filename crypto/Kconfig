@@ -1451,5 +1451,6 @@ source "drivers/crypto/Kconfig"
 source "crypto/asymmetric_keys/Kconfig"
 source "certs/Kconfig"
 source "crypto/krb5/Kconfig"
+source "crypto/ml_dsa/Kconfig"
 
 endif	# if CRYPTO
