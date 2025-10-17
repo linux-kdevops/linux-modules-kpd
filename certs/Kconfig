@@ -39,6 +39,30 @@ config MODULE_SIG_KEY_TYPE_ECDSA
 	 Note: Remove all ECDSA signing keys, e.g. certs/signing_key.pem,
 	 when falling back to building Linux 5.14 and older kernels.
 
+config MODULE_SIG_KEY_TYPE_ML_DSA_44
+	bool "ML-DSA (Dilithium) 44"
+	select CRYPTO_ML_DSA
+	select LIB_SHA3
+	help
+	  Use an ML-DSA (Dilithium) 87 key (NIST FIPS 204) for module signing
+	  with a SHAKE256 'hash' of the message.
+
+config MODULE_SIG_KEY_TYPE_ML_DSA_65
+	bool "ML-DSA (Dilithium) 65"
+	select CRYPTO_ML_DSA
+	select LIB_SHA3
+	help
+	  Use an ML-DSA (Dilithium) 87 key (NIST FIPS 204) for module signing
+	  with a SHAKE256 'hash' of the message.
+
+config MODULE_SIG_KEY_TYPE_ML_DSA_87
+	bool "ML-DSA (Dilithium) 87"
+	select CRYPTO_ML_DSA
+	select LIB_SHA3
+	help
+	  Use an ML-DSA (Dilithium) 87 key (NIST FIPS 204) for module signing
+	  with a SHAKE256 'hash' of the message.
+
 endchoice
 
 config SYSTEM_TRUSTED_KEYRING
