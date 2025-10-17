@@ -16,3 +16,5 @@ ml_dsa-$(CONFIG_CRYPTO_DILITHIUM_65) += dilithium_65.o
 ml_dsa-$(CONFIG_CRYPTO_DILITHIUM_44) += dilithium_44.o
 
 obj-$(CONFIG_CRYPTO_ML_DSA) += ml_dsa.o
+
+obj-$(CONFIG_CRYPTO_ML_DSA_TEST) += dilithium_selftest.o
