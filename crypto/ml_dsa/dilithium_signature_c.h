@@ -21,6 +21,13 @@
 
 #include "dilithium_type.h"
 
+int dilithium_keypair_c(struct dilithium_pk *pk,
+			struct dilithium_sk *sk,
+			struct crypto_rng *rng_ctx);
+int dilithium_keypair_from_seed_c(struct dilithium_pk *pk,
+				  struct dilithium_sk *sk,
+				  const uint8_t *seed, size_t seedlen);
+
 int dilithium_sign_c(struct dilithium_sig *sig, const uint8_t *m,
 		     size_t mlen, const struct dilithium_sk *sk,
 		     struct crypto_rng *rng_ctx);

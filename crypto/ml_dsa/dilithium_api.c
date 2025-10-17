@@ -29,6 +29,7 @@
 
 #include <linux/export.h>
 #include "dilithium.h"
+#include "dilithium_pct.h"
 
 void dilithium_ctx_zero(struct dilithium_ctx *ctx)
 {
@@ -404,6 +405,97 @@ int dilithium_sig_ptr(uint8_t **dilithium_sig,
 	}
 }
 EXPORT_SYMBOL(dilithium_sig_ptr);
+
+int dilithium_keypair(struct dilithium_pk *pk,
+		      struct dilithium_sk *sk, struct crypto_rng *rng_ctx,
+		      enum dilithium_type dilithium_type)
+{
+	if (!pk || !sk)
+		return -EINVAL;
+
+	switch (dilithium_type) {
+	case DILITHIUM_87:
+#ifdef CONFIG_CRYPTO_DILITHIUM_87
+		pk->dilithium_type = dilithium_type;
+		sk->dilithium_type = dilithium_type;
+		return dilithium_87_keypair(&pk->key.pk_87, &sk->key.sk_87,
+					    rng_ctx);
+#else
+		return -EOPNOTSUPP;
+#endif
+	case DILITHIUM_65:
+#ifdef CONFIG_CRYPTO_DILITHIUM_65
+		pk->dilithium_type = dilithium_type;
+		sk->dilithium_type = dilithium_type;
+		return dilithium_65_keypair(&pk->key.pk_65, &sk->key.sk_65,
+					    rng_ctx);
+#else
+		return -EOPNOTSUPP;
+#endif
+	case DILITHIUM_44:
+#ifdef CONFIG_CRYPTO_DILITHIUM_44
+		pk->dilithium_type = dilithium_type;
+		sk->dilithium_type = dilithium_type;
+		return dilithium_44_keypair(&pk->key.pk_44, &sk->key.sk_44,
+					    rng_ctx);
+#else
+		return -EOPNOTSUPP;
+#endif
+	case DILITHIUM_UNKNOWN:
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+EXPORT_SYMBOL(dilithium_keypair);
+
+int dilithium_keypair_from_seed(struct dilithium_pk *pk, struct dilithium_sk *sk,
+				const uint8_t *seed, size_t seedlen,
+				enum dilithium_type dilithium_type)
+{
+	if (!pk || !sk)
+		return -EINVAL;
+
+	switch (dilithium_type) {
+	case DILITHIUM_87:
+#ifdef CONFIG_CRYPTO_DILITHIUM_87
+		pk->dilithium_type = dilithium_type;
+		sk->dilithium_type = dilithium_type;
+		return dilithium_87_keypair_from_seed(
+			&pk->key.pk_87, &sk->key.sk_87, seed, seedlen);
+#else
+		return -EOPNOTSUPP;
+#endif
+	case DILITHIUM_65:
+#ifdef CONFIG_CRYPTO_DILITHIUM_65
+		pk->dilithium_type = dilithium_type;
+		sk->dilithium_type = dilithium_type;
+		return dilithium_65_keypair_from_seed(
+			&pk->key.pk_65, &sk->key.sk_65, seed, seedlen);
+#else
+		return -EOPNOTSUPP;
+#endif
+	case DILITHIUM_44:
+#ifdef CONFIG_CRYPTO_DILITHIUM_44
+		pk->dilithium_type = dilithium_type;
+		sk->dilithium_type = dilithium_type;
+		return dilithium_44_keypair_from_seed(
+			&pk->key.pk_44, &sk->key.sk_44, seed, seedlen);
+#else
+		return -EOPNOTSUPP;
+#endif
+	case DILITHIUM_UNKNOWN:
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+EXPORT_SYMBOL(dilithium_keypair_from_seed);
+
+int dilithium_pct(const struct dilithium_pk *pk,
+		  const struct dilithium_sk *sk)
+{
+	return _dilithium_pct_fips(pk, sk);
+}
+EXPORT_SYMBOL(dilithium_pct);
 
 int dilithium_sign(struct dilithium_sig *sig,
 		   const uint8_t *m, size_t mlen,

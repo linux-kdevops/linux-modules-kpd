@@ -37,6 +37,18 @@
 #include "dilithium_pack.h"
 #include "dilithium_signature_impl.h"
 
+int dilithium_keypair_from_seed_c(struct dilithium_pk *pk, struct dilithium_sk *sk,
+				  const uint8_t *seed, size_t seedlen)
+{
+	return dilithium_keypair_from_seed_impl(pk, sk, seed, seedlen);
+}
+
+int dilithium_keypair_c(struct dilithium_pk *pk,
+			struct dilithium_sk *sk, struct crypto_rng *rng_ctx)
+{
+	return dilithium_keypair_impl(pk, sk, rng_ctx);
+}
+
 int dilithium_sign_c(struct dilithium_sig *sig,
 		     const uint8_t *m, size_t mlen,
 		     const struct dilithium_sk *sk,
@@ -103,6 +115,18 @@ int dilithium_verify_final_c(const struct dilithium_sig *sig,
 			     const struct dilithium_pk *pk)
 {
 	return dilithium_verify_final_impl(sig, ctx, pk);
+}
+
+int dilithium_keypair_from_seed(struct dilithium_pk *pk, struct dilithium_sk *sk,
+				  const uint8_t *seed, size_t seedlen)
+{
+	return dilithium_keypair_from_seed_c(pk, sk, seed, seedlen);
+}
+
+int dilithium_keypair(struct dilithium_pk *pk,
+			struct dilithium_sk *sk, struct crypto_rng *rng_ctx)
+{
+	return dilithium_keypair_c(pk, sk, rng_ctx);
 }
 
 int dilithium_sign(struct dilithium_sig *sig,

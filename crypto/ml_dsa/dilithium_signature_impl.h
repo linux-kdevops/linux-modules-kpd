@@ -31,6 +31,7 @@
 #include "dilithium_type.h"
 #include "dilithium_debug.h"
 #include "dilithium_pack.h"
+#include "dilithium_pct.h"
 #include "dilithium_signature_impl.h"
 #include "signature_domain_separation.h"
 #include "small_stack_support.h"
@@ -51,6 +52,200 @@
 
 #define WS_POLY_UNIFORM_BUF_SIZE                                               \
 	(_WS_POLY_UNIFORM_BUF_SIZE * LC_POLY_UNIFOR_BUF_SIZE_MULTIPLIER)
+
+static int dilithium_keypair_from_seed_impl(struct dilithium_pk *pk,
+					    struct dilithium_sk *sk,
+					    const uint8_t *seed,
+					    size_t seedlen);
+
+static int dilithium_keypair_impl(struct dilithium_pk *pk,
+				  struct dilithium_sk *sk,
+				  struct crypto_rng *rng_ctx)
+{
+	struct workspace {
+		union {
+			polyvecl s1, s1hat;
+		} s1;
+		union {
+			polyvecl mat[DILITHIUM_K];
+			polyveck t0;
+		} matrix;
+		polyveck s2, t1;
+		uint8_t seedbuf[2 * DILITHIUM_SEEDBYTES +
+				DILITHIUM_CRHBYTES];
+		union {
+			poly polyvecl_pointwise_acc_montgomery_buf;
+			uint8_t poly_uniform_buf[WS_POLY_UNIFORM_BUF_SIZE];
+			uint8_t poly_uniform_eta_buf[POLY_UNIFORM_ETA_BYTES];
+			uint8_t tr[DILITHIUM_TRBYTES];
+		} tmp;
+	};
+	static const uint8_t dimension[2] = { DILITHIUM_K, DILITHIUM_L };
+	const uint8_t *rho, *rhoprime, *key;
+	int ret;
+	struct shake256_ctx shake256_ctx;
+	LC_DECLARE_MEM(ws, struct workspace, sizeof(uint64_t));
+
+	if (WARN_ON_ONCE(!pk) ||
+	    WARN_ON_ONCE(!sk)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* Get randomness for rho, rhoprime and key */
+	ret = crypto_rng_generate(rng_ctx, NULL, 0, ws->seedbuf,
+				  DILITHIUM_SEEDBYTES);
+	if (ret < 0)
+		goto out;
+	dilithium_print_buffer(ws->seedbuf, DILITHIUM_SEEDBYTES,
+			       "Keygen - Seed");
+
+	shake256_init(&shake256_ctx);
+	shake256_update(&shake256_ctx, ws->seedbuf, DILITHIUM_SEEDBYTES);
+	shake256_update(&shake256_ctx, dimension, sizeof(dimension));
+	shake256_squeeze(&shake256_ctx, ws->seedbuf, sizeof(ws->seedbuf));
+	shake256_clear(&shake256_ctx);
+
+	rho = ws->seedbuf;
+	dilithium_print_buffer(ws->seedbuf, DILITHIUM_SEEDBYTES,
+			       "Keygen - RHO");
+	pack_pk_rho(pk, rho);
+	pack_sk_rho(sk, rho);
+
+	/*
+	 * Timecop: RHO' is a random number which is enlarged to sample the
+	 * vectors S1 and S2 from. The sampling operation is not considered
+	 * relevant for the side channel operation as (a) an attacker does not
+	 * have access to the random number and (b) only the result after the
+	 * sampling operation of S1 and S2 is released.
+	 */
+	rhoprime = rho + DILITHIUM_SEEDBYTES;
+	dilithium_print_buffer(rhoprime, DILITHIUM_CRHBYTES,
+			       "Keygen - RHOPrime");
+
+	key = rhoprime + DILITHIUM_CRHBYTES;
+	dilithium_print_buffer(key, DILITHIUM_SEEDBYTES, "Keygen - Key");
+
+	/* Timecop: key goes into the secret key */
+	poison(key, DILITHIUM_SEEDBYTES);
+
+	pack_sk_key(sk, key);
+
+	/* Sample short vectors s1 and s2 */
+
+	polyvecl_uniform_eta(&ws->s1.s1, rhoprime, 0,
+			     ws->tmp.poly_uniform_eta_buf);
+	polyveck_uniform_eta(&ws->s2, rhoprime, DILITHIUM_L,
+			     ws->tmp.poly_uniform_eta_buf);
+
+	/* Timecop: s1 and s2 are secret */
+	poison(&ws->s1.s1, sizeof(polyvecl));
+	poison(&ws->s2, sizeof(polyveck));
+
+	dilithium_print_polyvecl(&ws->s1.s1,
+				 "Keygen - S1 L x N matrix after ExpandS:");
+	dilithium_print_polyveck(&ws->s2,
+				 "Keygen - S2 K x N matrix after ExpandS:");
+
+	pack_sk_s1(sk, &ws->s1.s1);
+	pack_sk_s2(sk, &ws->s2);
+
+	polyvecl_ntt(&ws->s1.s1hat);
+	dilithium_print_polyvecl(&ws->s1.s1hat,
+				 "Keygen - S1 L x N matrix after NTT:");
+
+	/* Expand matrix */
+	polyvec_matrix_expand(ws->matrix.mat, rho, ws->tmp.poly_uniform_buf);
+	dilithium_print_polyvecl_k(
+		ws->matrix.mat, "Keygen - MAT K x L x N matrix after ExpandA:");
+
+	polyvec_matrix_pointwise_montgomery(
+		&ws->t1, ws->matrix.mat, &ws->s1.s1hat,
+		&ws->tmp.polyvecl_pointwise_acc_montgomery_buf);
+	dilithium_print_polyveck(&ws->t1,
+				 "Keygen - T K x N matrix after A*NTT(s1):");
+
+	polyveck_reduce(&ws->t1);
+	dilithium_print_polyveck(
+		&ws->t1, "Keygen - T K x N matrix reduce after A*NTT(s1):");
+
+	polyveck_invntt_tomont(&ws->t1);
+	dilithium_print_polyveck(&ws->t1,
+				 "Keygen - T K x N matrix after NTT-1:");
+
+	/* Add error vector s2 */
+	polyveck_add(&ws->t1, &ws->t1, &ws->s2);
+	dilithium_print_polyveck(&ws->t1,
+				 "Keygen - T K x N matrix after add S2:");
+
+	/* Extract t1 and write public key */
+	polyveck_caddq(&ws->t1);
+	dilithium_print_polyveck(&ws->t1, "Keygen - T K x N matrix caddq:");
+
+	polyveck_power2round(&ws->t1, &ws->matrix.t0, &ws->t1);
+	dilithium_print_polyveck(&ws->matrix.t0,
+				 "Keygen - T0 K x N matrix after power2round:");
+	dilithium_print_polyveck(&ws->t1,
+				 "Keygen - T1 K x N matrix after power2round:");
+
+	pack_sk_t0(sk, &ws->matrix.t0);
+	pack_pk_t1(pk, &ws->t1);
+	dilithium_print_buffer(pk->pk, DILITHIUM_PUBLICKEYBYTES,
+			       "Keygen - PK after pkEncode:");
+
+	/* Compute H(rho, t1) and write secret key */
+	shake256(pk->pk, sizeof(pk->pk), ws->tmp.tr, sizeof(ws->tmp.tr));
+	dilithium_print_buffer(ws->tmp.tr, sizeof(ws->tmp.tr), "Keygen - TR:");
+	pack_sk_tr(sk, ws->tmp.tr);
+
+	dilithium_print_buffer(sk->sk, DILITHIUM_SECRETKEYBYTES,
+			       "Keygen - SK:");
+
+	/* Timecop: pk and sk are not relevant for side-channels any more. */
+	unpoison(pk->pk, sizeof(pk->pk));
+	unpoison(sk->sk, sizeof(sk->sk));
+
+	ret = dilithium_pct_fips(pk, sk);
+
+out:
+	LC_RELEASE_MEM(ws);
+	return ret;
+}
+
+static int dilithium_keypair_from_seed_impl(struct dilithium_pk *pk,
+					    struct dilithium_sk *sk,
+					    const uint8_t *seed,
+					    size_t seedlen)
+{
+	struct crypto_rng *rng;
+	int ret;
+
+	if (seedlen != DILITHIUM_SEEDBYTES)
+		return -EINVAL;
+
+	rng = crypto_alloc_rng("stdrng", 0, 0);
+	if (IS_ERR(rng))
+		return PTR_ERR(rng);
+
+	ret = crypto_rng_seedsize(rng);
+	if (ret < 0)
+		goto out;
+	if (seedlen != ret) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/* Set the seed that the key generation can pull via the RNG. */
+	ret = crypto_rng_reset(rng, seed, seedlen);
+	if (ret < 0)
+		goto out;
+
+	/* Generate the key pair from the seed. */
+	ret = dilithium_keypair_impl(pk, sk, rng);
+
+out:
+	return ret;
+}
 
 static int dilithium_sign_internal_ahat(struct dilithium_sig *sig,
 					const struct dilithium_sk *sk,

@@ -270,6 +270,26 @@ static inline int polyveck_chknorm(const polyveck *v, int32_t bound)
 }
 
 /**
+ * @brief polyveck_power2round - For all coefficients a of polynomials in vector
+ *				 of length K, compute a0, a1 such that
+ *				 a mod^+ Q = a1*2^D + a0 with
+ *				 -2^{D-1} < a0 <= 2^{D-1}. Assumes coefficients
+ *				 to be standard representatives.
+ *
+ * @param [out] v1 pointer to output vector of polynomials with coefficients a1
+ * @param [in] v0 pointer to output vector of polynomials with coefficients a0
+ * @param [in] v pointer to input vector
+ */
+static inline void polyveck_power2round(polyveck *v1, polyveck *v0,
+					const polyveck *v)
+{
+	unsigned int i;
+
+	for (i = 0; i < DILITHIUM_K; ++i)
+		poly_power2round(&v1->vec[i], &v0->vec[i], &v->vec[i]);
+}
+
+/**
  * @brief polyveck_decompose - For all coefficients a of polynomials in vector
  *			       of length K, compute high and low bits a0, a1
  *			       such a mod^+ Q = a1*ALPHA + a0 with

@@ -20,6 +20,16 @@
 #define DILITHIUM_POLYVEC_C_H
 
 static inline void
+polyvecl_uniform_eta(polyvecl *v, const uint8_t seed[DILITHIUM_CRHBYTES],
+		     uint16_t nonce, void *ws_buf)
+{
+	unsigned int i;
+
+	for (i = 0; i < DILITHIUM_L; ++i)
+		poly_uniform_eta(&v->vec[i], seed, cpu_to_le16(nonce++), ws_buf);
+}
+
+static inline void
 polyvecl_uniform_gamma1(polyvecl *v, const uint8_t seed[DILITHIUM_CRHBYTES],
 			uint16_t nonce, void *ws_buf)
 {
@@ -30,6 +40,16 @@ polyvecl_uniform_gamma1(polyvecl *v, const uint8_t seed[DILITHIUM_CRHBYTES],
 			&v->vec[i], seed,
 			cpu_to_le16((uint16_t)(DILITHIUM_L * nonce + i)),
 			ws_buf);
+}
+
+static inline void
+polyveck_uniform_eta(polyveck *v, const uint8_t seed[DILITHIUM_CRHBYTES],
+		     uint16_t nonce, void *ws_buf)
+{
+	unsigned int i;
+
+	for (i = 0; i < DILITHIUM_K; ++i)
+		poly_uniform_eta(&v->vec[i], seed, cpu_to_le16(nonce++), ws_buf);
 }
 
 /**

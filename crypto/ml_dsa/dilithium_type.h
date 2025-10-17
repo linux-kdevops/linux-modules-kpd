@@ -63,6 +63,8 @@
  * The following defines simply allow duplicate compilation of the
  * respective functions.
  */
+#define dilithium_keypair DILITHIUM_F(keypair)
+#define dilithium_keypair_from_seed DILITHIUM_F(keypair_from_seed)
 #define dilithium_sign DILITHIUM_F(sign)
 #define dilithium_sign_ctx DILITHIUM_F(sign_ctx)
 #define dilithium_sign_init DILITHIUM_F(sign_init)
@@ -74,6 +76,8 @@
 #define dilithium_verify_update DILITHIUM_F(verify_update)
 #define dilithium_verify_final DILITHIUM_F(verify_final)
 
+#define dilithium_keypair_c DILITHIUM_F(keypair_c)
+#define dilithium_keypair_from_seed_c DILITHIUM_F(keypair_from_seed_c)
 #define dilithium_sign_c DILITHIUM_F(sign_c)
 #define dilithium_sign_ctx_c DILITHIUM_F(sign_ctx_c)
 #define dilithium_sign_init_c DILITHIUM_F(sign_init_c)
@@ -84,6 +88,10 @@
 #define dilithium_verify_init_c DILITHIUM_F(verify_init_c)
 #define dilithium_verify_update_c DILITHIUM_F(verify_update_c)
 #define dilithium_verify_final_c DILITHIUM_F(verify_final_c)
+
+#define dilithium_keypair_tester DILITHIUM_F(keypair_tester)
+#define dilithium_siggen_tester DILITHIUM_F(siggen_tester)
+#define dilithium_sigver_tester DILITHIUM_F(sigver_tester)
 
 #define ntt DILITHIUM_F(ntt)
 #define invntt_tomont DILITHIUM_F(invntt_tomont)
@@ -152,6 +160,8 @@
 #define decompose_avx DILITHIUM_F(decompose_avx)
 #define make_hint_avx DILITHIUM_F(make_hint_avx)
 #define use_hint_avx DILITHIUM_F(use_hint_avx)
+#define dilithium_keypair_avx2 DILITHIUM_F(keypair_avx2)
+#define dilithium_keypair_from_seed_avx2 DILITHIUM_F(keypair_from_seed_avx2)
 #define dilithium_sign_avx2 DILITHIUM_F(sign_avx2)
 #define dilithium_sign_ctx_avx2 DILITHIUM_F(sign_ctx_avx2)
 #define dilithium_sign_init_avx2 DILITHIUM_F(sign_init_avx2)
@@ -179,6 +189,9 @@
 	DILITHIUM_F(poly_pointwise_montgomery_armv8)
 #define polyvecl_pointwise_acc_montgomery_armv8                                \
 	DILITHIUM_F(polyvecl_pointwise_acc_montgomery_armv8)
+#define dilithium_keypair_armv8 DILITHIUM_F(keypair_armv8)
+#define dilithium_keypair_from_seed_armv8                                   \
+	DILITHIUM_F(keypair_from_seed_armv8)
 #define dilithium_sign_armv8 DILITHIUM_F(sign_armv8)
 #define dilithium_sign_ctx_armv8 DILITHIUM_F(sign_ctx_armv8)
 #define dilithium_sign_init_armv8 DILITHIUM_F(sign_init_armv8)
@@ -200,6 +213,9 @@
 #define poly_uniform_armv7 DILITHIUM_F(poly_uniform_armv7)
 #define armv7_poly_reduce_asm DILITHIUM_F(armv7_poly_reduce_asm)
 #define armv7_rej_uniform_asm DILITHIUM_F(armv7_rej_uniform_asm)
+#define dilithium_keypair_armv7 DILITHIUM_F(keypair_armv7)
+#define dilithium_keypair_from_seed_armv7                                   \
+	DILITHIUM_F(keypair_from_seed_armv7)
 #define dilithium_sign_armv7 DILITHIUM_F(sign_armv7)
 #define dilithium_sign_ctx_armv7 DILITHIUM_F(sign_ctx_armv7)
 #define dilithium_sign_init_armv7 DILITHIUM_F(sign_init_armv7)
@@ -212,6 +228,9 @@
 #define dilithium_verify_final_armv7 DILITHIUM_F(verify_final_armv7)
 
 /* RISCV 64 ASM Implementation */
+#define dilithium_keypair_riscv64 DILITHIUM_F(keypair_riscv64)
+#define dilithium_keypair_from_seed_riscv64                                 \
+	DILITHIUM_F(keypair_from_seed_riscv64)
 #define dilithium_sign_riscv64 DILITHIUM_F(sign_riscv64)
 #define dilithium_sign_ctx_riscv64 DILITHIUM_F(sign_ctx_riscv64)
 #define dilithium_sign_init_riscv64 DILITHIUM_F(sign_init_riscv64)
@@ -234,6 +253,9 @@
 #define dilithium_poly_reduce_rv64im DILITHIUM_F(poly_reduce_rv64im)
 
 /* RISCV 64 RVV Implementation */
+#define dilithium_keypair_riscv64_rvv DILITHIUM_F(keypair_riscv64_rvv)
+#define dilithium_keypair_from_seed_riscv64_rvv                             \
+	DILITHIUM_F(keypair_from_seed_riscv64_rvv)
 #define dilithium_sign_riscv64_rvv DILITHIUM_F(sign_riscv64_rvv)
 #define dilithium_sign_ctx_riscv64_rvv DILITHIUM_F(sign_ctx_riscv64_rvv)
 #define dilithium_sign_init_riscv64_rvv DILITHIUM_F(sign_init_riscv64_rvv)
