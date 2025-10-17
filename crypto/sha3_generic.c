@@ -30,6 +30,16 @@ int crypto_sha3_init(struct shash_desc *desc)
 }
 EXPORT_SYMBOL(crypto_sha3_init);
 
+static int crypto_shake_init(struct shash_desc *desc)
+{
+	struct sha3_ctx *ctx = crypto_sha3_desc(desc);
+
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->block_size = crypto_shash_blocksize(desc->tfm);
+	ctx->padding = 0x1f;
+	return 0;
+}
+
 static int crypto_sha3_update(struct shash_desc *desc, const u8 *data,
 			      unsigned int len)
 {
@@ -97,7 +107,7 @@ static struct shash_alg algs[] = { {
 	.base.cra_module	= THIS_MODULE,
 }, {
 	.digestsize		= SHAKE128_DEFAULT_SIZE,
-	.init			= crypto_sha3_init,
+	.init			= crypto_shake_init,
 	.update			= crypto_sha3_update,
 	.finup			= crypto_sha3_finup,
 	.descsize		= sizeof(struct sha3_ctx),
@@ -108,7 +118,7 @@ static struct shash_alg algs[] = { {
 	.base.cra_module	= THIS_MODULE,
 }, {
 	.digestsize		= SHAKE256_DEFAULT_SIZE,
-	.init			= crypto_sha3_init,
+	.init			= crypto_shake_init,
 	.update			= crypto_sha3_update,
 	.finup			= crypto_sha3_finup,
 	.descsize		= sizeof(struct sha3_ctx),
