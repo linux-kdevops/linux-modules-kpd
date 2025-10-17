@@ -28,13 +28,18 @@ MODULE_ALIAS_CRYPTO("sha3-256");
 MODULE_ALIAS_CRYPTO("sha3-384");
 MODULE_ALIAS_CRYPTO("sha3-512");
 
+static struct sha3_ctx *crypto_sha3_desc(struct shash_desc *desc)
+{
+	return shash_desc_ctx(desc);
+}
+
 asmlinkage int sha3_ce_transform(u64 *st, const u8 *data, int blocks,
 				 int md_len);
 
 static int arm64_sha3_update(struct shash_desc *desc, const u8 *data,
 		       unsigned int len)
 {
-	struct sha3_state *sctx = shash_desc_ctx(desc);
+	struct sha3_ctx *ctx = crypto_sha3_desc(desc);
 	struct crypto_shash *tfm = desc->tfm;
 	unsigned int bs, ds;
 	int blocks;
@@ -47,7 +52,7 @@ static int arm64_sha3_update(struct shash_desc *desc, const u8 *data,
 		int rem;
 
 		kernel_neon_begin();
-		rem = sha3_ce_transform(sctx->st, data, blocks, ds);
+		rem = sha3_ce_transform(ctx->st, data, blocks, ds);
 		kernel_neon_end();
 		data += (blocks - rem) * bs;
 		blocks = rem;
@@ -58,7 +63,7 @@ static int arm64_sha3_update(struct shash_desc *desc, const u8 *data,
 static int arm64_sha3_finup(struct shash_desc *desc, const u8 *src, unsigned int len,
 			    u8 *out)
 {
-	struct sha3_state *sctx = shash_desc_ctx(desc);
+	struct sha3_ctx *ctx = crypto_sha3_desc(desc);
 	struct crypto_shash *tfm = desc->tfm;
 	__le64 *digest = (__le64 *)out;
 	u8 block[SHA3_224_BLOCK_SIZE];
@@ -74,15 +79,15 @@ static int arm64_sha3_finup(struct shash_desc *desc, const u8 *src, unsigned int
 	block[bs - 1] |= 0x80;
 
 	kernel_neon_begin();
-	sha3_ce_transform(sctx->st, block, 1, ds);
+	sha3_ce_transform(ctx->st, block, 1, ds);
 	kernel_neon_end();
 	memzero_explicit(block , sizeof(block));
 
 	for (i = 0; i < ds / 8; i++)
-		put_unaligned_le64(sctx->st[i], digest++);
+		put_unaligned_le64(ctx->st[i], digest++);
 
 	if (ds & 4)
-		put_unaligned_le32(sctx->st[i], (__le32 *)digest);
+		put_unaligned_le32(ctx->st[i], (__le32 *)digest);
 
 	return 0;
 }
@@ -92,7 +97,7 @@ static struct shash_alg algs[] = { {
 	.init			= crypto_sha3_init,
 	.update			= arm64_sha3_update,
 	.finup			= arm64_sha3_finup,
-	.descsize		= SHA3_STATE_SIZE,
+	.descsize		= sizeof(struct sha3_ctx),
 	.base.cra_name		= "sha3-224",
 	.base.cra_driver_name	= "sha3-224-ce",
 	.base.cra_flags		= CRYPTO_AHASH_ALG_BLOCK_ONLY,
@@ -104,7 +109,7 @@ static struct shash_alg algs[] = { {
 	.init			= crypto_sha3_init,
 	.update			= arm64_sha3_update,
 	.finup			= arm64_sha3_finup,
-	.descsize		= SHA3_STATE_SIZE,
+	.descsize		= sizeof(struct sha3_ctx),
 	.base.cra_name		= "sha3-256",
 	.base.cra_driver_name	= "sha3-256-ce",
 	.base.cra_flags		= CRYPTO_AHASH_ALG_BLOCK_ONLY,
@@ -116,7 +121,7 @@ static struct shash_alg algs[] = { {
 	.init			= crypto_sha3_init,
 	.update			= arm64_sha3_update,
 	.finup			= arm64_sha3_finup,
-	.descsize		= SHA3_STATE_SIZE,
+	.descsize		= sizeof(struct sha3_ctx),
 	.base.cra_name		= "sha3-384",
 	.base.cra_driver_name	= "sha3-384-ce",
 	.base.cra_flags		= CRYPTO_AHASH_ALG_BLOCK_ONLY,
@@ -128,7 +133,7 @@ static struct shash_alg algs[] = { {
 	.init			= crypto_sha3_init,
 	.update			= arm64_sha3_update,
 	.finup			= arm64_sha3_finup,
-	.descsize		= SHA3_STATE_SIZE,
+	.descsize		= sizeof(struct sha3_ctx),
 	.base.cra_name		= "sha3-512",
 	.base.cra_driver_name	= "sha3-512-ce",
 	.base.cra_flags		= CRYPTO_AHASH_ALG_BLOCK_ONLY,

@@ -48,10 +48,10 @@ static const u64 sha3_keccakf_rndc[24] = {
 /*
  * Perform a single round of Keccak mixing.
  */
-static SHA3_INLINE void sha3_keccakf_one_round_generic(struct sha3_state *state,
+static SHA3_INLINE void sha3_keccakf_one_round_generic(struct sha3_ctx *ctx,
 						       int round)
 {
-	u64 *st = state->st;
+	u64 *st = ctx->st;
 	u64 t[5], tt, bc[5];
 
 	/* Theta */
@@ -153,13 +153,13 @@ static SHA3_INLINE void sha3_keccakf_one_round_generic(struct sha3_state *state,
 	st[24] ^= bc[ 4];
 
 	/* Iota */
-	state->st[0] ^= sha3_keccakf_rndc[round];
+	ctx->st[0] ^= sha3_keccakf_rndc[round];
 }
 
-static void sha3_keccakf_rounds_generic(struct sha3_state *state)
+static void sha3_keccakf_rounds_generic(struct sha3_ctx *ctx)
 {
 	for (int round = 0; round < SHA3_KECCAK_ROUNDS; round++)
-		sha3_keccakf_one_round_generic(state, round);
+		sha3_keccakf_one_round_generic(ctx, round);
 }
 
 /*
@@ -167,25 +167,24 @@ static void sha3_keccakf_rounds_generic(struct sha3_state *state)
  * machine for the duration of the Keccak mixing function.  Note that these
  * loops are no-ops on LE machines and will be optimised away.
  */
-static void sha3_keccakf_generic(struct sha3_state *state)
+static void sha3_keccakf_generic(struct sha3_ctx *ctx)
 {
-	for (int  i = 0; i < ARRAY_SIZE(state->st); i++)
-		cpu_to_le64s(&state->st[i]);
+	for (int  i = 0; i < ARRAY_SIZE(ctx->st); i++)
+		cpu_to_le64s(&ctx->st[i]);
 
-	sha3_keccakf_rounds_generic(state);
+	sha3_keccakf_rounds_generic(ctx);
 
-	for (int  i = 0; i < ARRAY_SIZE(state->st); i++)
-		le64_to_cpus(&state->st[i]);
+	for (int  i = 0; i < ARRAY_SIZE(ctx->st); i++)
+		le64_to_cpus(&ctx->st[i]);
 }
 
 static void sha3_absorb_block_generic(struct sha3_ctx *ctx, const u8 *data)
 {
-	struct sha3_state *state = &ctx->state;
 	size_t bsize = ctx->block_size;
 
 	for (size_t i = 0; i < bsize / 8; i++)
-		state->st[i] ^= get_unaligned((u64 *)(data + 8 * i));
-	sha3_keccakf_generic(state);
+		ctx->st[i] ^= get_unaligned((u64 *)(data + 8 * i));
+	sha3_keccakf_generic(ctx);
 }
 
 /*
@@ -214,7 +213,7 @@ static void sha3_absorb_blocks_generic(struct sha3_ctx *ctx,
 static void sha3_absorb_xorle(struct sha3_ctx *ctx, const u8 *data,
 			      size_t partial, size_t len)
 {
-	u8 *buf = (u8 *)ctx->state.st;
+	u8 *buf = (u8 *)ctx->st;
 
 	buf += partial;
 	for (size_t i = 0; i < len; i++)
@@ -243,7 +242,7 @@ void sha3_update(struct sha3_ctx *ctx, const u8 *data, size_t len)
 		sha3_absorb_xorle(ctx, data, absorb_offset, bsize - absorb_offset);
 		len  -= bsize - absorb_offset;
 		data += bsize - absorb_offset;
-		sha3_keccakf(&ctx->state);
+		sha3_keccakf(ctx);
 		ctx->absorb_offset = 0;
 	}
 
@@ -282,7 +281,7 @@ void sha3_squeeze(struct sha3_ctx *ctx, u8 *out, size_t out_size)
 {
 	size_t squeeze_offset = ctx->squeeze_offset;
 	size_t bsize = ctx->block_size;
-	u8 *p = (u8 *)ctx->state.st, end_marker = 0x80;
+	u8 *p = (u8 *)ctx->st, end_marker = 0x80;
 
 	if (!ctx->end_marked) {
 		sha3_absorb_xorle(ctx, &ctx->padding, ctx->absorb_offset, 1);
@@ -292,7 +291,7 @@ void sha3_squeeze(struct sha3_ctx *ctx, u8 *out, size_t out_size)
 
 	for (;;) {
 		if (squeeze_offset == 0)
-			sha3_keccakf(&ctx->state);
+			sha3_keccakf(ctx);
 
 		size_t part = umin(out_size, bsize - squeeze_offset);
 

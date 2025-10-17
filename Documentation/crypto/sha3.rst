@@ -151,7 +151,7 @@ further algorithms or APIs as the engine in the same in all cases.  The
 algorithm APIs all wrap the common context structure::
 
 	struct sha3_ctx {
-		struct sha3_state	state;
+		u64			st[SHA3_STATE_SIZE / 8];
 		u8			block_size;
 		u8			padding;
 		u8			absorb_offset;
@@ -159,13 +159,9 @@ algorithm APIs all wrap the common context structure::
 		bool			end_marked;
 	};
 
-	struct sha3_state {
-		u64			st[SHA3_STATE_SIZE / 8];
-	};
-
 The fields are as follows:
 
- * ``state.st``
+ * ``st``
 
    An array of 25 64-bit state buckets that are used to hold the mathematical
    state of the Keccak engine.  Data is XOR'd onto part of this, the engine is

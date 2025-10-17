@@ -38,10 +38,6 @@
 
 struct shash_desc;
 
-struct sha3_state {
-	u64		st[SHA3_STATE_SIZE / 8];
-};
-
 /*
  * The SHA3 context structure and state buffer.
  *
@@ -52,7 +48,7 @@ struct sha3_state {
  * byteswap step is a no-op.
  */
 struct sha3_ctx {
-	struct sha3_state	state;
+	u64			st[SHA3_STATE_SIZE / 8];
 	u8			block_size;	/* Block size in bytes */
 	u8			padding;	/* Padding byte */
 	u8			absorb_offset;	/* Next state byte to absorb into */
