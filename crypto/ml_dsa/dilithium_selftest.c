@@ -40,6 +40,9 @@ static const struct dilithium_testvector dilithium44_testvectors[] = {
 static const struct dilithium_testvector dilithium65_testvectors[] = {
 #include "dilithium_pure_rejection_vectors_65.h"
 };
+static const struct dilithium_testvector dilithium87_testvectors[] = {
+#include "dilithium_pure_rejection_vectors_87.h"
+};
 
 /*
  * Allow kunit to free a crypto signature processing object.
@@ -152,9 +155,23 @@ static void dilithium65_kunit_test(struct kunit *test)
 	KUNIT_SUCCEED(test);
 }
 
+static void dilithium87_kunit_test(struct kunit *test)
+{
+	const struct dilithium_testvector *tc = dilithium87_testvectors;
+	int count = ARRAY_SIZE(dilithium87_testvectors);
+
+	for (int index = 0; index < count; index++) {
+		dilithium_siggen_test_one(test, index, &tc[index]);
+		dilithium_sigver_test_one(test, index, &tc[index]);
+	}
+
+	KUNIT_SUCCEED(test);
+}
+
 static struct kunit_case __refdata dilithium_kunit_cases[] = {
 	KUNIT_CASE(dilithium44_kunit_test),
 	KUNIT_CASE(dilithium65_kunit_test),
+	KUNIT_CASE(dilithium87_kunit_test),
 	{}
 };
 
