@@ -68,7 +68,7 @@ struct rand_data {
 	 * of the RNG are marked as SENSITIVE. A user must not
 	 * access that information while the RNG executes its loops to
 	 * calculate the next random value. */
-	void *hash_state;		/* SENSITIVE hash state entropy pool */
+	struct sha3_256_ctx *hash_state; /* SENSITIVE hash state entropy pool */
 	__u64 prev_time;		/* SENSITIVE Previous time stamp */
 	__u64 last_delta;		/* SENSITIVE stuck test */
 	__s64 last_delta2;		/* SENSITIVE stuck test */
@@ -656,7 +656,7 @@ int jent_read_entropy(struct rand_data *ec, unsigned char *data,
 
 struct rand_data *jent_entropy_collector_alloc(unsigned int osr,
 					       unsigned int flags,
-					       void *hash_state)
+					       struct sha3_256_ctx *hash_state)
 {
 	struct rand_data *entropy_collector;
 
@@ -704,7 +704,8 @@ void jent_entropy_collector_free(struct rand_data *entropy_collector)
 	jent_zfree(entropy_collector);
 }
 
-int jent_entropy_init(unsigned int osr, unsigned int flags, void *hash_state,
+int jent_entropy_init(unsigned int osr, unsigned int flags,
+		      struct sha3_256_ctx *hash_state,
 		      struct rand_data *p_ec)
 {
 	/*
