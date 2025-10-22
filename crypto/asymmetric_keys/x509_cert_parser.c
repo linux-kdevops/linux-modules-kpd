@@ -257,6 +257,15 @@ int x509_note_sig_algo(void *context, size_t hdrlen, unsigned char tag,
 	case OID_gost2012Signature512:
 		ctx->cert->sig->hash_algo = "streebog512";
 		goto ecrdsa;
+	case OID_id_ml_dsa_44:
+		ctx->cert->sig->pkey_algo = "ml-dsa44";
+		goto ml_dsa;
+	case OID_id_ml_dsa_65:
+		ctx->cert->sig->pkey_algo = "ml-dsa65";
+		goto ml_dsa;
+	case OID_id_ml_dsa_87:
+		ctx->cert->sig->pkey_algo = "ml-dsa87";
+		goto ml_dsa;
 	}
 
 rsa_pkcs1:
@@ -272,6 +281,12 @@ ecrdsa:
 ecdsa:
 	ctx->cert->sig->pkey_algo = "ecdsa";
 	ctx->cert->sig->encoding = "x962";
+	ctx->sig_algo = ctx->last_oid;
+	return 0;
+ml_dsa:
+	ctx->cert->sig->algo_does_hash = true;
+	ctx->cert->sig->hash_algo = ctx->cert->sig->pkey_algo;
+	ctx->cert->sig->encoding = "raw";
 	ctx->sig_algo = ctx->last_oid;
 	return 0;
 }
@@ -523,6 +538,15 @@ int x509_extract_key_data(void *context, size_t hdrlen,
 		default:
 			return -ENOPKG;
 		}
+		break;
+	case OID_id_ml_dsa_44:
+		ctx->cert->pub->pkey_algo = "ml-dsa44";
+		break;
+	case OID_id_ml_dsa_65:
+		ctx->cert->pub->pkey_algo = "ml-dsa65";
+		break;
+	case OID_id_ml_dsa_87:
+		ctx->cert->pub->pkey_algo = "ml-dsa87";
 		break;
 	default:
 		return -ENOPKG;

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-2.0
+menuconfig CRYPTO_ML_DSA
+	tristate "ML-DSA/Dilithium algorithm"
+	select CRYPTO_LIB_SHA3
+
+if CRYPTO_ML_DSA
+
+config CRYPTO_DILITHIUM_44
+	bool "Enable Dilithium-44 support"
+
+config CRYPTO_DILITHIUM_65
+	bool "Enable Dilithium-65 support"
+
+config CRYPTO_DILITHIUM_87
+	bool "Enable Dilithium-87 support"
+
+config CRYPTO_ML_DSA_TEST
+	tristate "ML-DSA/Dilithium KUnit tests"
+	depends on KUNIT
+	default KUNIT_ALL_TESTS
+	help
+	  This options enables the KUnit tests for ML-DSA.
+
+	  KUnit tests run during boot and output the results to the debug
+	  log in TAP format (https://testanything.org/). Only useful for
+	  kernel devs running KUnit test harness and are not for inclusion
+	  into a production build.
+
+	  For more information on KUnit and unit tests in general, refer
+	  to the KUnit documentation in Documentation/dev-tools/kunit/.
+
+endif

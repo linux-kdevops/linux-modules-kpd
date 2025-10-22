@@ -327,6 +327,10 @@ config MODULE_SIG_SHA3_512
 	bool "SHA3-512"
 	select CRYPTO_SHA3
 
+config MODULE_SIG_SHAKE256
+	bool "SHAKE256"
+	select CRYPTO_SHA3
+
 endchoice
 
 config MODULE_SIG_HASH
@@ -339,6 +343,7 @@ config MODULE_SIG_HASH
 	default "sha3-256" if MODULE_SIG_SHA3_256
 	default "sha3-384" if MODULE_SIG_SHA3_384
 	default "sha3-512" if MODULE_SIG_SHA3_512
+	default "shake256" if MODULE_SIG_SHAKE256
 
 config MODULE_COMPRESS
 	bool "Module compression"
